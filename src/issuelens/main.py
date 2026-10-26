@@ -60,9 +60,14 @@ def create_app() -> FastAPI:
     async def issuelens_exception_handler(
         _request: Request, exc: IssueLensError
     ) -> JSONResponse:
-        logger.warning("Domain error encountered: %s [code=%s]", exc.message, exc.code)
+        logger.warning(
+            "Domain error encountered: %s [code=%s, status=%d]",
+            exc.message,
+            exc.code,
+            exc.status_code,
+        )
         return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=exc.status_code,
             content={
                 "error": exc.message,
                 "code": exc.code,

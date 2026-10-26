@@ -9,13 +9,23 @@ IssueLens is an evidence-backed AI debugging assistant for public GitHub bug rep
 
 ---
 
-## Phase 0: Repository Bootstrap
+## Phased Implementation Progress
 
-This phase provides the baseline application foundation:
+### Phase 0: Repository Bootstrap (Complete)
 - Python 3.12+ project configuration with strict typing (`mypy`), linting (`ruff`), and testing (`pytest`).
 - Structured configuration management with environment-variable loading and limit validation.
 - Health and readiness check endpoints (`/healthz`, `/readyz`).
 - Structured logging with secret redaction filters.
+
+### Phase 1: GitHub Issue Ingestion (Complete)
+- Strict URL and coordinate parsing (`https://github.com/owner/repo/issues/123`, `owner/repo#123`) with host validation and SSRF defenses.
+- Rejection of non-public GitHub hosts, malformed paths, non-positive issue numbers, and pull requests.
+- Asynchronous GitHub REST API adapter (`GitHubClient`) with dependency injection, bounded comments pagination, and automatic pinned commit SHA resolution.
+- Comprehensive HTTP error mapping: 404 (Not Found), 429 (Rate Limit Exceeded), 504 (Timeout), 400 (Invalid Input).
+- API endpoints:
+  - `POST /v1/issues/ingest`: Ingests public issue metadata, comments, and pinned commit SHA.
+  - `POST /v1/investigations`: Initializes investigation run with issue context.
+  - `GET /v1/investigations/{run_id}`: Retrieves run status and target metadata.
 
 ---
 
@@ -63,6 +73,9 @@ uv run uvicorn issuelens.main:app --reload --host 127.0.0.1 --port 8000
 ### Endpoints
 - **Liveness probe**: `GET http://127.0.0.1:8000/healthz`
 - **Readiness probe**: `GET http://127.0.0.1:8000/readyz`
+- **Ingest Issue Context**: `POST http://127.0.0.1:8000/v1/issues/ingest`
+- **Create Investigation**: `POST http://127.0.0.1:8000/v1/investigations`
+- **Get Investigation Status**: `GET http://127.0.0.1:8000/v1/investigations/{run_id}`
 - **Interactive API Documentation (Swagger)**: `GET http://127.0.0.1:8000/docs`
 
 ---
@@ -81,7 +94,7 @@ uv run ruff check .
 
 Run type checker:
 ```bash
-uv run mypy src
+uv run mypy src tests
 ```
 
 ---
@@ -101,15 +114,24 @@ issuelens/
       config.py               # Pydantic Settings & environment validation
       api/
         __init__.py
-        routes.py             # Health and operational endpoints
+        routes.py             # Health, ingestion, and investigation endpoints
         schemas.py            # API request/response models
       core/
         __init__.py
-        errors.py             # Domain and error handling definitions
+        errors.py             # Domain and error handling definitions with HTTP status mapping
         logging.py            # Structured logging & secret redaction
+      github/
+        __init__.py
+        client.py             # GitHub REST API client adapter
+        models.py             # Domain models (Issue, Comment, Repo, Context)
+        url_parser.py         # URL and coordinate parser with SSRF validation
   tests/
     unit/
       test_config.py          # Configuration loading & limits tests
+      test_github_client.py   # GitHub adapter tests with mocked HTTP transport
+      test_github_models.py   # GitHub data model serialization tests
       test_health.py          # Liveness & readiness endpoints tests
+      test_issue_api.py       # REST API endpoints tests
       test_logging.py         # Secret redaction tests
+      test_url_parser.py      # Issue URL parsing & edge cases tests
 ```

@@ -484,6 +484,21 @@ WORKING RULES
 14. Do not add a dependency or infrastructure service without explaining why it is needed.
 15. If this specification has a conflict or ambiguity, identify it and recommend the smallest
     safe option instead of silently inventing scope.
+16. Maintain BUILD_LOG.md at the repository root.
+    Whenever you encounter and resolve a meaningful implementation issue, bug, failing test,
+    dependency conflict, architectural problem, or unexpected behavior:
+    1) Record the original symptom and what you were trying to do.
+    2) Investigate and document the verified root cause, including relevant files and code references.
+    3) Explain the fix and why it works.
+    4) Record the exact verification commands and their actual results.
+    5) Explain the engineering lesson in beginner-friendly language.
+    6) Add or identify a regression test where appropriate.
+    7) Briefly document alternatives and trade-offs when relevant.
+    Update the log after resolving the issue, not before verification. Do not invent failures or
+    claim tests passed unless they were run. Label unresolved causes as hypotheses. Do not log
+    every trivial typo or routine edit; prioritize meaningful learning opportunities.
+    At the end of each phase, summarize important issues fixed and point me to the corresponding
+    BUILD_LOG.md entries.
 
 PRODUCT CONTRACT
 - Input: public GitHub issue URL.
