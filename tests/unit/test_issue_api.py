@@ -78,6 +78,15 @@ class FakeGitHubClient(GitHubClientProtocol):
     async def get_pinned_commit_sha(self, _owner: str, _repo: str, _ref: str) -> str:
         return "9876543210abcdef9876543210abcdef98765432"
 
+    async def download_archive(
+        self,
+        _owner: str,
+        _repo: str,
+        _ref: str,
+        _max_bytes: int = 50_000_000,
+    ) -> bytes:
+        return b"PK\x05\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+
     async def fetch_issue_context(self, target: IssueTarget) -> GitHubIssueContext:
         issue = await self.get_issue(target.owner, target.repo, target.issue_number)
         comments = await self.get_comments(target.owner, target.repo, target.issue_number)

@@ -298,3 +298,92 @@ Domain-driven applications should keep business logic decoupled from HTTP framew
 - *Alternative*: Raise FastAPI `HTTPException` directly in `client.py` and `url_parser.py`.
 - *Trade-off*: Raising `HTTPException` inside domain adapters couples the core business logic to FastAPI and breaks reusability in CLI tools, background workers, or scripts. Carrying `status_code` on domain exceptions preserves clean architectural layers.
 
+---
+
+### Entry 007: Syntax-Error Test Fixtures Tripping Static Type Checker
+- **Date**: 2026-10-27
+- **Phase**: Phase 2 (Code Search Baseline)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+When running `uv run mypy src tests`, Mypy failed with syntax errors:
+```text
+tests\fixtures\sample_repo\sample_pkg\broken_syntax.py:2: error: Expected a parameter or the end of the parameter list  [syntax]
+tests\fixtures\sample_repo\sample_pkg\broken_syntax.py:2: error: Expected `)`, found newline  [syntax]
+Found 2 errors in 1 file (errors prevented further checking)
+```
+
+#### 2. Root Cause
+`tests/fixtures/sample_repo/sample_pkg/broken_syntax.py` was created deliberately as an invalid Python file to verify that `parse_python_symbols` handles `SyntaxError` without crashing. When running `mypy src tests`, Mypy traversed the entire `tests` directory and attempted to parse the broken fixture file as application source code.
+
+#### 3. Fix
+Added explicit exclusions for the `tests/fixtures` directory in [pyproject.toml](file:///c:/Projects/Issuelens/pyproject.toml):
+```toml
+[tool.ruff]
+extend-exclude = ["tests/fixtures"]
+
+[tool.mypy]
+exclude = ["tests/fixtures"]
+```
+
+#### 4. Verification
+Ran Mypy type check:
+```powershell
+uv run mypy src tests
+```
+**Output**:
+```text
+Success: no issues found in 31 source files
+```
+
+#### 5. Engineering Lesson
+When testing fault-tolerant parsers or compilers, intentionally corrupted or unparseable fixture files must be excluded from build-time static linters and type checkers. Declaring `exclude = ["tests/fixtures"]` in project configuration ensures real failure cases can be tested without breaking CI gates.
+
+#### 6. Regression Test
+Verified by `uv run mypy src tests` passing while [tests/unit/test_python_symbols.py:test_syntax_error_handled_gracefully](file:///c:/Projects/Issuelens/tests/unit/test_python_symbols.py) tests the broken fixture.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Rename `broken_syntax.py` to `broken_syntax.txt`.
+- *Trade-off*: Keeping standard `.py` extensions inside fixture repos accurately reflects real-world investigated repositories where broken or work-in-progress code files reside. Excluded configuration is standard practice.
+
+---
+
+### Entry 008: External Ripgrep Binary Portability and Deterministic Fallback
+- **Date**: 2026-10-27
+- **Phase**: Phase 2 (Code Search Baseline)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+Phase 2 mandates ripgrep for fast lexical source searching. However, running `where.exe rg` on the host machine showed that `rg` was not present on the user's global system `PATH`, which would cause `FileNotFoundError` or `CommandNotFoundException` on environments without ripgrep installed globally.
+
+#### 2. Root Cause
+Ripgrep (`rg`) is an external compiled Rust binary that is not bundled by default in Python virtual environments. Relying strictly on `shutil.which("rg")` without a fallback makes the service unrunnable on standard developer machines or container images that do not have `ripgrep` pre-installed globally.
+
+#### 3. Fix
+Implemented a dual-engine lexical search strategy in [src/issuelens/repository/code_search.py](file:///c:/Projects/Issuelens/src/issuelens/repository/code_search.py):
+1. `find_ripgrep_executable()` scans system `PATH` and common IDE-bundled locations (such as Antigravity IDE / VS Code ripgrep distributions).
+2. If `rg` is not found, `_search_with_python_fallback()` executes a deterministic pure-Python lexical scanner adhering to identical boundary constraints, exclusions, and line number contracts.
+3. Both engines feed into the identical AST symbol expansion and snippet generation pipelines.
+
+#### 4. Verification
+Ran code search test suite:
+```powershell
+uv run pytest tests/unit/test_code_search.py
+```
+**Output**:
+```text
+tests\unit\test_code_search.py ......                                    [100%]
+============================== 6 passed in 0.18s ===============================
+```
+
+#### 5. Engineering Lesson
+When integrating native binary performance tools into Python services, always implement a contract-compatible, deterministic fallback in pure Python. This provides the best of both worlds: high performance when native binaries are available, and zero-crash portability when running in lightweight environments.
+
+#### 6. Regression Test
+[tests/unit/test_code_search.py](file:///c:/Projects/Issuelens/tests/unit/test_code_search.py) (`test_search_code_python_fallback`, `test_search_code_ast_symbol_expansion`, and `test_search_code_excludes_secrets`).
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Require developers and users to install `ripgrep` globally via package managers (`choco install ripgrep` or `apt-get install ripgrep`) as a hard prerequisite.
+- *Trade-off*: Hard external dependencies increase friction and break Docker/CI environments that omit extra system packages. The dual-engine design guarantees immediate out-of-the-box functionality.
+
+

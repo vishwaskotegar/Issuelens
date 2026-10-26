@@ -27,6 +27,13 @@ IssueLens is an evidence-backed AI debugging assistant for public GitHub bug rep
   - `POST /v1/investigations`: Initializes investigation run with issue context.
   - `GET /v1/investigations/{run_id}`: Retrieves run status and target metadata.
 
+### Phase 2: Code Search Baseline (Complete)
+- Bounded repository snapshots (`RepoSnapshot`) pinned to specific commit SHAs with path traversal protection, size limits (50MB repository, 500KB file), and automatic exclusions (`.git`, `.venv`, `.env`, binary files).
+- Deterministic lexical code search (`search_code`) with ripgrep integration and pure-Python regex fallback.
+- Python AST symbol parsing (`parse_python_symbols`) without code execution, extracting classes, functions, and methods with exact 1-indexed line spans.
+- Enclosing symbol expansion and safe line-numbered snippet extraction (`read_snippet`).
+- Fixture test suite with mock repository (`tests/fixtures/sample_repo/`).
+
 ---
 
 ## Getting Started
@@ -125,13 +132,25 @@ issuelens/
         client.py             # GitHub REST API client adapter
         models.py             # Domain models (Issue, Comment, Repo, Context)
         url_parser.py         # URL and coordinate parser with SSRF validation
+      repository/
+        __init__.py
+        code_search.py        # Ripgrep search, Python fallback, CodeHit schema
+        python_symbols.py     # AST-based symbol parsing and line range extraction
+        snippets.py           # Safe line-numbered excerpt reader
+        snapshot.py           # Bounded repository snapshot and path security
   tests/
+    fixtures/
+      sample_repo/            # Controlled mock repository for deterministic testing
     unit/
+      test_code_search.py     # Ripgrep, Python fallback, and symbol expansion tests
       test_config.py          # Configuration loading & limits tests
       test_github_client.py   # GitHub adapter tests with mocked HTTP transport
       test_github_models.py   # GitHub data model serialization tests
       test_health.py          # Liveness & readiness endpoints tests
       test_issue_api.py       # REST API endpoints tests
       test_logging.py         # Secret redaction tests
+      test_python_symbols.py  # AST symbol extraction and error resilience tests
+      test_snapshot.py        # Snapshot path safety and traversal tests
+      test_snippets.py        # Line-numbered snippet reader tests
       test_url_parser.py      # Issue URL parsing & edge cases tests
 ```

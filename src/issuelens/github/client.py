@@ -50,6 +50,12 @@ class GitHubClientProtocol(Protocol):
         """Resolve ref (branch or tag) to a 40-character commit SHA."""
         ...
 
+    async def download_archive(
+        self, owner: str, repo: str, ref: str, max_bytes: int = 50_000_000
+    ) -> bytes:
+        """Download repository zip archive bounded by byte limit."""
+        ...
+
     async def fetch_issue_context(self, target: IssueTarget) -> GitHubIssueContext:
         """Orchestrate fetching of issue, comments, repo, and pinned commit SHA."""
         ...
@@ -286,6 +292,49 @@ class GitHubClient:
                 code="COMMIT_RESOLUTION_FAILED",
             )
         return sha
+
+    async def download_archive(
+        self, owner: str, repo: str, ref: str, max_bytes: int = 50_000_000
+    ) -> bytes:
+        """Download repository zip archive at ref, enforcing maximum byte limit."""
+        client = self._get_active_client()
+        path = f"/repos/{owner}/{repo}/zipball/{ref}"
+        url = f"{self.base_url}{path}"
+        headers = dict(self._headers)
+
+        try:
+            async with client.stream(
+                "GET", url, headers=headers, follow_redirects=True
+            ) as response:
+                if response.status_code == 404:
+                    raise ResourceNotFoundError(
+                        f"Repository archive for '{owner}/{repo}@{ref}' not found."
+                    )
+                if response.status_code >= 400:
+                    self._handle_error_response(response, path)
+
+                chunks: list[bytes] = []
+                total_bytes = 0
+                async for chunk in response.aiter_bytes():
+                    total_bytes += len(chunk)
+                    if total_bytes > max_bytes:
+                        raise SafetyViolationError(
+                            f"Repository archive size exceeds limit of {max_bytes} bytes."
+                        )
+                    chunks.append(chunk)
+
+                return b"".join(chunks)
+
+        except httpx.TimeoutException as exc:
+            raise UpstreamTimeoutError(
+                f"Timed out downloading archive for '{owner}/{repo}@{ref}'."
+            ) from exc
+        except httpx.RequestError as exc:
+            raise IssueLensError(
+                f"Network error downloading archive for '{owner}/{repo}@{ref}': {exc}",
+                code="NETWORK_ERROR",
+                status_code=502,
+            ) from exc
 
     async def fetch_issue_context(self, target: IssueTarget) -> GitHubIssueContext:
         """Fetch and aggregate issue, comments, repo metadata, and pinned commit SHA."""
