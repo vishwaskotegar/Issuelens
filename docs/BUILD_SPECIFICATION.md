@@ -350,6 +350,7 @@ Report sample size and limitations with every metric; do not cherry-pick success
 issuelens/
   pyproject.toml
   README.md
+  AGENTS.md
   .env.example
   .gitignore
   Dockerfile                  # add after local flow works
@@ -403,8 +404,13 @@ issuelens/
     cases.jsonl
     README.md
   docs/
-    architecture.md
-    decisions/
+    BUILD_SPECIFICATION.md      # Master product and engineering build specification
+    BUILD_LOG.md                # Engineering build log, bug root causes, and fixes
+    LEARNING_GUIDE.md           # Engineering learning guide (senior-to-junior mentor walkthrough)
+    IssueLens_Build_Specification.docx
+    decisions/                  # Architecture Decision Records (ADRs)
+      README.md                 # ADR instructions, criteria, and index
+      ADR-TEMPLATE.md           # Reusable ADR template
 ```
 
 ## 12. Environment and configuration
@@ -431,37 +437,55 @@ Configuration names are suggestions, not a promise that every setting will be us
 
 ## 13. Phased build plan and definition of done
 
+### Phase Definition of Done & Documentation Gates
+
+Every phase is subject to strict quality, documentation, and review gates before it can be considered complete:
+1. **Working Code & Automated Verification**: The implementation slice is functional. Code passes linter (`ruff check .`), static type checks (`mypy src tests`), and unit test suites (`pytest`). No checks may be silently skipped.
+2. **Synchronous Learning Guide Maintenance (`docs/LEARNING_GUIDE.md`)**: The engineering learning guide must be updated during the same implementation phase (never as an afterthought), written from the perspective of a senior engineer mentoring a junior developer. For every major feature implemented, document:
+   - **What it does**: Feature purpose and architectural placement.
+   - **How it works**: Step-by-step execution flow referencing actual file paths, classes, and functions.
+   - **Implementation decisions**: Why chosen and alternatives evaluated.
+   - **Error handling**: Possible failure scenarios, defenses, and limitations.
+   - **Testing**: Relevant tests, what they verify, and exact verification commands.
+   - **Engineering concepts**: Beginner-friendly explanations of underlying Python, HTTP, AST, database, or agent concepts.
+   - **Trade-offs**: Benefits gained versus compromises made.
+   Features not yet implemented must remain explicitly marked as planned rather than completed.
+3. **Architecture Decision Records (`docs/decisions/`)**: Significant architectural, technical, or design decisions must be recorded as numbered ADRs (e.g., `ADR-001-github-api-client.md`) using `docs/decisions/ADR-TEMPLATE.md`. Do not document every minor coding choice. If documenting an existing decision whose original rationale was not recorded, label the rationale as reconstructed without fabricating history.
+4. **Build Log Maintenance (`docs/BUILD_LOG.md`)**: Maintain the dedicated troubleshooting log for any meaningful implementation bugs, test failures, verified root causes, fixes, and engineering lessons. (Preserve its dedicated role; do not replace it or duplicate its purpose.)
+5. **Phase Completion Mentor Review**: Each phase must conclude with a beginner-friendly mentor review covering: what was built, why it was built that way, alternatives considered, trade-offs made, failure modes and how they are handled, and tests run with exact commands and actual results.
+
 | Phase | Build | Definition of done |
 | --- | --- | --- |
-| 0. Repo bootstrap | pyproject, config, lint/type/test tools, FastAPI health endpoint. | App starts locally; lint and tests pass; README has setup instructions. |
-| 1. GitHub issue ingestion | Parse public issue URL, fetch issue metadata via an adapter, handle 404/rate limits/timeouts. | Mocked tests cover valid, malformed, missing and rate-limited issue cases. |
-| 2. Code search baseline | Obtain bounded repository snapshot; ripgrep search; AST symbol lookup; exact line snippets. | Fixture repository tests verify expected path/line hits; no code is executed. |
-| 3. First end-to-end report | Call LLM with issue + retrieved evidence; return structured hypotheses/report. | One sample issue produces valid schema and source citations; errors are handled. |
-| 4. Evidence validation | Verify path/range/commit; distinguish facts from inferences; add insufficient-evidence behavior. | Invalid citations cannot silently appear as verified evidence. |
-| 5. LangGraph workflow | Explicit nodes/state, bounded follow-up retrieval, tool tracing and stop conditions. | Graph tests cover success, tool failure, empty retrieval and loop cap. |
-| 6. Persistence | PostgreSQL schema/migrations, run status, report retrieval. | Run survives restart; migrations work from a clean database. |
-| 7. Evaluation harness | Curated cases, baseline metrics, machine-readable results and failure notes. | Same dataset can compare prompt/retrieval/model versions. |
-| 8. Document RAG | Chunk docs/issues; lexical retrieval; add pgvector embeddings only if useful. | Measured retrieval comparison shows where semantic search helps or doesn't. |
-| 9. Deployment and pilot | Docker, hosted API, auth/rate limits; later GitHub App/webhook and async queue. | A second person can use it safely; logs and failure states are inspectable. |
+| 0. Repo bootstrap | pyproject, config, lint/type/test tools, FastAPI health endpoint. | App starts locally; lint and tests pass; README has setup instructions; Phase documentation gates satisfied in `docs/LEARNING_GUIDE.md`. |
+| 1. GitHub issue ingestion | Parse public issue URL, fetch issue metadata via an adapter, handle 404/rate limits/timeouts. | Mocked tests cover valid, malformed, missing and rate-limited issue cases; Phase documentation gates and ADR-001 recorded. |
+| 2. Code search baseline | Obtain bounded repository snapshot; ripgrep search; AST symbol lookup; exact line snippets. | Fixture repository tests verify expected path/line hits; no code is executed; Phase documentation gates satisfied in `docs/LEARNING_GUIDE.md`. |
+| 3. First end-to-end report | Call LLM with issue + retrieved evidence; return structured hypotheses/report. | One sample issue produces valid schema and source citations; errors are handled; `docs/LEARNING_GUIDE.md` updated with LLM adapter details; ADR recorded. |
+| 4. Evidence validation | Verify path/range/commit; distinguish facts from inferences; add insufficient-evidence behavior. | Invalid citations cannot silently appear as verified evidence; validation rules documented in `docs/LEARNING_GUIDE.md`. |
+| 5. LangGraph workflow | Explicit nodes/state, bounded follow-up retrieval, tool tracing and stop conditions. | Graph tests cover success, tool failure, empty retrieval and loop cap; workflow state machine documented in `docs/LEARNING_GUIDE.md`; ADR recorded. |
+| 6. Persistence | PostgreSQL schema/migrations, run status, report retrieval. | Run survives restart; migrations work from a clean database; schema and DB decisions documented in `docs/LEARNING_GUIDE.md` and `docs/decisions/`. |
+| 7. Evaluation harness | Curated cases, baseline metrics, machine-readable results and failure notes. | Same dataset can compare prompt/retrieval/model versions; benchmark methodology documented in `docs/LEARNING_GUIDE.md`. |
+| 8. Document RAG | Chunk docs/issues; lexical retrieval; add pgvector embeddings only if useful. | Measured retrieval comparison shows where semantic search helps or doesn't; retrieval architecture documented in `docs/LEARNING_GUIDE.md`; ADR recorded. |
+| 9. Deployment and pilot | Docker, hosted API, auth/rate limits; later GitHub App/webhook and async queue. | A second person can use it safely; logs and failure states are inspectable; deployment guide and production hardening documented in `docs/LEARNING_GUIDE.md`. |
 
 | SCOPE DISCIPLINE / Do not begin with a frontend, multiple agents, autonomous PRs, Kubernetes, Redis, or a vector database. First prove that one issue can become a useful, traceable report. Add each component only when a requirement justifies it. |
 | --- |
 
 ## 14. Master prompt for Codex / Claude Code
 
-Copy the prompt below into your coding agent after placing this document in the repository root as BUILD_SPECIFICATION.docx or converting its requirements into BUILD_SPECIFICATION.md. If your coding agent cannot reliably inspect DOCX, use the Markdown version of this spec or paste the relevant section.
+Copy the prompt below into your coding agent after placing this document in `docs/` as `BUILD_SPECIFICATION.docx` or converting its requirements into `docs/BUILD_SPECIFICATION.md`. If your coding agent cannot reliably inspect DOCX, use the Markdown version of this spec or paste the relevant section.
 
 ```text
 You are the senior engineer implementing IssueLens, an evidence-backed AI debugging
-assistant. Follow BUILD_SPECIFICATION.md as the product source of truth.
+assistant. Follow docs/BUILD_SPECIFICATION.md as the product source of truth.
 
 WORKING RULES
 1. Do not implement the entire project in one pass. Work on one phase at a time.
 2. First inspect the existing repository and report its current state. Do not overwrite
    existing work without explaining the conflict.
-3. Propose a short implementation plan for the current phase, including files to add/edit,
-   dependencies, risks and tests. Wait for approval if a major architecture decision,
-   paid service, destructive action or scope expansion is needed.
+3. Explain the implementation approach and architectural design before coding. Propose a short
+   implementation plan for the current phase, including files to add/edit, dependencies, risks,
+   and tests. Wait for approval if a major architecture decision, paid service, destructive action,
+   or scope expansion is needed.
 4. Prefer simple, explicit, typed, maintainable Python. Use small modules and dependency
    injection for GitHub and LLM clients.
 5. Never hard-code secrets. Create .env.example with placeholders and ensure .env is ignored.
@@ -478,13 +502,29 @@ WORKING RULES
     Do not make tests depend on live GitHub or a paid LLM account.
 11. Run relevant tests, lint and type checks after changes. Report exact commands and results;
     do not say checks passed if they were not run.
-12. Update README and architecture/decision docs when behavior or dependencies change.
-13. At the end of each phase, summarize: what changed, key decisions, tests run/results,
-    known limitations, security considerations, and the next smallest step.
+12. Maintain docs/LEARNING_GUIDE.md and docs/decisions/ synchronously with implementation:
+    - After coding, document the actual implementation in docs/LEARNING_GUIDE.md during the same phase
+      (never as an afterthought), acting as a senior engineer mentoring a junior developer. For every
+      major feature, document: 1) What it does, 2) How it works step-by-step referencing actual file
+      paths, classes, and functions, 3) Implementation decisions and alternatives considered, 4) Error
+      handling and limitations, 5) Relevant tests and exact verification commands, 6) Beginner-friendly
+      engineering concepts, and 7) Trade-offs. Keep this guide synchronized with actual code; mark
+      unimplemented features as planned rather than completed.
+    - Record significant architectural or technical decisions in docs/decisions/ as numbered ADRs
+      (e.g., ADR-001-github-api-client.md) using docs/decisions/ADR-TEMPLATE.md. Do not create an ADR for
+      every minor coding choice. Do not fabricate historical decisions; label retroactive records as
+      reconstructed.
+    - Update README.md and architecture docs when behavior, endpoints, or dependencies change.
+13. Finish each phase with a beginner-friendly mentor review covering:
+    - What was built and where it fits in the architecture.
+    - Why it was built that way, alternatives considered, and trade-offs made.
+    - Failure modes, error handling, and known limitations.
+    - Exact test and verification commands and their actual results.
+    - Security considerations, what changed, and the proposed next phase.
 14. Do not add a dependency or infrastructure service without explaining why it is needed.
 15. If this specification has a conflict or ambiguity, identify it and recommend the smallest
     safe option instead of silently inventing scope.
-16. Maintain BUILD_LOG.md at the repository root.
+16. Maintain docs/BUILD_LOG.md.
     Whenever you encounter and resolve a meaningful implementation issue, bug, failing test,
     dependency conflict, architectural problem, or unexpected behavior:
     1) Record the original symptom and what you were trying to do.
@@ -498,7 +538,7 @@ WORKING RULES
     claim tests passed unless they were run. Label unresolved causes as hypotheses. Do not log
     every trivial typo or routine edit; prioritize meaningful learning opportunities.
     At the end of each phase, summarize important issues fixed and point me to the corresponding
-    BUILD_LOG.md entries.
+    docs/BUILD_LOG.md entries.
 
 PRODUCT CONTRACT
 - Input: public GitHub issue URL.
@@ -520,17 +560,32 @@ without reporting the result and proposed next step.
 ## 15. Prompt to start each phase
 
 ```text
-Implement Phase N from BUILD_SPECIFICATION.md only.
+Implement Phase N from docs/BUILD_SPECIFICATION.md only.
 
 Before coding:
+- Explain the implementation approach and architectural design before writing code.
 - Restate the phase goal and acceptance criteria.
 - Inspect relevant existing code.
 - List files you intend to change and dependencies you intend to add.
 - Identify security/reliability edge cases.
 
-Then implement the smallest complete slice. Add or update tests, run them, run lint/type
-checks, and update documentation. Do not silently skip failing checks. Finish with a concise
-report of changes, exact test results, remaining issues and the next phase proposal.
+Then implement the smallest complete slice. Add or update unit tests with mocks, run them,
+run lint/type checks (`ruff`, `mypy`, `pytest`). Do not silently skip failing checks.
+
+After coding:
+- Document the actual implementation in `docs/LEARNING_GUIDE.md` (what it does, step-by-step
+  execution flow with files/classes/functions, implementation decisions, error handling,
+  tests, engineering concepts, trade-offs).
+- Record significant architectural decisions in `docs/decisions/` using `ADR-TEMPLATE.md`.
+- Maintain `docs/BUILD_LOG.md` whenever encountering meaningful bugs, verified root causes,
+  fixes, or debugging lessons.
+
+Finish with a beginner-friendly mentor review covering:
+- What was built and why it was built that way.
+- Alternatives considered and trade-offs made.
+- Failure modes, error handling, and known limitations.
+- Exact test commands and actual results.
+- Security considerations and the next phase proposal.
 ```
 
 ## 16. Definition of a credible portfolio release

@@ -7,7 +7,7 @@ from issuelens.config import Settings
 
 
 def test_default_settings() -> None:
-    """Verify default limits align with BUILD_SPECIFICATION.md."""
+    """Verify default limits align with docs/BUILD_SPECIFICATION.md."""
     settings = Settings()
     assert settings.app_env in ["local", "test", "production"]
     assert settings.request_timeout_seconds == 15

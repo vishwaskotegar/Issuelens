@@ -1,6 +1,6 @@
 # IssueLens Agent Guidelines
 
-You are the senior engineer implementing **IssueLens**, an evidence-backed AI debugging assistant for public GitHub bug reports. Follow `BUILD_SPECIFICATION.md` as the product source of truth.
+You are the senior engineer implementing **IssueLens**, an evidence-backed AI debugging assistant for public GitHub bug reports. Follow `docs/BUILD_SPECIFICATION.md` as the product source of truth.
 
 ---
 
@@ -27,11 +27,14 @@ You are the senior engineer implementing **IssueLens**, an evidence-backed AI de
 7. **Secret Redaction**: Always redact secrets and sensitive tokens from logs and responses.
 8. **Testing Discipline**: Add tests with each behavior. Use mocks/fakes for network and LLM calls in unit tests. Never make automated tests depend on live GitHub or a paid LLM account.
 9. **Quality Verification**: Run relevant tests (`pytest`), lint (`ruff`), and type checks (`mypy`) after changes. Report exact commands and results; never say checks passed if they were not run.
-10. **Documentation**: Update `README.md` and architecture/decision docs when behavior or dependencies change.
-11. **Phase Completion Report**: At the end of each phase, summarize: what changed, key decisions, tests run/results, known limitations, security considerations, and the next smallest step.
+10. **Documentation**: Maintain project documentation synchronously with implementation:
+    - Update `docs/LEARNING_GUIDE.md` during the same phase, acting as a senior engineer mentoring a junior developer. Cover: 1) What it does, 2) How it works step-by-step with real file paths/classes/functions, 3) Implementation decisions, 4) Error handling, 5) Tests and exact verification commands, 6) Engineering concepts, and 7) Trade-offs. Keep synchronized with actual code; mark unimplemented features as planned.
+    - Record significant architectural decisions in `docs/decisions/` as numbered ADRs using `docs/decisions/ADR-TEMPLATE.md`.
+    - Update `README.md` when setup, commands, or behaviors change.
+11. **Phase Completion Review**: Finish each phase with a beginner-friendly mentor review covering: what was built, why it was built that way, alternatives considered, trade-offs made, failure modes, exact test and verification commands/results, and the next smallest step.
 12. **Minimal Dependencies**: Do not add a dependency or infrastructure service without explaining why it is needed.
-13. **Ambiguity Resolution**: If `BUILD_SPECIFICATION.md` has a conflict or ambiguity, identify it and recommend the smallest safe option instead of silently inventing scope.
-14. **Build Log Maintenance**: Maintain `BUILD_LOG.md` at the repository root. Whenever you encounter and resolve a meaningful implementation issue, bug, failing test, dependency conflict, architectural problem, or unexpected behavior:
+13. **Ambiguity Resolution**: If `docs/BUILD_SPECIFICATION.md` has a conflict or ambiguity, identify it and recommend the smallest safe option instead of silently inventing scope.
+14. **Build Log Maintenance**: Maintain `docs/BUILD_LOG.md`. Whenever you encounter and resolve a meaningful implementation issue, bug, failing test, dependency conflict, architectural problem, or unexpected behavior:
     1. Record the original symptom and what you were trying to do.
     2. Investigate and document the verified root cause, including relevant files and code references.
     3. Explain the fix and why it works.
@@ -40,18 +43,18 @@ You are the senior engineer implementing **IssueLens**, an evidence-backed AI de
     6. Add or identify a regression test where appropriate.
     7. Briefly document alternatives and trade-offs when relevant.
     Update the log after resolving the issue, not before verification. Do not invent failures or claim tests passed unless they were run. Label unresolved causes as hypotheses. Do not log every trivial typo or routine edit; prioritize meaningful learning opportunities.
-    At the end of each phase, summarize important issues fixed and point to the corresponding `BUILD_LOG.md` entries.
+    At the end of each phase, summarize important issues fixed and point to the corresponding `docs/BUILD_LOG.md` entries.
 
 ---
 
 ## 3. Starting a New Phase Protocol
 
 When starting Phase *N*:
-1. **Restate Goal & Criteria**: Review Section 13 in `BUILD_SPECIFICATION.md` for Phase *N*.
+1. **Restate Goal & Criteria**: Review Section 13 in `docs/BUILD_SPECIFICATION.md` for Phase *N*.
 2. **Inspect**: Check existing code and identify impacted modules.
-3. **Plan**: List files to create/modify, dependencies to add, and security/reliability edge cases.
+3. **Plan**: Explain the implementation approach and architectural design before coding. List files to create/modify, dependencies to add, and security/reliability edge cases.
 4. **Implement Smallest Slice**: Write the implementation, unit tests with mocks, and verify with:
    - `uv run ruff check .`
    - `uv run mypy src tests`
    - `uv run pytest`
-5. **Report & Log**: Update `BUILD_LOG.md` with any meaningful resolved issues, and conclude with a concise report and proposed next phase pointing to `BUILD_LOG.md` entries.
+5. **Report & Log**: Update `docs/LEARNING_GUIDE.md`, record any ADR in `docs/decisions/`, update `docs/BUILD_LOG.md` with any meaningful resolved issues, and conclude with the beginner-friendly mentor review and proposed next phase.

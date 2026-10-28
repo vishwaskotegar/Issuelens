@@ -112,8 +112,18 @@ uv run mypy src tests
 issuelens/
   pyproject.toml              # Build & dependency metadata
   README.md                   # Project overview & instructions
+  AGENTS.md                   # AI coding assistant guidelines & safety boundaries
   .env.example                # Configuration template
   .gitignore                  # Version control ignore list
+  docs/
+    BUILD_SPECIFICATION.md    # Master product & engineering build specification
+    BUILD_LOG.md              # Engineering build log, verified bug fixes & lessons
+    LEARNING_GUIDE.md         # Pedagogical guide walking through features step-by-step
+    IssueLens_Build_Specification.docx
+    decisions/                # Architecture Decision Records (ADRs)
+      README.md               # ADR guidelines, criteria, and index
+      ADR-TEMPLATE.md         # Standardized ADR template
+      ADR-001-github-api-client.md
   src/
     issuelens/
       __init__.py
@@ -154,3 +164,15 @@ issuelens/
       test_snippets.py        # Line-numbered snippet reader tests
       test_url_parser.py      # Issue URL parsing & edge cases tests
 ```
+
+---
+
+## Documentation
+
+The project maintains a structured documentation ecosystem inside `docs/`:
+
+- **[`docs/BUILD_SPECIFICATION.md`](file:///c:/Projects/Issuelens/docs/BUILD_SPECIFICATION.md)**: Product source of truth, architecture overview, security boundaries, and phased build plan with definitions of done.
+- **[`docs/LEARNING_GUIDE.md`](file:///c:/Projects/Issuelens/docs/LEARNING_GUIDE.md)**: Senior-to-junior engineering walkthrough explaining how each implemented feature works step-by-step, including design choices, error handling, tests, core concepts, and trade-offs.
+- **[`docs/BUILD_LOG.md`](file:///c:/Projects/Issuelens/docs/BUILD_LOG.md)**: Engineering journal documenting verified root causes, code fixes, regression tests, and lessons learned from real implementation bugs.
+- **[`docs/decisions/`](file:///c:/Projects/Issuelens/docs/decisions/)**: Architecture Decision Records (ADRs) tracking significant architectural choices, alternatives considered, and conditions for reconsideration.
+- **[`AGENTS.md`](file:///c:/Projects/Issuelens/AGENTS.md)**: AI agent rules and safety boundaries maintained at the repository root for automatic discovery by coding agents.
