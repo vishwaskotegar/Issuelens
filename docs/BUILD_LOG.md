@@ -386,4 +386,44 @@ When integrating native binary performance tools into Python services, always im
 - *Alternative*: Require developers and users to install `ripgrep` globally via package managers (`choco install ripgrep` or `apt-get install ripgrep`) as a hard prerequisite.
 - *Trade-off*: Hard external dependencies increase friction and break Docker/CI environments that omit extra system packages. The dual-engine design guarantees immediate out-of-the-box functionality.
 
+---
+
+### Entry 009: Windows Sandbox Network Isolation Blocking Python Asyncio Loopback
+- **Date**: 2026-10-29
+- **Phase**: Phase 3 (First End-to-End Report)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+When running the automated unit test suite with `uv run pytest` inside the standard Windows command sandbox (`BypassSandbox: false`), synchronous tests (`test_code_search.py`, `test_config.py`) passed immediately, but the runner paused indefinitely upon reaching async test suites (`test_github_client.py`). Even a minimal isolated command `python -c "import asyncio; asyncio.run(asyncio.sleep(0.01))"` failed to return.
+
+#### 2. Root Cause
+On Windows, Python 3.8+ defaults to `asyncio.ProactorEventLoop`. To support asynchronous I/O completion ports (IOCP), the proactor initializes an internal wake-up socket pair over the local loopback adapter (`127.0.0.1` / `localhost`). In tightly constrained Windows container or sandbox environments where all network socket binding is blocked (including loopback interfaces), the internal socket creation or wait syscall hangs indefinitely waiting for kernel completion.
+
+#### 3. Fix
+Verified that the hang is strictly an environment-level network sandbox artifact, not a test suite defect:
+1. All unit tests use hermetic offline mocks (`httpx.MockTransport`, `MockLLMClient`, `FakeGitHubClient`) with zero live network calls.
+2. Executed test runners with bypass sandbox elevation (`BypassSandbox: true` on Windows) to grant local loopback socket access.
+3. Tests complete instantaneously (99 tests passed in 1.83 seconds).
+
+#### 4. Verification
+Ran full test suite:
+```powershell
+uv run pytest
+```
+**Output**:
+```text
+======================== 99 passed, 1 warning in 1.83s ========================
+```
+
+#### 5. Engineering Lesson
+Asynchronous runtimes often have hidden platform-specific requirements. Python's `ProactorEventLoop` on Windows requires loopback socket communication even when running purely local, mocked code. When designing hermetic testing environments or running in sandboxed execution containers, ensure loopback socket creation (`127.0.0.1`) is permitted for process-internal concurrency mechanisms.
+
+#### 6. Regression Test
+Covered across all asynchronous test suites: [tests/unit/test_llm_client.py](file:///c:/Projects/Issuelens/tests/unit/test_llm_client.py), [tests/unit/test_investigation_service.py](file:///c:/Projects/Issuelens/tests/unit/test_investigation_service.py), and [tests/unit/test_github_client.py](file:///c:/Projects/Issuelens/tests/unit/test_github_client.py).
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Force `WindowsSelectorEventLoopPolicy` globally.
+- *Trade-off*: `SelectorEventLoop` on Windows has known limitations with subprocesses, pipes, and SSL connections. The standard `ProactorEventLoop` is the officially supported default for Python 3.12 on Windows. Permitting local loopback in the test runner is the correct and robust solution.
+
+
 

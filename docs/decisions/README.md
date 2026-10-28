@@ -61,6 +61,7 @@ Write an ADR for **significant architectural, infrastructure, or technical desig
 | ADR | Title | Status | Date | Phase | Rationale Type |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | [ADR-001](file:///c:/Projects/Issuelens/docs/decisions/ADR-001-github-api-client.md) | GitHub REST API Client Adapter with Dependency Injection Protocol | Accepted | 2026-10-26 | Phase 1 | Reconstructed |
+| [ADR-002](file:///c:/Projects/Issuelens/docs/decisions/ADR-002-llm-provider-adapter-and-report-generation.md) | LangChain Provider Adapter with Structured Output and Snapshot Provenance Binding | Accepted | 2026-10-29 | Phase 3 | Original |
 
 ---
 

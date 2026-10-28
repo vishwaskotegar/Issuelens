@@ -628,14 +628,211 @@ Execution flow:
 
 ---
 
-## Planned Implementation Roadmap (Phases 3 - 9)
+## Phase 3: First End-to-End Investigation Report
+
+---
+
+### Feature 3.1: Strongly-Typed Investigation Report Schema & Provenance Binding
+
+#### 1. What it does
+Defines the core domain data contracts for investigation results matching Section 7.2 of the build specification. Separates LLM analytical output (`InvestigationReportPayload`) from immutable snapshot provenance (`InvestigationReport`), ensuring citations, commit SHAs, and file coordinates cannot be corrupted by LLM hallucinations.
+
+#### 2. How it works
+- **Source file**: [`src/issuelens/agent/report.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py)
+- **Models**:
+  - [`EvidenceItem`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L12-L47): Represents a code citation with `evidence_id` (`ev_1`), `source_type` (`code | documentation | issue | commit`), repository-relative path, 1-indexed `start_line` / `end_line`, line-numbered `excerpt`, and pinned `commit_sha`.
+  - [`Hypothesis`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L50-L84): Represents a testable fault mechanism with `title`, `explanation`, qualitative `confidence` (`low | medium | high`), `confidence_rationale`, `supporting_evidence_ids`, `contradicting_evidence_ids`, and `verification_steps`.
+  - [`InvestigationReportPayload`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L87-L123): Pydantic schema passed to LangChain's `.with_structured_output()` containing analytical reasoning (`summary`, `observed_facts`, `hypotheses`, `missing_information`, `suggested_tests`, `recommended_next_steps`, `limitations`).
+  - [`InvestigationReport`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L126-L195): Complete container joining `run_id`, canonical `issue_url`, `repository`, pinned `commit_sha`, verified `evidence` items, `verification_status` (`not_run`), and analytical payload fields via [`InvestigationReport.from_payload()`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L190-L215).
+
+Execution flow:
+1. The LLM generates structured output conforming to `InvestigationReportPayload`.
+2. `InvestigationService` calls `InvestigationReport.from_payload()`, injecting verified coordinates (`commit_sha`, `run_id`, `issue_url`, `repository`, `evidence`).
+3. Safety invariants are enforced: `verification_status` is locked to `"not_run"` because IssueLens never executes untrusted code.
+
+#### 3. Implementation decisions
+- **Chosen approach**: Two-tier schema separating analytical reasoning (`InvestigationReportPayload`) from authoritative provenance binding (`InvestigationReport`).
+- **Alternatives considered**:
+  - Asking the LLM to generate `commit_sha` and `evidence`: High risk of hallucinated commit hashes or garbled snippets.
+  - Freeform Markdown: Hard to evaluate programmatically, impossible to query or persist cleanly in PostgreSQL tables (Phase 6).
+- **Why chosen**: Guarantees contract integrity and protects evidence provenance.
+
+#### 4. Error handling
+- Pydantic raises `ValidationError` if any required field is missing or an invalid literal is passed (e.g., `confidence="certain"`).
+- Wrapped in [`LLMOutputValidationError`](file:///c:/Projects/Issuelens/src/issuelens/core/errors.py#L61-L66).
+
+#### 5. Testing
+- **Test file**: [`tests/unit/test_report_schema.py`](file:///c:/Projects/Issuelens/tests/unit/test_report_schema.py)
+- **What it verifies**: Payload instantiation, `from_payload()` binding, invalid line rejection, and enum enforcement.
+- **Run command**:
+  ```bash
+  uv run pytest tests/unit/test_report_schema.py
+  ```
+
+#### 6. Engineering concepts
+- **Provenance Separation**: Security and reliability pattern where trusted system provenance (Git commit SHA, real files scanned) is populated authoritatively by the backend rather than trusted to probabilistic LLM generation.
+- **Qualitative Confidence vs. Calibrated Probability**: Confidence is constrained to qualitative bands (`low`, `medium`, `high`) accompanied by a mandatory `confidence_rationale` explaining *why*.
+
+#### 7. Trade-offs
+- **Benefits**: 100% immune to LLM hallucination of commit hashes or repository coordinates; strict typing.
+- **Disadvantages**: Requires defining both payload and complete report schemas.
+
+---
+
+### Feature 3.2: LangChain Provider Adapters & Structured Output
+
+#### 1. What it does
+Provides a unified abstraction for Large Language Models using LangChain's `BaseChatModel` and schema-enforced structured outputs (`with_structured_output`), establishing direct compatibility with LangGraph for Phase 5.
+
+#### 2. How it works
+- **Source file**: [`src/issuelens/agent/llm.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py)
+- **Protocol**: [`LLMClientProtocol`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py#L23-L32) defining `generate_report_payload(messages: list[BaseMessage]) -> InvestigationReportPayload`.
+- **Implementations**:
+  - [`LangChainLLMClient`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py#L35-L95): Wraps any LangChain `BaseChatModel` and applies `chat_model.with_structured_output(InvestigationReportPayload)`.
+  - `create_langchain_chat_model()`: Factory returning `ChatOpenAI` (for OpenAI, Ollama, Groq, OpenRouter) or `ChatAnthropic` (for Claude).
+  - [`MockLLMClient`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py#L98-L162): Completely offline, deterministic client for test suites and local simulations without network calls or API keys.
+- **Factory**: [`get_llm_client()`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py#L180-L195) instantiates the configured client based on `settings.llm_provider`.
+
+Execution flow:
+1. `InvestigationService` receives an injected `LLMClientProtocol` instance.
+2. Formats messages using LangChain `SystemMessage` and `HumanMessage`.
+3. Invokes `structured_model.ainvoke(messages)`.
+4. Upstream exceptions are intercepted:
+   - Rate limits (429) -> [`RateLimitExceededError`](file:///c:/Projects/Issuelens/src/issuelens/core/errors.py#L40-L45).
+   - Timeouts -> [`UpstreamTimeoutError`](file:///c:/Projects/Issuelens/src/issuelens/core/errors.py#L47-L52).
+   - Auth errors (401/403) -> [`SafetyViolationError`](file:///c:/Projects/Issuelens/src/issuelens/core/errors.py#L54-L59).
+5. Returns validated `InvestigationReportPayload`.
+
+#### 3. Implementation decisions
+- **Chosen approach**: LangChain `BaseChatModel` with `.with_structured_output(InvestigationReportPayload)`.
+- **Alternatives considered**:
+  - Custom REST HTTP calls via `httpx`: Good for minimal dependencies, but does not prepare the codebase for LangGraph multi-node state graphs in Phase 5.
+  - Raw JSON prompt parsing: Higher error rates and JSON truncation issues.
+- **See ADR**: [`docs/decisions/ADR-002-llm-provider-adapter-and-report-generation.md`](file:///c:/Projects/Issuelens/docs/decisions/ADR-002-llm-provider-adapter-and-report-generation.md).
+
+#### 4. Error handling
+- Maps vendor-specific errors into domain exceptions.
+- API keys are wrapped in `SecretStr` and never printed in logs or error traces.
+
+#### 5. Testing
+- **Test file**: [`tests/unit/test_llm_client.py`](file:///c:/Projects/Issuelens/tests/unit/test_llm_client.py)
+- **What it verifies**: `LangChainLLMClient` structured output, dict payload parsing, rate limit translation, timeout translation, auth error handling, `MockLLMClient` customizations, and `ChatOpenAI` / `ChatAnthropic` model instantiation.
+- **Run command**:
+  ```bash
+  uv run pytest tests/unit/test_llm_client.py
+  ```
+
+#### 6. Engineering concepts
+- **Function/Tool Calling for Structured Outputs**: Rather than hoping the model writes valid JSON into free text, `with_structured_output` instructs the model provider's API to use constrained decoding or function calling, guaranteeing schema compliance.
+- **Dependency Inversion via Protocol**: Handlers and services depend on `LLMClientProtocol`, not on concrete LangChain models, allowing seamless testing with `MockLLMClient`.
+
+#### 7. Trade-offs
+- **Benefits**: Standardized LangChain interfaces ready for LangGraph in Phase 5; high-reliability structured outputs.
+- **Disadvantages**: Introduces `langchain-core`, `langchain-openai`, and `langchain-anthropic` dependencies.
+
+---
+
+### Feature 3.3: Prompt Injection Defense & Citation Grounding
+
+#### 1. What it does
+Constructs LangChain messages (`SystemMessage`, `HumanMessage`) that protect the LLM against prompt injection attacks embedded inside public bug reports or repositories, while mandating that every hypothesis cite concrete evidence IDs.
+
+#### 2. How it works
+- **Source file**: [`src/issuelens/agent/prompts.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/prompts.py)
+- **Constants**: [`SYSTEM_PROMPT`](file:///c:/Projects/Issuelens/src/issuelens/agent/prompts.py#L10-L60)
+- **Functions**: [`build_investigation_messages()`](file:///c:/Projects/Issuelens/src/issuelens/agent/prompts.py#L125-L135), [`format_evidence_block()`](file:///c:/Projects/Issuelens/src/issuelens/agent/prompts.py#L63-L80)
+
+Execution flow:
+1. `build_investigation_messages(context, evidence_items)` serializes issue metadata into a bounded JSON payload.
+2. `format_evidence_block` formats each `EvidenceItem` into a numbered markdown block with 1-indexed lines:
+   ```text
+   [ev_1] Source: sample_pkg/database.py (lines 10-25)
+   ```
+   10: def connect(pool_size):
+   11:     ...
+   ```
+   ```
+3. The user prompt encloses external data in XML boundary tags:
+   - `<untrusted_issue_data> ... </untrusted_issue_data>`
+   - `<untrusted_repository_evidence> ... </untrusted_repository_evidence>`
+4. Returns `[SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_prompt)]`.
+
+#### 3. Implementation decisions
+- **Chosen approach**: XML boundary tagging coupled with explicit system directives and schema reinforcement.
+- **Alternatives considered**:
+  - Naked string concatenation: Highly vulnerable to prompt injection.
+
+#### 4. Error handling
+- Handles empty evidence lists gracefully with `"No repository code references retrieved."`.
+
+#### 5. Testing
+- **Test file**: [`tests/unit/test_prompts.py`](file:///c:/Projects/Issuelens/tests/unit/test_prompts.py)
+- **What it verifies**: System prompt safety directives, XML boundary encapsulation, evidence citation formatting, and LangChain message structure.
+- **Run command**:
+  ```bash
+  uv run pytest tests/unit/test_prompts.py
+  ```
+
+#### 6. Engineering concepts
+- **Prompt Injection Defense via Delimited Enclaves**: Delineating untrusted user input using XML tags helps the LLM distinguish between trusted operational instructions (the system prompt) and untrusted data to analyze (the user prompt enclaves).
+
+#### 7. Trade-offs
+- **Benefits**: Prevents untrusted issue text from hijacking agent behavior; produces verifiable citations.
+- **Disadvantages**: Bounded comments context (first 10 comments) to stay within context budgets.
+
+---
+
+### Feature 3.4: Investigation Orchestrator & API Integration
+
+#### 1. What it does
+Wires together the entire end-to-end investigation pipeline: ingesting public GitHub issues, acquiring repository snapshots, running deterministic lexical code search, constructing evidence blocks, calling the LangChain structured LLM adapter, and exposing the workflow through FastAPI endpoints.
+
+#### 2. How it works
+- **Source files**: [`src/issuelens/agent/service.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py), [`src/issuelens/api/routes.py`](file:///c:/Projects/Issuelens/src/issuelens/api/routes.py)
+- **Classes**: [`InvestigationService`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py#L50-L175)
+- **Endpoints**:
+  - `POST /v1/investigations`: Accepts `InvestigationCreateRequest(issue_url, execute=True/False)`. When `execute=True`, synchronously runs the investigation and returns status `"completed"`.
+  - `POST /v1/investigations/{run_id}/execute`: Triggers execution for an already ingested investigation run.
+  - `GET /v1/investigations/{run_id}`: Retrieves run status, coordinates, and full [`InvestigationReport`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L126-L195) when completed.
+
+Execution flow (`service.investigate`):
+1. Ingests issue context and resolves pinned commit SHA via `github_client.fetch_issue_context(target)`.
+2. Acquires repository snapshot safely via `create_snapshot_from_zip`.
+3. Compiles search terms from issue title, body, and comments via `compile_search_query()`.
+4. Executes lexical and AST search via `search_code()`, extracting ranked code hits.
+5. Converts hits into `EvidenceItem` instances (`ev_1`, `ev_2`...).
+6. Builds LangChain messages via `build_investigation_messages()`.
+7. Calls `llm_client.generate_report_payload(messages)`.
+8. Binds payload with verified snapshot coordinates via `InvestigationReport.from_payload(...)`.
+9. Stores report in memory registry and returns to caller.
+
+#### 3. Implementation decisions
+- **Chosen approach**: Synchronous execution support in `POST /v1/investigations` with optional `execute` flag, plus a dedicated `/execute` endpoint.
+
+#### 4. Error handling
+- Raises typed [`LLMOutputValidationError`](file:///c:/Projects/Issuelens/src/issuelens/core/errors.py#L61-L66) when LLM output violates schema requirements.
+- Propagates upstream GitHub 404, 429, and 504 errors through FastAPI exception handlers.
+
+#### 5. Testing
+- **Test files**: [`tests/unit/test_investigation_service.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_service.py), [`tests/unit/test_investigation_api.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_api.py)
+- **What they verify**: End-to-end investigation with fixture repository and mock LLM, schema validation error handling, and FastAPI endpoint execution.
+- **Run command**:
+  ```bash
+  uv run pytest tests/unit/test_investigation_service.py tests/unit/test_investigation_api.py
+  ```
+
+#### 6. Engineering concepts
+- **Dependency Injection for Services**: Passing `GitHubClientProtocol` and `LLMClientProtocol` into `InvestigationService` allows unit tests to execute complete end-to-end workflows in less than 5 seconds with zero live network requests.
+
+#### 7. Trade-offs
+- **Benefits**: Full vertical slice from HTTP request to validated AI report.
+- **Disadvantages**: Synchronous execution blocks the HTTP request during LLM inference; will transition to async background tasks when queues are added in Phase 9.
+
+---
+
+## Planned Implementation Roadmap (Phases 4 - 9)
 
 The following phases are designed and specified in [`docs/BUILD_SPECIFICATION.md`](file:///c:/Projects/Issuelens/docs/BUILD_SPECIFICATION.md), but are **[PLANNED]** and have not yet been implemented in the codebase. When each phase is implemented, it will be documented above following the 7-facet standard.
-
-### Phase 3: First End-to-End Report [PLANNED]
-- **Goal**: Integrate LLM provider adapter (environment-configured model), pass issue context and retrieved code evidence, and generate structured Pydantic investigation reports with observed facts, hypotheses, and verification steps.
-- **Architecture**: `src/issuelens/agent/report.py`, `src/issuelens/agent/prompts.py`.
-- **Criteria**: One sample issue produces valid schema with citations; LLM calls mocked in unit tests.
 
 ### Phase 4: Evidence Validation & Citation Guardrails [PLANNED]
 - **Goal**: Verify every code citation against the pinned snapshot. Ensure referenced paths exist, line ranges are valid, and excerpts match. Implement "insufficient evidence" fallback when evidence is inconclusive.
@@ -648,6 +845,24 @@ The following phases are designed and specified in [`docs/BUILD_SPECIFICATION.md
 - **Criteria**: Deterministic state transitions, loop cap enforcement, tool failure resilience.
 
 ### Phase 6: Persistence & Run History [PLANNED]
+- **Goal**: PostgreSQL storage via SQLAlchemy and Alembic migrations. Persist investigation runs, evidence items, hypotheses, and final reports.
+- **Architecture**: `src/issuelens/persistence/`.
+- **Criteria**: Investigation records survive restarts; clean migrations from empty database.
+
+### Phase 7: Evaluation Dataset & Benchmark Harness [PLANNED]
+- **Goal**: Curate a dataset of 20-30 resolved public GitHub issues. Measure citation validity, recall@k, and unsupported claims across prompt/model versions.
+- **Architecture**: `evals/`, `src/issuelens/evaluation/`.
+- **Criteria**: Automated script emits machine-readable evaluation metrics.
+
+### Phase 8: Document RAG & Hybrid Retrieval [PLANNED]
+- **Goal**: Chunk documentation, READMEs, and related issues using BM25 / PostgreSQL full-text search. Add pgvector semantic search only if benchmark evaluation demonstrates semantic misses.
+- **Architecture**: `src/issuelens/retrieval/`.
+- **Criteria**: Measured comparison showing where lexical vs hybrid retrieval wins.
+
+### Phase 9: Deployment, Pilot & Production Readiness [PLANNED]
+- **Goal**: Containerization with Docker, authenticated API endpoints, rate limiting, and observability.
+- **Architecture**: `Dockerfile`, production configs.
+- **Criteria**: Fully deployable container with security hardening and health checks.
 - **Goal**: PostgreSQL storage via SQLAlchemy and Alembic migrations. Persist investigation runs, evidence items, hypotheses, and final reports.
 - **Architecture**: `src/issuelens/persistence/`.
 - **Criteria**: Investigation records survive restarts; clean migrations from empty database.

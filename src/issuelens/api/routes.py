@@ -5,6 +5,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, status
 
 from issuelens import __version__
+from issuelens.agent.llm import LLMClientProtocol, get_llm_client
+from issuelens.agent.report import InvestigationReport
+from issuelens.agent.service import InvestigationService
 from issuelens.api.schemas import (
     HealthResponse,
     InvestigationCreateRequest,
@@ -32,6 +35,26 @@ def get_github_client(
     return GitHubClient(
         token=settings.github_token,
         timeout_seconds=float(settings.request_timeout_seconds),
+    )
+
+
+def get_llm_client_dep(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> LLMClientProtocol:
+    """Dependency provider for LLM client adapter."""
+    return get_llm_client(settings)
+
+
+def get_investigation_service(
+    settings: Annotated[Settings, Depends(get_settings)],
+    github_client: Annotated[GitHubClientProtocol, Depends(get_github_client)],
+    llm_client: Annotated[LLMClientProtocol, Depends(get_llm_client_dep)],
+) -> InvestigationService:
+    """Dependency provider for InvestigationService."""
+    return InvestigationService(
+        github_client=github_client,
+        llm_client=llm_client,
+        settings=settings,
     )
 
 
@@ -110,11 +133,12 @@ async def ingest_issue(
     status_code=status.HTTP_201_CREATED,
     tags=["Investigations"],
     summary="Start an investigation",
-    description="Accepts issue URL, ingests context, pins commit SHA, and initializes run.",
+    description="Accepts issue URL, ingests context, and optionally executes investigation.",
 )
 async def create_investigation(
     payload: InvestigationCreateRequest,
     client: Annotated[GitHubClientProtocol, Depends(get_github_client)],
+    service: Annotated[InvestigationService, Depends(get_investigation_service)],
 ) -> InvestigationCreateResponse:
     """Create a new investigation run from a public issue."""
     target = parse_issue_target(payload.issue_url)
@@ -122,10 +146,23 @@ async def create_investigation(
 
     run_id = f"inv_{uuid.uuid4().hex[:12]}"
     now = datetime.now(tz=UTC).isoformat()
+    current_status = "ingested"
+    report_data = None
+    error_msg = None
+
+    if payload.execute:
+        try:
+            report = await service.investigate(target_or_url=target, run_id=run_id)
+            current_status = "completed"
+            report_data = report.model_dump()
+        except Exception as exc:
+            current_status = "failed"
+            error_msg = str(exc)
+            raise
 
     investigation_record = {
         "run_id": run_id,
-        "status": "ingested",
+        "status": current_status,
         "issue_url": context.issue_url,
         "repository": context.repository,
         "issue_number": context.issue_number,
@@ -133,12 +170,14 @@ async def create_investigation(
         "issue_title": context.issue.title,
         "created_at": now,
         "context": context.model_dump(),
+        "report": report_data,
+        "error": error_msg,
     }
     _INVESTIGATIONS[run_id] = investigation_record
 
     return InvestigationCreateResponse(
         run_id=run_id,
-        status="ingested",
+        status=current_status,
         issue_url=context.issue_url,
         repository=context.repository,
         issue_number=context.issue_number,
@@ -147,18 +186,32 @@ async def create_investigation(
     )
 
 
-@router.get(
-    "/v1/investigations/{run_id}",
+@router.post(
+    "/v1/investigations/{run_id}/execute",
     response_model=InvestigationStatusResponse,
     tags=["Investigations"],
-    summary="Fetch investigation run status",
-    description="Retrieves the current status, coordinates, and metadata of an investigation run.",
+    summary="Execute an investigation run",
+    description="Executes code search and LLM analysis for an existing ingested run.",
 )
-def get_investigation_status(run_id: str) -> InvestigationStatusResponse:
-    """Retrieve investigation run by run_id."""
+async def execute_investigation(
+    run_id: str,
+    service: Annotated[InvestigationService, Depends(get_investigation_service)],
+) -> InvestigationStatusResponse:
+    """Execute investigation for an already ingested run."""
     record = _INVESTIGATIONS.get(run_id)
     if not record:
         raise ResourceNotFoundError(f"Investigation run '{run_id}' not found.")
+
+    target = parse_issue_target(record["issue_url"])
+    try:
+        report = await service.investigate(target_or_url=target, run_id=run_id)
+        record["status"] = "completed"
+        record["report"] = report.model_dump()
+        record["error"] = None
+    except Exception as exc:
+        record["status"] = "failed"
+        record["error"] = str(exc)
+        raise
 
     return InvestigationStatusResponse(
         run_id=record["run_id"],
@@ -169,4 +222,40 @@ def get_investigation_status(run_id: str) -> InvestigationStatusResponse:
         commit_sha=record["commit_sha"],
         created_at=record["created_at"],
         issue_title=record.get("issue_title"),
+        report=report,
+        error=None,
+    )
+
+
+@router.get(
+    "/v1/investigations/{run_id}",
+    response_model=InvestigationStatusResponse,
+    tags=["Investigations"],
+    summary="Fetch investigation run status",
+    description="Retrieves the status, coordinates, report, and metadata of an investigation run.",
+)
+def get_investigation_status(run_id: str) -> InvestigationStatusResponse:
+    """Retrieve investigation run by run_id."""
+    record = _INVESTIGATIONS.get(run_id)
+    if not record:
+        raise ResourceNotFoundError(f"Investigation run '{run_id}' not found.")
+
+    report_payload = record.get("report")
+    report = (
+        InvestigationReport.model_validate(report_payload)
+        if report_payload is not None
+        else None
+    )
+
+    return InvestigationStatusResponse(
+        run_id=record["run_id"],
+        status=record["status"],
+        issue_url=record["issue_url"],
+        repository=record["repository"],
+        issue_number=record["issue_number"],
+        commit_sha=record["commit_sha"],
+        created_at=record["created_at"],
+        issue_title=record.get("issue_title"),
+        report=report,
+        error=record.get("error"),
     )

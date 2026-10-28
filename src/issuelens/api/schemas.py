@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from issuelens.agent.report import InvestigationReport
+
 
 class HealthResponse(BaseModel):
     """Response model for /healthz liveness probe."""
@@ -70,6 +72,10 @@ class InvestigationCreateRequest(BaseModel):
         description="Public GitHub issue URL or coordinates",
         examples=["https://github.com/psf/requests/issues/1234"],
     )
+    execute: bool = Field(
+        default=False,
+        description="Whether to synchronously execute investigation report generation (Phase 3)",
+    )
 
 
 class InvestigationCreateResponse(BaseModel):
@@ -95,4 +101,12 @@ class InvestigationStatusResponse(BaseModel):
     commit_sha: str = Field(..., description="Pinned commit SHA representing repository snapshot")
     created_at: str = Field(..., description="Timestamp of investigation creation")
     issue_title: str | None = Field(default=None, description="Title of the investigated issue")
+    report: InvestigationReport | None = Field(
+        default=None,
+        description="Completed investigation report if ready",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Sanitized failure message if investigation failed",
+    )
 

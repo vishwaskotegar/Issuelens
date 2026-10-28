@@ -56,3 +56,11 @@ class SafetyViolationError(IssueLensError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message, code="SAFETY_VIOLATION", status_code=400)
+
+
+class LLMOutputValidationError(IssueLensError):
+    """Raised when LLM response fails schema or JSON validation."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, code="LLM_OUTPUT_VALIDATION_ERROR", status_code=502)
+
