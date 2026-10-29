@@ -143,7 +143,7 @@ def test_create_investigation_with_execute_true(api_test_app: FastAPI) -> None:
     assert status_data["status"] == "completed"
     assert status_data["report"] is not None
     assert status_data["report"]["run_id"] == run_id
-    assert status_data["report"]["verification_status"] == "not_run"
+    assert status_data["report"]["verification_status"] == "verified"
     assert len(status_data["report"]["hypotheses"]) > 0
 
 

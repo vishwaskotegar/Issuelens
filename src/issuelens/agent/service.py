@@ -11,6 +11,7 @@ from issuelens.agent.report import (
     EvidenceItem,
     InvestigationReport,
 )
+from issuelens.agent.validator import validate_investigation_report
 from issuelens.config import Settings, get_settings
 from issuelens.core.errors import LLMOutputValidationError
 from issuelens.core.logging import get_logger
@@ -161,7 +162,7 @@ class InvestigationService:
         payload = await self.llm_client.generate_report_payload(messages)
 
         # 7. Construct final report binding LLM analysis with verified snapshot provenance
-        report = InvestigationReport.from_payload(
+        raw_report = InvestigationReport.from_payload(
             payload=payload,
             run_id=active_run_id,
             issue_url=context.issue_url,
@@ -170,8 +171,20 @@ class InvestigationService:
             evidence=evidence_items,
         )
 
-        logger.info("Investigation report %s generated successfully.", active_run_id)
-        return report
+        # 8. Deterministically validate code citations against physical repository snapshot
+        validated_report, validation_result = validate_investigation_report(
+            report=raw_report,
+            snapshot=active_snapshot,
+        )
+
+        logger.info(
+            "Investigation report %s validated: status=%s, %d valid citations, %d invalid",
+            active_run_id,
+            validated_report.verification_status,
+            len(validation_result.valid_evidence_ids),
+            len(validation_result.invalid_evidence_ids),
+        )
+        return validated_report
 
 
 def get_investigation_service(

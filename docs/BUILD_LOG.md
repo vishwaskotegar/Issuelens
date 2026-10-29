@@ -427,3 +427,41 @@ Covered across all asynchronous test suites: [tests/unit/test_llm_client.py](fil
 
 
 
+---
+
+### Entry 010: Integration Test Contract Shift from Unvalidated to Snapshot-Verified Reports
+- **Date**: 2026-10-29
+- **Phase**: Phase 4 (Evidence Validation & Citation Guardrails)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+After integrating `validate_investigation_report()` into the end-to-end investigation pipeline in [`src/issuelens/agent/service.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py), existing end-to-end integration tests in [`tests/unit/test_investigation_service.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_service.py) and [`tests/unit/test_investigation_api.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_api.py) were expected to fail on the assertion `assert report.verification_status == "not_run"`.
+
+#### 2. Root Cause
+In Phase 3, `InvestigationReport.from_payload()` initialized `verification_status="not_run"` as a preliminary placeholder because citation validation was planned for Phase 4.
+In Phase 4, `InvestigationService.investigate()` actively invokes `validate_investigation_report(report, snapshot)` before returning the report to the caller. Because the fixture repository snapshot contains the actual source code matched by the search step, all generated code citations physically exist, line numbers match, and excerpt lines match on disk. As a result, the deterministic validator correctly verified the report and assigned `verification_status="verified"`.
+
+#### 3. Fix
+Updated integration test assertions in [`tests/unit/test_investigation_service.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_service.py) (line 186) and [`tests/unit/test_investigation_api.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_api.py) (line 146) to assert `report.verification_status == "verified"`. In addition, added unit tests in [`tests/unit/test_validator.py`](file:///c:/Projects/Issuelens/tests/unit/test_validator.py) explicitly exercising unverified or ungrounded reports where `verification_status` remains `"not_run"` or `"partially_verified"`.
+
+#### 4. Verification
+Ran full test suite:
+```powershell
+uv run pytest
+```
+**Output**:
+```text
+============================= 116 passed in 4.65s =============================
+```
+
+#### 5. Engineering Lesson
+When adding automated guardrails and validation layers into an existing service pipeline, existing mock expectations and integration assertions must be updated to reflect the new system contract. Preliminary fallback states (like `"not_run"`) should only persist when validation actually could not be executed or when evidence is missing.
+
+#### 6. Regression Test
+- [`tests/unit/test_investigation_service.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_service.py): `test_investigation_service_full_flow`
+- [`tests/unit/test_investigation_api.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_api.py): `test_create_and_execute_investigation_full_flow`
+- [`tests/unit/test_validator.py`](file:///c:/Projects/Issuelens/tests/unit/test_validator.py): `test_validate_investigation_report_insufficient_evidence_fallback`
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Leave `verification_status="not_run"` as the default and require an explicit secondary API call `/v1/investigations/{run_id}/validate`.
+- *Trade-off*: Exposing unvalidated reports by default violates the core product contract ("every report is evidence-backed and verified before output"). Running deterministic validation directly within the service pipeline guarantees that invalid citations cannot silently escape to the API consumer.

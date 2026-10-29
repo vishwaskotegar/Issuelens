@@ -473,20 +473,21 @@ Execution flow (`safe_resolve(relative_path)`):
 - Raises `ResourceNotFoundError` if file does not exist in snapshot.
 
 #### 5. Testing
-- **Test file**: [`tests/unit/test_snapshot.py`](file:///c:/Projects/Issuelens/tests/unit/test_snapshot.py)
-- **What it verifies**: Safe path resolution, path traversal blocking (`../../`), absolute path rejection, file size limits, binary detection, and pattern exclusion.
+- **Test files**: [`tests/unit/test_snapshot.py`](file:///c:/Projects/Issuelens/tests/unit/test_snapshot.py), [`tests/unit/test_snapshot_cache.py`](file:///c:/Projects/Issuelens/tests/unit/test_snapshot_cache.py)
+- **What it verifies**: Safe path resolution, path traversal blocking (`../../`), absolute path rejection, file size limits, binary detection, pattern exclusion, atomic extraction, cache hit reuse, and LRU pruning against count and byte budgets.
 - **Run command**:
   ```bash
-  uv run pytest tests/unit/test_snapshot.py
+  uv run pytest tests/unit/test_snapshot.py tests/unit/test_snapshot_cache.py
   ```
 
 #### 6. Engineering concepts
 - **Directory Traversal (Zip Slip / Path Traversal)**: An attack where an untrusted path contains `../` sequences to escape the sandbox root and access sensitive host files (e.g., `/etc/shadow` or `.env`).
-- **Null-Byte Binary Heuristic**: Standard Unix heuristic: text files (UTF-8, ASCII) almost never contain null bytes `\x00`, whereas compiled binaries and images contain them in their headers.
+- **Content-Addressed Immutability**: Because Git commit SHAs are cryptographic hashes of tree contents, a snapshot for a given commit SHA never changes. It can be cached indefinitely without stale-data invalidation bugs.
+- **Least Recently Used (LRU) Eviction**: A cache replacement policy that discards the least recently accessed items first to keep disk usage strictly bounded.
 
 #### 7. Trade-offs
-- **Benefits**: Robust security guarantee; ensures the LLM cannot be prompted to read host secrets.
-- **Disadvantages**: Legitimate files larger than 500 KB must be truncated or skipped.
+- **Benefits**: Zero risk of disk exhaustion outages; orders-of-magnitude faster investigations on repeated issues; completely bounded storage footprint.
+- **Disadvantages**: Retains up to 500 MB of disk cache across sessions (configurable).
 
 ---
 
@@ -830,14 +831,122 @@ Execution flow (`service.investigate`):
 
 ---
 
-## Planned Implementation Roadmap (Phases 4 - 9)
+## Phase 4: Evidence Validation & Citation Guardrails
+
+---
+
+### Feature 4.1: Deterministic Citation Verification & Snapshot Grounding
+
+#### 1. What it does
+Guarantees that every code citation emitted in an `InvestigationReport` physically exists in the repository snapshot at the pinned commit SHA. It prevents hallucinated files, invalid line ranges, out-of-order line spans, and altered excerpt text from silently masquerading as verified evidence.
+
+#### 2. How it works
+- **Source file**: [`src/issuelens/agent/validator.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py)
+- **Functions**: [`validate_citation()`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py#L130-L245), [`read_snippet()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snippets.py#L38-L105)
+- **Models**: [`CitationValidationResult`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py#L25-L40), [`EvidenceItem`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L25-L42)
+
+Execution flow:
+1. For each `EvidenceItem` with `source_type="code"`, `validate_citation(evidence, snapshot)` executes a multi-stage deterministic gate:
+   - **Path Traversal Check**: Calls `validate_safe_relative_path(evidence.path_or_url)`. Path escapes (`../`) or absolute paths are rejected with `lines_valid=False`.
+   - **Commit SHA Check**: Verifies `evidence.commit_sha == snapshot.commit_sha`. A mismatch indicates the citation was produced against a different commit.
+   - **File Existence Check**: Inspects `snapshot.list_files()`. If the file is missing from the snapshot, returns `file_exists=False`.
+   - **Line Number Bounds Check**: Reads file lines from the snapshot and validates that `evidence.start_line` and `evidence.end_line` are positive (1-indexed), `start_line <= end_line`, and `end_line <= total_lines`.
+   - **Physical Excerpt Text Matching**: Calls `read_snippet(snapshot, file_path, start_line, end_line)`. It normalizes both the physical file lines and the claimed excerpt using `normalize_line_text()` (stripping line numbers, removing comments/whitespace variability) and checks for exact matching via `excerpts_match()`.
+2. Returns a `CitationValidationResult` detailing boolean flags (`file_exists`, `lines_valid`, `commit_matches`, `excerpt_matches`) and any `error_reason`.
+
+#### 3. Implementation decisions
+- **Deterministic Disk Grounding over LLM Self-Checking**: Rather than asking an LLM to check its own work (which fails due to self-confirming hallucinations), IssueLens inspects the raw bytes on disk.
+- **Whitespace-Normalized Line Comparison**: Excerpts are compared line-by-line after stripping line numbering and outer whitespace, gracefully handling Windows CRLF vs Unix LF differences without loosening semantic code checks.
+
+#### 4. Error handling
+- Path traversal attempts, missing files, or out-of-bounds line numbers return structured validation failures (`is_valid=False`, with descriptive `error_reason`) rather than crashing the pipeline with uncaught exceptions.
+
+#### 5. Testing
+- **Test file**: [`tests/unit/test_validator.py`](file:///c:/Projects/Issuelens/tests/unit/test_validator.py)
+- **What they verify**:
+  - `test_validate_citation_valid`: Valid code citation matches snapshot lines.
+  - `test_validate_citation_file_not_found`: Nonexistent file marked invalid.
+  - `test_validate_citation_path_traversal`: Traversal path rejected.
+  - `test_validate_citation_out_of_bounds_lines`: Exceeding total file lines rejected.
+  - `test_validate_citation_inverted_lines`: `start_line > end_line` rejected.
+  - `test_validate_citation_commit_mismatch`: Foreign commit SHA rejected.
+  - `test_validate_citation_excerpt_mismatch`: Fabricated or modified code lines rejected.
+- **Run command**:
+  ```bash
+  uv run pytest tests/unit/test_validator.py
+  ```
+
+#### 6. Engineering concepts
+- **Physical Provenance**: AI agents can generate syntactically convincing code citations that do not exist. In high-stakes engineering workflows, verifying citations against an immutable cryptographic commit SHA snapshot is the only reliable defense against hallucination.
+
+#### 7. Trade-offs
+- **Benefits**: Absolute confidence that all citations in the report point to real code at real line numbers.
+- **Compromises**: Exact excerpt matching requires the model or retrieval engine to provide faithful code quotes; paraphrase or partial fragments will fail excerpt validation and trigger hypothesis demotion.
+
+---
+
+### Feature 4.2: Evidence Sanitization, Hypothesis Demotion & Insufficient-Evidence Fallbacks
+
+#### 1. What it does
+Orchestrates report-level integrity checks:
+1. Prunes invalid citations from `report.evidence`.
+2. Sanitizes `hypothesis.supporting_evidence_ids` to remove phantom references.
+3. Automatically demotes ungrounded hypotheses to `"low"` confidence with explanatory notes in `confidence_rationale`.
+4. Triggers an explicit `[INSUFFICIENT EVIDENCE]` fallback mode when no verified code citations remain.
+
+#### 2. How it works
+- **Source file**: [`src/issuelens/agent/validator.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py)
+- **Function**: [`validate_investigation_report()`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py#L248-L402)
+- **Models**: [`ReportValidationResult`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py#L42-L56), [`InvestigationReport`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L65-L100)
+
+Execution flow:
+1. `validate_investigation_report(report, snapshot)` validates every citation in `report.evidence`.
+2. Computes the set of verified evidence IDs (`valid_ids`).
+3. For each hypothesis:
+   - Filters `supporting_evidence_ids` against `valid_ids`.
+   - If a hypothesis is left with 0 valid citations:
+     - Demotes `confidence` to `"low"`.
+     - Appends: `"[Citation Guardrail: Cited evidence items were invalid or ungrounded against the repository snapshot; confidence demoted to low.]"` to `confidence_rationale`.
+   - If a hypothesis retains at least one valid citation but lost others:
+     - Appends an informational note documenting pruned IDs.
+4. Checks for insufficient evidence:
+   - If `valid_ids` is empty, or zero code evidence items were verified:
+     - Prepends `[INSUFFICIENT EVIDENCE]` to `report.summary`.
+     - Appends warnings to `missing_information` and `limitations`.
+     - Sets `verification_status` to `"not_run"` (or `"partially_verified"` if non-code items exist).
+   - If all citations are valid, sets `verification_status` to `"verified"`.
+5. Prunes invalid `EvidenceItem` records from `report.evidence`.
+6. Returns the sanitized `InvestigationReport` and `ReportValidationResult`.
+
+#### 3. Implementation decisions
+- **Graceful Demotion over Pipeline Crash**: If an LLM suggests a good hypothesis with 2 valid citations and 1 bad citation, stripping the bad citation and keeping the hypothesis preserves useful work while maintaining integrity. If all citations were bad, demoting to low confidence warns the engineer without losing the analytical hypothesis.
+- **Distinguishing Facts from Inferences**: The schema maintains `observed_facts` (immutable observations from issue text/metadata/code) completely separate from `hypotheses` (probabilistic causal models).
+
+#### 4. Error handling
+- When no verified evidence is available, the service does not crash; it produces a safe, structured report with `[INSUFFICIENT EVIDENCE]` clearly flagged, informing the engineer what information is missing.
+
+#### 5. Testing
+- **Test file**: [`tests/unit/test_validator.py`](file:///c:/Projects/Issuelens/tests/unit/test_validator.py)
+- **What they verify**:
+  - `test_validate_investigation_report_strips_invalid_evidence`: Verifies invalid citations are removed from evidence, ungrounded hypotheses are demoted to low confidence, and notes are appended to rationale.
+  - `test_validate_investigation_report_insufficient_evidence_fallback`: Verifies empty evidence triggers summary prefix, missing information warnings, and `verification_status="not_run"`.
+- **Run command**:
+  ```bash
+  uv run pytest tests/unit/test_validator.py
+  ```
+
+#### 6. Engineering concepts
+- **Defensive Post-Processing**: Even with structured output schemas and prompt engineering, LLMs can generate unsupported claims. A deterministic post-processing guardrail enforces strict domain contracts before external callers consume AI output.
+
+#### 7. Trade-offs
+- **Benefits**: Users can never receive a report with false citations presented as verified truth.
+- **Compromises**: Hypotheses referencing genuine bugs in files that were excluded from the bounded snapshot will be demoted to low confidence due to missing snapshot evidence.
+
+---
+
+## Planned Implementation Roadmap (Phases 5 - 9)
 
 The following phases are designed and specified in [`docs/BUILD_SPECIFICATION.md`](file:///c:/Projects/Issuelens/docs/BUILD_SPECIFICATION.md), but are **[PLANNED]** and have not yet been implemented in the codebase. When each phase is implemented, it will be documented above following the 7-facet standard.
-
-### Phase 4: Evidence Validation & Citation Guardrails [PLANNED]
-- **Goal**: Verify every code citation against the pinned snapshot. Ensure referenced paths exist, line ranges are valid, and excerpts match. Implement "insufficient evidence" fallback when evidence is inconclusive.
-- **Architecture**: `src/issuelens/agent/validator.py`.
-- **Criteria**: Invalid or hallucinated citations are flagged and cannot silently appear in the final report.
 
 ### Phase 5: LangGraph Multi-Round Investigation Workflow [PLANNED]
 - **Goal**: Build stateful agent workflow with explicit nodes (`parse_issue` -> `retrieve_initial` -> `form_hypotheses` -> `retrieve_followup` -> `evaluate_evidence` -> `build_report`) with bounded retry loops (max 2-3 rounds).
@@ -845,24 +954,6 @@ The following phases are designed and specified in [`docs/BUILD_SPECIFICATION.md
 - **Criteria**: Deterministic state transitions, loop cap enforcement, tool failure resilience.
 
 ### Phase 6: Persistence & Run History [PLANNED]
-- **Goal**: PostgreSQL storage via SQLAlchemy and Alembic migrations. Persist investigation runs, evidence items, hypotheses, and final reports.
-- **Architecture**: `src/issuelens/persistence/`.
-- **Criteria**: Investigation records survive restarts; clean migrations from empty database.
-
-### Phase 7: Evaluation Dataset & Benchmark Harness [PLANNED]
-- **Goal**: Curate a dataset of 20-30 resolved public GitHub issues. Measure citation validity, recall@k, and unsupported claims across prompt/model versions.
-- **Architecture**: `evals/`, `src/issuelens/evaluation/`.
-- **Criteria**: Automated script emits machine-readable evaluation metrics.
-
-### Phase 8: Document RAG & Hybrid Retrieval [PLANNED]
-- **Goal**: Chunk documentation, READMEs, and related issues using BM25 / PostgreSQL full-text search. Add pgvector semantic search only if benchmark evaluation demonstrates semantic misses.
-- **Architecture**: `src/issuelens/retrieval/`.
-- **Criteria**: Measured comparison showing where lexical vs hybrid retrieval wins.
-
-### Phase 9: Deployment, Pilot & Production Readiness [PLANNED]
-- **Goal**: Containerization with Docker, authenticated API endpoints, rate limiting, and observability.
-- **Architecture**: `Dockerfile`, production configs.
-- **Criteria**: Fully deployable container with security hardening and health checks.
 - **Goal**: PostgreSQL storage via SQLAlchemy and Alembic migrations. Persist investigation runs, evidence items, hypotheses, and final reports.
 - **Architecture**: `src/issuelens/persistence/`.
 - **Criteria**: Investigation records survive restarts; clean migrations from empty database.
