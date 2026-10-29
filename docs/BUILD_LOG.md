@@ -537,3 +537,6 @@ Temporary directory utilities like `tempfile.mkdtemp()` are dangerous in statele
   - *Trade-off*: Deleting snapshots immediately avoids storage leaks, but forces duplicate zipball downloads and extra GitHub API quota usage whenever multiple issues against the same repository are investigated in succession.
 - *Alternative 2: Global Git Clone Directory*:
   - *Trade-off*: Keeping full git clones requires executing git binary commands or libgit2, consumes vastly more disk space for git history/objects, and violates the minimal-dependency product boundary. The commit-pinned zipball cache with LRU limits provides the optimal trade-off of speed, bounded storage, and architectural simplicity.
+
+---
+

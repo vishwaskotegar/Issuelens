@@ -27,10 +27,13 @@ You are the senior engineer implementing **IssueLens**, an evidence-backed AI de
 7. **Secret Redaction**: Always redact secrets and sensitive tokens from logs and responses.
 8. **Testing Discipline**: Add tests with each behavior. Use mocks/fakes for network and LLM calls in unit tests. Never make automated tests depend on live GitHub or a paid LLM account.
 9. **Quality Verification**: Run relevant tests (`pytest`), lint (`ruff`), and type checks (`mypy`) after changes. Report exact commands and results; never say checks passed if they were not run.
-10. **Documentation**: Maintain project documentation synchronously with implementation:
+10. **Documentation Maintenance**: Maintain project documentation synchronously with implementation:
+    - Update architecture diagrams in `docs/architecture/` during the same phase as any change that alters component boundaries, data models, or control flows. Maintain diagrams using the standard Mermaid theme without custom colors or forced background fills.
     - Update `docs/LEARNING_GUIDE.md` during the same phase, acting as a senior engineer mentoring a junior developer. Cover: 1) What it does, 2) How it works step-by-step with real file paths/classes/functions, 3) Implementation decisions, 4) Error handling, 5) Tests and exact verification commands, 6) Engineering concepts, and 7) Trade-offs. Keep synchronized with actual code; mark unimplemented features as planned.
-    - Record significant architectural decisions in `docs/decisions/` as numbered ADRs using `docs/decisions/ADR-TEMPLATE.md`.
+    - Record significant architectural decisions in `docs/decisions/` as numbered ADRs using `docs/decisions/ADR-TEMPLATE.md`. Do not document every minor coding choice.
     - Update `README.md` when setup, commands, or behaviors change.
+    - **Anti-Hallucination Rule**: The coding agent is strictly prohibited from documenting planned functionality as implemented functionality. Always clearly distinguish implemented, partially implemented, proposed, and planned features.
+    - Do not duplicate the distinct responsibilities of the learning guide, architecture docs, ADRs, or build log.
 11. **Phase Completion Review**: Finish each phase with a beginner-friendly mentor review covering: what was built, why it was built that way, alternatives considered, trade-offs made, failure modes, exact test and verification commands/results, and the next smallest step.
 12. **Minimal Dependencies**: Do not add a dependency or infrastructure service without explaining why it is needed.
 13. **Ambiguity Resolution**: If `docs/BUILD_SPECIFICATION.md` has a conflict or ambiguity, identify it and recommend the smallest safe option instead of silently inventing scope.
@@ -57,4 +60,4 @@ When starting Phase *N*:
    - `uv run ruff check .`
    - `uv run mypy src tests`
    - `uv run pytest`
-5. **Report & Log**: Update `docs/LEARNING_GUIDE.md`, record any ADR in `docs/decisions/`, update `docs/BUILD_LOG.md` with any meaningful resolved issues, and conclude with the beginner-friendly mentor review and proposed next phase.
+5. **Report & Log**: Update affected diagrams in `docs/architecture/`, update `docs/LEARNING_GUIDE.md`, record any ADR in `docs/decisions/`, update `docs/BUILD_LOG.md` with any meaningful resolved issues, and conclude with the beginner-friendly mentor review and proposed next phase.

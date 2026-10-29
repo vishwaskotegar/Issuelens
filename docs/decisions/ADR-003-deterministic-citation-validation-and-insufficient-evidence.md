@@ -8,8 +8,7 @@
 
 ---
 
-## 1. Context and Problem Statement
-
+## 1. Context and Problem
 A core safety and integrity requirement of IssueLens is that **no code citation or investigative finding may be fabricated**.
 
 Large language models are inherently prone to hallucinations:
@@ -31,17 +30,16 @@ We needed a deterministic, verifiable, offline guardrail subsystem that guarante
 
 ---
 
-## 2. Decision Made
-
+## 2. Decision and Rationale
 We implemented a deterministic post-generation validation and sanitation pipeline in [`src/issuelens/agent/validator.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py) with the following architectural rules:
 
 1. **Deterministic Multi-Stage Citation Validation (`validate_citation`)**:
    Every `EvidenceItem` with `source_type="code"` is checked against the physical `RepoSnapshot`:
-   - **Path Containment & Safety**: Relative paths are checked against directory traversal (`../`) and forbidden root escapes using `validate_safe_relative_path`.
-   - **File Existence**: The referenced file must exist in `snapshot.list_files()`.
+   - **Path Containment & Safety**: Relative paths are checked against directory traversal (`../`) and forbidden root escapes using `safe_resolve()`.
+   - **File Existence**: The referenced file must physically exist in `snapshot.list_files()`.
    - **Commit SHA Integrity**: `evidence.commit_sha` must match `snapshot.commit_sha`.
    - **1-Indexed Line Span Bounds**: `1 <= start_line <= end_line <= total_lines_in_file`.
-   - **Physical Excerpt Text Matching**: The snippet is read from disk using `read_snippet(snapshot, file_path, start_line, end_line)`. The lines are normalized (stripping line-number prefixes and trimming whitespace) and compared line-by-line against the claimed excerpt.
+   - **Physical Excerpt Text Matching**: The snippet is read from disk using `read_snippet(snapshot, file_path, start_line, end_line)`. The lines are normalized (stripping line-number prefixes and trimming whitespace) and compared line-by-line against the claimed excerpt using `excerpts_match()`.
 
 2. **Silently Fabricated Evidence Elimination**:
    Any citation failing validation is rejected. Invalid items are pruned from `report.evidence`, ensuring only physically verified evidence items are present in the final output.
@@ -84,49 +82,48 @@ We implemented a deterministic post-generation validation and sanitation pipelin
 
 ---
 
-## 4. Reasons for Choosing the Selected Approach
+## 4. Why the Alternatives Were Not Selected
 
-1. **Cryptographic & Physical Truth**: Citations are verified against physical bytes on disk pinned to an immutable git commit SHA. There is zero reliance on LLM self-reporting.
-2. **Graceful Degradation with Transparency**: Rather than crashing, the system sanitizes bad citations, demotes ungrounded claims, and explicitly tells the user why a hypothesis was downgraded.
-3. **Deterministic & Fast**: Validation requires only local file slicing and string normalization in Python memory. It runs in milliseconds without external network or LLM calls.
-4. **Complete Testability**: The entire validation pipeline can be exercised with 100% offline unit tests against test fixtures.
+1. **LLM self-reflection was rejected** because stochastic models cannot reliably self-audit hallucinations without ground-truth physical verification.
+2. **Fail-fast aborting was rejected** because partial verification with explicit transparent demotion preserves valuable debugging hypotheses while safeguarding integrity.
+3. **Fuzzy token matching was rejected** because precision matters in debugging; fuzzy matching confirms false lines and leads developers to wrong functions.
 
 ---
 
-## 5. Benefits, Drawbacks, and Trade-offs
+## 5. Trade-offs and Consequences
 
-### Benefits
+### Benefits (Positive Consequences)
 - **Zero Hallucinated Citations in Output**: Invalid citations are stripped; users never see phantom file references.
 - **Transparent Accountability**: Every hypothesis clearly shows whether its citations survived validation or were pruned.
-- **Clear Insufficient Evidence Signaling**: Eliminates confident guessing when data is insufficient.
-- **CRLF/LF Tolerance**: Line-by-line whitespace normalization handles Windows (`\r\n`) vs Unix (`\n`) line ending differences seamlessly.
+- **Deterministic and Fast**: Physical file checks execute in milliseconds on local disks without network or LLM tokens.
 
-### Drawbacks & Limitations
-- **Format Sensitivity**: If an LLM heavily paraphrases code rather than quoting lines, excerpt matching will fail. The system prompt must instruct the model to provide exact snippets.
-- **Line Offset Sensitivity**: If the LLM cites lines with a slight offset (e.g. lines 12-15 instead of 10-13), excerpt matching will fail and trigger demotion. (Phase 5 will add iterative search tools allowing the agent to refine line spans before final synthesis).
+### Drawbacks & Limitations (Negative Consequences)
+- **Strict Format Dependency**: If an LLM paraphrases code instead of quoting exact lines, the excerpt will fail line-by-line comparison and be demoted.
 
----
-
-## 6. Consequences for Future Development
-
-- **Phase 5 (LangGraph Agent Loop)**: When the multi-step agent generates candidate citations during intermediate turns, it can invoke `validate_citation` as an internal tool or guardrail before finalizing the report.
-- **Phase 6 (Persistence)**: `verification_status` and `citation_results` will be stored in the database schema to allow filtering reports by verification level.
-- **Phase 7 (Evaluation Harness)**: Evaluation benchmarks can measure the exact citation validity rate (`valid_citations / total_citations`) as a core metric across model versions.
+### Trade-offs & Mitigations
+- *Trade-off*: Valid hypotheses pointing to files excluded by snapshot limits will be demoted to low confidence.
+  *Mitigation*: The report adds an explicit limitation note explaining that missing files may account for the lack of verified evidence.
 
 ---
 
-## 7. Conditions for Reconsideration
+## 6. Implementation References
 
-This decision should be reconsidered if:
-- Multi-file semantic diffs or cross-repository citations are introduced where physical local file snapshots are unavailable.
-- We implement AST-based AST-node ID citations (e.g., node path `SampleClass.method_name`) alongside or in place of line number spans.
+- **Validator Implementation**: [`src/issuelens/agent/validator.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py)
+- **Snippet Extractor**: [`src/issuelens/repository/snippets.py`](file:///c:/Projects/Issuelens/src/issuelens/repository/snippets.py)
+- **Snapshot Integration**: [`src/issuelens/repository/snapshot.py`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py)
+- **Unit Tests**: [`tests/unit/test_validator.py`](file:///c:/Projects/Issuelens/tests/unit/test_validator.py)
 
 ---
 
-## 8. References & Related Documents
+## 7. Conditions That Would Justify Revisiting the Decision
 
-- Implementation: [`src/issuelens/agent/validator.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py)
-- Service Integration: [`src/issuelens/agent/service.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py)
-- Unit Tests: [`tests/unit/test_validator.py`](file:///c:/Projects/Issuelens/tests/unit/test_validator.py)
-- Specification: Section 13 (Phase 4) in [`docs/BUILD_SPECIFICATION.md`](file:///c:/Projects/Issuelens/docs/BUILD_SPECIFICATION.md)
+Revisit this decision if:
+- Python syntax formatting differences (e.g. Black or Ruff reformatting) require AST node structural equivalence checking rather than text-based excerpt normalization.
+- Multi-repository investigations are introduced where citations span multiple external submodules.
 
+---
+
+## 8. Related ADRs
+
+- [ADR-002: LangChain Provider Adapter with Structured Output](file:///c:/Projects/Issuelens/docs/decisions/ADR-002-llm-provider-adapter-and-report-generation.md): Emits the unvalidated report that `validator.py` processes.
+- [ADR-004: Commit-Pinned Repository Snapshot Disk Cache](file:///c:/Projects/Issuelens/docs/decisions/ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md): Supplies the immutable snapshot bytes against which citations are verified.

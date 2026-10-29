@@ -133,6 +133,14 @@ issuelens/
     BUILD_LOG.md              # Engineering build log, verified bug fixes & lessons
     LEARNING_GUIDE.md         # Pedagogical guide walking through features step-by-step
     IssueLens_Build_Specification.docx
+    architecture/             # Architecture blueprints, sequence flows & trust boundaries
+      README.md               # Architecture index, reading order, and legend
+      system-overview.md      # High-level and detailed component diagrams
+      request-lifecycle.md    # End-to-end request tracing and failure flows
+      agent-workflow.md       # Orchestration pipeline and state machine design
+      codebase-map.md         # Package dependencies, symbols, and change navigation
+      data-flow-and-trust-boundaries.md # Threat model, boundaries, and security controls
+      testing-and-evaluation.md # Test pyramid, hermetic boundaries, and evaluation
     decisions/                # Architecture Decision Records (ADRs)
       README.md               # ADR guidelines, criteria, and index
       ADR-TEMPLATE.md         # Standardized ADR template
@@ -202,6 +210,7 @@ issuelens/
 The project maintains a structured documentation ecosystem inside `docs/`:
 
 - **[`docs/BUILD_SPECIFICATION.md`](docs/BUILD_SPECIFICATION.md)**: Product source of truth, architecture overview, security boundaries, and phased build plan with definitions of done.
+- **[`docs/architecture/`](docs/architecture/)**: System architecture documentation and Mermaid diagrams covering component overviews, request lifecycles, agent workflows, package maps, trust boundaries, and testing architecture.
 - **[`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md)**: Senior-to-junior engineering walkthrough explaining how each implemented feature works step-by-step, including design choices, error handling, tests, core concepts, and trade-offs.
 - **[`docs/BUILD_LOG.md`](docs/BUILD_LOG.md)**: Engineering journal documenting verified root causes, code fixes, regression tests, and lessons learned from real implementation bugs.
 - **[`docs/decisions/`](docs/decisions/)**: Architecture Decision Records (ADRs) tracking significant architectural choices, alternatives considered, and conditions for reconsideration.

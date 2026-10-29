@@ -408,6 +408,14 @@ issuelens/
     BUILD_LOG.md                # Engineering build log, bug root causes, and fixes
     LEARNING_GUIDE.md           # Engineering learning guide (senior-to-junior mentor walkthrough)
     IssueLens_Build_Specification.docx
+    architecture/               # System architecture documentation and Mermaid diagrams
+      README.md                 # Architecture index, reading order, and legend
+      system-overview.md        # High-level and detailed component diagrams
+      request-lifecycle.md      # End-to-end request tracing and failure flows
+      agent-workflow.md         # Orchestration pipeline and state machine design
+      codebase-map.md           # Package dependencies, symbols, and change navigation
+      data-flow-and-trust-boundaries.md # Threat model, boundaries, and security controls
+      testing-and-evaluation.md # Test pyramid, hermetic boundaries, and evaluation
     decisions/                  # Architecture Decision Records (ADRs)
       README.md                 # ADR instructions, criteria, and index
       ADR-TEMPLATE.md           # Reusable ADR template
@@ -437,35 +445,45 @@ Configuration names are suggestions, not a promise that every setting will be us
 
 ## 13. Phased build plan and definition of done
 
-### Phase Definition of Done & Documentation Gates
+### Phase Execution Protocol & Definition of Done Gates
 
-Every phase is subject to strict quality, documentation, and review gates before it can be considered complete:
-1. **Working Code & Automated Verification**: The implementation slice is functional. Code passes linter (`ruff check .`), static type checks (`mypy src tests`), and unit test suites (`pytest`). No checks may be silently skipped.
-2. **Synchronous Learning Guide Maintenance (`docs/LEARNING_GUIDE.md`)**: The engineering learning guide must be updated during the same implementation phase (never as an afterthought), written from the perspective of a senior engineer mentoring a junior developer. For every major feature implemented, document:
-   - **What it does**: Feature purpose and architectural placement.
-   - **How it works**: Step-by-step execution flow referencing actual file paths, classes, and functions.
-   - **Implementation decisions**: Why chosen and alternatives evaluated.
-   - **Error handling**: Possible failure scenarios, defenses, and limitations.
-   - **Testing**: Relevant tests, what they verify, and exact verification commands.
-   - **Engineering concepts**: Beginner-friendly explanations of underlying Python, HTTP, AST, database, or agent concepts.
-   - **Trade-offs**: Benefits gained versus compromises made.
-   Features not yet implemented must remain explicitly marked as planned rather than completed.
-3. **Architecture Decision Records (`docs/decisions/`)**: Significant architectural, technical, or design decisions must be recorded as numbered ADRs (e.g., `ADR-001-github-api-client.md`) using `docs/decisions/ADR-TEMPLATE.md`. Do not document every minor coding choice. If documenting an existing decision whose original rationale was not recorded, label the rationale as reconstructed without fabricating history.
-4. **Build Log Maintenance (`docs/BUILD_LOG.md`)**: Maintain the dedicated troubleshooting log for any meaningful implementation bugs, test failures, verified root causes, fixes, and engineering lessons. (Preserve its dedicated role; do not replace it or duplicate its purpose.)
-5. **Phase Completion Mentor Review**: Each phase must conclude with a beginner-friendly mentor review covering: what was built, why it was built that way, alternatives considered, trade-offs made, failure modes and how they are handled, and tests run with exact commands and actual results.
+Every implementation phase must strictly follow a 9-step engineering and documentation protocol before it can be considered complete. The coding agent must never skip steps or leave documentation for a later pass:
+
+1. **Inspect Existing Implementation**: Inspect relevant existing code, configuration, tests, and documentation before proposing or making changes. Identify all impacted modules and potential conflicts.
+2. **Explain Approach Before Coding**: Explain the intended implementation approach, architectural design, and significant trade-offs before writing code. List files to add/edit, dependencies to add, and security/reliability edge cases. Wait for approval if a major architecture decision, paid service, destructive action, or scope expansion is required.
+3. **Implement and Test**: Implement the smallest functional slice and write unit tests with hermetic mocks according to the existing acceptance criteria. Never execute repository code or depend on live external networks.
+4. **Update Architecture Documentation**: Update affected diagrams and specifications in `docs/architecture/` (`system-overview.md`, `request-lifecycle.md`, `agent-workflow.md`, `codebase-map.md`, `data-flow-and-trust-boundaries.md`, `testing-and-evaluation.md`) in the same phase as any change that alters system boundaries, data models, or control flows.
+5. **Update Learning Guide (`docs/LEARNING_GUIDE.md`)**: Update the engineering learning guide synchronously during the phase, mentoring a junior developer. For every major feature, document: 1) What it does, 2) How it works step-by-step with real file paths/classes/functions, 3) Implementation decisions, 4) Error handling, 5) Tests and verification commands, 6) Engineering concepts, and 7) Trade-offs.
+6. **Record Architecture Decision Records (`docs/decisions/`)**: When significant architectural, technical, security, data-modeling, or infrastructure decisions are made, create or update numbered ADRs using `docs/decisions/ADR-TEMPLATE.md`. Do not create an ADR for every minor coding choice. If documenting an existing decision whose original rationale was not recorded, label the rationale as reconstructed without fabricating history.
+7. **Maintain Build Log (`docs/BUILD_LOG.md`)**: When encountering and resolving meaningful implementation issues, bugs, failing tests, dependency conflicts, or unexpected behavior, record the symptom, verified root cause, fix, verification commands/results, engineering lesson, regression test, and trade-offs. Preserve its dedicated troubleshooting role; do not turn it into a duplicate architecture guide.
+8. **Run Quality & Documentation Validation**: Run the full verification suite (`uv run ruff check .`, `uv run mypy src tests`, `uv run pytest`) and validate internal documentation links and Mermaid syntax. Never say checks passed if they were not run.
+9. **Senior Engineer Mentor Review**: Conclude each phase with a senior mentor review covering: what was built, why it was built that way, alternatives considered, trade-offs made, failure modes and error handling, exact test and verification commands and actual results, security considerations, and the proposed next smallest step.
+
+### Ongoing Documentation Maintenance Rules
+
+To prevent documentation decay and maintain documentation integrity:
+- **Synchronous Updates**: Update architecture diagrams, the learning guide, ADRs, and the build log in the same phase as any change that makes them inaccurate. Never defer documentation as an afterthought.
+- **Standard Mermaid Theme**: Standard Mermaid rendering without custom theme colors or forced background fills is the project default. Diagrams must render cleanly in both light and dark display modes.
+- **Theme Consistency & Readability**: New diagrams must not introduce custom theme colors or forced background colors without a documented, justified need. Existing diagrams must be reviewed for theme consistency when modified. Diagram readability and syntax must be checked during relevant implementation phases.
+- **Accurate Functionality Labeling**: The coding agent is strictly prohibited from documenting planned functionality as implemented functionality. Always clearly distinguish implemented, partially implemented, proposed, and planned features. Planned components must remain clearly distinguished from implemented components (e.g. using dashed borders `stroke-dasharray: 5 5` without forced background fills).
+- **Grounded Links & Symbols**: Link documentation to real repository files, protocols, classes, and functions using clickable links.
+- **Remove Stale Explanations**: Remove or correct outdated documentation rather than accumulating contradictory explanations.
+- **Separation of Concerns**: Do not duplicate the distinct responsibilities of the learning guide (pedagogical), architecture docs (system diagrams and flows), ADRs (strategic decisions), and build log (tactical debugging journal).
+- **Validation Discipline**: Validate Mermaid syntax and Markdown links. Do not claim that documentation or tests are validated unless the relevant checks were actually performed.
+- **Scope Discipline**: Do not require a new ADR for every minor implementation choice or for standardizing documentation themes. A phase does not need to modify every document when no change affects that document, but the agent must evaluate each documentation responsibility and update affected artifacts.
 
 | Phase | Build | Definition of done |
 | --- | --- | --- |
-| 0. Repo bootstrap | pyproject, config, lint/type/test tools, FastAPI health endpoint. | App starts locally; lint and tests pass; README has setup instructions; Phase documentation gates satisfied in `docs/LEARNING_GUIDE.md`. |
-| 1. GitHub issue ingestion | Parse public issue URL, fetch issue metadata via an adapter, handle 404/rate limits/timeouts. | Mocked tests cover valid, malformed, missing and rate-limited issue cases; Phase documentation gates and ADR-001 recorded. |
-| 2. Code search baseline | Obtain bounded repository snapshot; ripgrep search; AST symbol lookup; exact line snippets. | Fixture repository tests verify expected path/line hits; no code is executed; Phase documentation gates satisfied in `docs/LEARNING_GUIDE.md`. |
-| 3. First end-to-end report | Call LLM with issue + retrieved evidence; return structured hypotheses/report. | One sample issue produces valid schema and source citations; errors are handled; `docs/LEARNING_GUIDE.md` updated with LLM adapter details; ADR recorded. |
-| 4. Evidence validation | Verify path/range/commit; distinguish facts from inferences; add insufficient-evidence behavior. | Invalid citations cannot silently appear as verified evidence; validation rules documented in `docs/LEARNING_GUIDE.md`. |
-| 5. LangGraph workflow | Explicit nodes/state, bounded follow-up retrieval, tool tracing and stop conditions. | Graph tests cover success, tool failure, empty retrieval and loop cap; workflow state machine documented in `docs/LEARNING_GUIDE.md`; ADR recorded. |
-| 6. Persistence | PostgreSQL schema/migrations, run status, report retrieval. | Run survives restart; migrations work from a clean database; schema and DB decisions documented in `docs/LEARNING_GUIDE.md` and `docs/decisions/`. |
-| 7. Evaluation harness | Curated cases, baseline metrics, machine-readable results and failure notes. | Same dataset can compare prompt/retrieval/model versions; benchmark methodology documented in `docs/LEARNING_GUIDE.md`. |
-| 8. Document RAG | Chunk docs/issues; lexical retrieval; add pgvector embeddings only if useful. | Measured retrieval comparison shows where semantic search helps or doesn't; retrieval architecture documented in `docs/LEARNING_GUIDE.md`; ADR recorded. |
-| 9. Deployment and pilot | Docker, hosted API, auth/rate limits; later GitHub App/webhook and async queue. | A second person can use it safely; logs and failure states are inspectable; deployment guide and production hardening documented in `docs/LEARNING_GUIDE.md`. |
+| 0. Repo bootstrap | pyproject, config, lint/type/test tools, FastAPI health endpoint. | App starts locally; lint (`ruff`), type checks (`mypy`), and unit tests (`pytest`) pass; README has setup instructions; architecture diagrams, `docs/LEARNING_GUIDE.md`, and `docs/BUILD_LOG.md` updated; Phase 0 mentor review complete. |
+| 1. GitHub issue ingestion | Parse public issue URL, fetch issue metadata via an adapter, handle 404/rate limits/timeouts. | Mocked tests cover valid, malformed, missing and rate-limited issue cases; SSRF and PR defenses active; architecture diagrams updated; `docs/LEARNING_GUIDE.md` updated; ADR-001 recorded; `docs/BUILD_LOG.md` updated; Phase 1 mentor review complete. |
+| 2. Code search baseline | Obtain bounded repository snapshot; ripgrep search; AST symbol lookup; exact line snippets. | Fixture repository tests verify expected path/line hits; no code is executed; ripgrep fallback active; snapshot cache bounds enforced; architecture diagrams updated; `docs/LEARNING_GUIDE.md` updated; `docs/BUILD_LOG.md` updated; Phase 2 mentor review complete. |
+| 3. First end-to-end report | Call LLM with issue + retrieved evidence; return structured hypotheses/report. | One sample issue produces valid schema and source citations; errors are handled; prompt injection enclaves active; architecture diagrams updated; `docs/LEARNING_GUIDE.md` updated; ADR-002 recorded; `docs/BUILD_LOG.md` updated; Phase 3 mentor review complete. |
+| 4. Evidence validation | Verify path/range/commit; distinguish facts from inferences; add insufficient-evidence behavior. | Invalid citations cannot silently appear as verified evidence; citations verified against physical disk bytes; snapshot cache with atomic LRU bounds active; architecture diagrams updated; `docs/LEARNING_GUIDE.md` updated; ADR-003 and ADR-004 recorded; `docs/BUILD_LOG.md` updated; Phase 4 mentor review complete. |
+| 5. LangGraph workflow | Explicit nodes/state, bounded follow-up retrieval, tool tracing and stop conditions. | Graph tests cover success, tool failure, empty retrieval and loop cap; state machine and conditional routing documented in `docs/architecture/agent-workflow.md` and `docs/LEARNING_GUIDE.md`; ADR recorded; Phase 5 mentor review complete. |
+| 6. Persistence | PostgreSQL schema/migrations, run status, report retrieval. | Run survives restart; migrations work from a clean database; schema, models, and DB decisions documented in `docs/architecture/` and `docs/LEARNING_GUIDE.md`; ADR recorded; Phase 6 mentor review complete. |
+| 7. Evaluation harness | Curated cases, baseline metrics, machine-readable results and failure notes. | Curated benchmark dataset (`evals/cases.jsonl`) with retrospective leak-prevention (withholding fix PR/commits); automated metrics script emits results; evaluation methodology documented in `docs/architecture/testing-and-evaluation.md` and `docs/LEARNING_GUIDE.md`; Phase 7 mentor review complete. |
+| 8. Document RAG | Chunk docs/issues; lexical retrieval; add pgvector embeddings only if useful. | Measured retrieval comparison shows where semantic search helps or doesn't; chunking and hybrid ranking documented in `docs/architecture/` and `docs/LEARNING_GUIDE.md`; ADR recorded; Phase 8 mentor review complete. |
+| 9. Deployment and pilot | Docker, hosted API, auth/rate limits; later GitHub App/webhook and async queue. | A second person can use it safely; logs and failure states are inspectable; container setup and production hardening documented in `docs/architecture/` and `docs/LEARNING_GUIDE.md`; Phase 9 mentor review complete. |
 
 | SCOPE DISCIPLINE / Do not begin with a frontend, multiple agents, autonomous PRs, Kubernetes, Redis, or a vector database. First prove that one issue can become a useful, traceable report. Add each component only when a requirement justifies it. |
 | --- |
@@ -480,12 +498,12 @@ assistant. Follow docs/BUILD_SPECIFICATION.md as the product source of truth.
 
 WORKING RULES
 1. Do not implement the entire project in one pass. Work on one phase at a time.
-2. First inspect the existing repository and report its current state. Do not overwrite
-   existing work without explaining the conflict.
-3. Explain the implementation approach and architectural design before coding. Propose a short
-   implementation plan for the current phase, including files to add/edit, dependencies, risks,
-   and tests. Wait for approval if a major architecture decision, paid service, destructive action,
-   or scope expansion is needed.
+2. First inspect the existing repository, configuration, tests, and documentation, and report
+   its current state. Do not overwrite existing work without explaining the conflict.
+3. Explain the implementation approach and architectural design before coding, including
+   significant trade-offs. Propose a short implementation plan for the current phase, including
+   files to add/edit, dependencies to add, risks, and tests. Wait for approval if a major
+   architecture decision, paid service, destructive action, or scope expansion is needed.
 4. Prefer simple, explicit, typed, maintainable Python. Use small modules and dependency
    injection for GitHub and LLM clients.
 5. Never hard-code secrets. Create .env.example with placeholders and ensure .env is ignored.
@@ -500,11 +518,18 @@ WORKING RULES
    test results or confidence claims.
 10. Add tests with each behavior. Use mocks/fakes for network and LLM calls in unit tests.
     Do not make tests depend on live GitHub or a paid LLM account.
-11. Run relevant tests, lint and type checks after changes. Report exact commands and results;
-    do not say checks passed if they were not run.
-12. Maintain docs/LEARNING_GUIDE.md and docs/decisions/ synchronously with implementation:
-    - After coding, document the actual implementation in docs/LEARNING_GUIDE.md during the same phase
-      (never as an afterthought), acting as a senior engineer mentoring a junior developer. For every
+11. Run relevant tests, lint, and type checks after changes (`uv run ruff check .`, `uv run mypy src tests`,
+    `uv run pytest`). Report exact commands and actual results; do not say checks passed if they were not run.
+12. Strict Documentation Integrity & Anti-Hallucination Rule:
+    The coding agent is strictly prohibited from documenting planned functionality as implemented
+    functionality. Always clearly distinguish implemented, partially implemented, proposed, and planned
+    features across all documentation and diagrams.
+13. Maintain documentation synchronously during each phase (never as an afterthought):
+    - Update architecture diagrams in docs/architecture/ in the same phase as any change that alters
+      component boundaries, data models, or control flows. Maintain diagrams using the standard Mermaid
+      theme without custom theme colors or forced background fills, validating syntax and readability
+      across light and dark display modes. Clearly distinguish planned components without forcing background colors.
+    - Update docs/LEARNING_GUIDE.md acting as a senior engineer mentoring a junior developer. For every
       major feature, document: 1) What it does, 2) How it works step-by-step referencing actual file
       paths, classes, and functions, 3) Implementation decisions and alternatives considered, 4) Error
       handling and limitations, 5) Relevant tests and exact verification commands, 6) Beginner-friendly
@@ -512,33 +537,24 @@ WORKING RULES
       unimplemented features as planned rather than completed.
     - Record significant architectural or technical decisions in docs/decisions/ as numbered ADRs
       (e.g., ADR-001-github-api-client.md) using docs/decisions/ADR-TEMPLATE.md. Do not create an ADR for
-      every minor coding choice. Do not fabricate historical decisions; label retroactive records as
-      reconstructed.
-    - Update README.md and architecture docs when behavior, endpoints, or dependencies change.
-13. Finish each phase with a beginner-friendly mentor review covering:
+      every minor coding choice or documentation theme choice. Do not fabricate historical decisions; label
+      retroactive records as reconstructed.
+    - Maintain docs/BUILD_LOG.md whenever encountering and resolving a meaningful implementation issue,
+      bug, failing test, dependency conflict, architectural problem, or unexpected behavior. Record:
+      1) Symptom & objective, 2) Verified root cause with file references, 3) Fix and rationale, 4) Verification
+      commands and actual outputs, 5) Engineering lesson, 6) Regression test, 7) Alternatives & trade-offs.
+    - Do not duplicate the distinct responsibilities of the learning guide, architecture documentation,
+      ADRs, or build log.
+    - Update README.md when setup, commands, endpoints, or dependencies change.
+14. Finish each phase with a beginner-friendly mentor review covering:
     - What was built and where it fits in the architecture.
     - Why it was built that way, alternatives considered, and trade-offs made.
     - Failure modes, error handling, and known limitations.
     - Exact test and verification commands and their actual results.
     - Security considerations, what changed, and the proposed next phase.
-14. Do not add a dependency or infrastructure service without explaining why it is needed.
-15. If this specification has a conflict or ambiguity, identify it and recommend the smallest
+15. Do not add a dependency or infrastructure service without explaining why it is needed.
+16. If this specification has a conflict or ambiguity, identify it and recommend the smallest
     safe option instead of silently inventing scope.
-16. Maintain docs/BUILD_LOG.md.
-    Whenever you encounter and resolve a meaningful implementation issue, bug, failing test,
-    dependency conflict, architectural problem, or unexpected behavior:
-    1) Record the original symptom and what you were trying to do.
-    2) Investigate and document the verified root cause, including relevant files and code references.
-    3) Explain the fix and why it works.
-    4) Record the exact verification commands and their actual results.
-    5) Explain the engineering lesson in beginner-friendly language.
-    6) Add or identify a regression test where appropriate.
-    7) Briefly document alternatives and trade-offs when relevant.
-    Update the log after resolving the issue, not before verification. Do not invent failures or
-    claim tests passed unless they were run. Label unresolved causes as hypotheses. Do not log
-    every trivial typo or routine edit; prioritize meaningful learning opportunities.
-    At the end of each phase, summarize important issues fixed and point me to the corresponding
-    docs/BUILD_LOG.md entries.
 
 PRODUCT CONTRACT
 - Input: public GitHub issue URL.
@@ -563,26 +579,31 @@ without reporting the result and proposed next step.
 Implement Phase N from docs/BUILD_SPECIFICATION.md only.
 
 Before coding:
-- Explain the implementation approach and architectural design before writing code.
-- Restate the phase goal and acceptance criteria.
-- Inspect relevant existing code.
-- List files you intend to change and dependencies you intend to add.
-- Identify security/reliability edge cases.
+1. Inspect relevant existing code, configuration, tests, and documentation.
+2. Explain the implementation approach and architectural design before writing code, including significant trade-offs.
+3. Restate the phase goal and acceptance criteria.
+4. List files you intend to change and dependencies you intend to add (with explicit justification).
+5. Identify security/reliability edge cases.
 
 Then implement the smallest complete slice. Add or update unit tests with mocks, run them,
 run lint/type checks (`ruff`, `mypy`, `pytest`). Do not silently skip failing checks.
 
 After coding:
-- Document the actual implementation in `docs/LEARNING_GUIDE.md` (what it does, step-by-step
-  execution flow with files/classes/functions, implementation decisions, error handling,
-  tests, engineering concepts, trade-offs).
-- Record significant architectural decisions in `docs/decisions/` using `ADR-TEMPLATE.md`.
-- Maintain `docs/BUILD_LOG.md` whenever encountering meaningful bugs, verified root causes,
-  fixes, or debugging lessons.
+6. Update architecture diagrams in `docs/architecture/` affected by the implementation, adhering to the
+   standard Mermaid theme policy (no forced background fills or custom theme overrides; planned components
+   distinguished with dashed outlines).
+7. Update `docs/LEARNING_GUIDE.md` synchronously with implementation (what it does, step-by-step
+   execution flow with real files/classes/functions, implementation decisions, error handling,
+   tests, engineering concepts, trade-offs). Clearly label planned functionality as planned.
+8. Record significant architectural decisions in `docs/decisions/` using `ADR-TEMPLATE.md` (no ADRs
+   for trivial edits; label reconstructed rationales accurately).
+9. Maintain `docs/BUILD_LOG.md` whenever encountering meaningful bugs, verified root causes,
+   fixes, or debugging lessons.
+10. Run relevant tests, linting, type checks, and documentation validation.
 
 Finish with a beginner-friendly mentor review covering:
-- What was built and why it was built that way.
-- Alternatives considered and trade-offs made.
+- What was built and where it fits in the architecture.
+- Why it was built that way, alternatives considered, and trade-offs made.
 - Failure modes, error handling, and known limitations.
 - Exact test commands and actual results.
 - Security considerations and the next phase proposal.
