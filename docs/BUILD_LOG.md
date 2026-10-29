@@ -465,3 +465,75 @@ When adding automated guardrails and validation layers into an existing service 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Leave `verification_status="not_run"` as the default and require an explicit secondary API call `/v1/investigations/{run_id}/validate`.
 - *Trade-off*: Exposing unvalidated reports by default violates the core product contract ("every report is evidence-backed and verified before output"). Running deterministic validation directly within the service pipeline guarantees that invalid citations cannot silently escape to the API consumer.
+
+---
+
+### Entry 011: Unbounded Disk Space Accumulation via Orphaned `tempfile.mkdtemp` Snapshots
+- **Date**: 2026-10-29
+- **Phase**: Phase 4 / System Hardening
+- **Status**: Resolved (Major Architectural Bug Discovery)
+
+#### 1. Symptom & Objective
+During code inspection of [`InvestigationService.investigate_issue()`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py#L113-L128) and [`create_snapshot_from_zip()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L204), a critical resource leakage bug was uncovered:
+When investigating issues without a pre-supplied snapshot, the service downloaded repository zipballs and unpacked them into unmanaged directories created via `tempfile.mkdtemp(prefix="issuelens_snapshot_")`. After the investigation finished, these directories were never cleaned up, deleted, or cached.
+
+In a production environment processing continuous requests:
+- Each 20–50 MB repository snapshot remained indefinitely in the system's temporary directory.
+- Repeated investigations against the same repository and commit SHA repeatedly downloaded and extracted duplicate archives into new directories.
+- Over 10,000 investigations, this behavior would accumulate between 200 GB and 500 GB (or multiple terabytes if larger limit profiles are used) of orphaned files, inevitably crashing production worker nodes via disk space exhaustion (ENOSPC / Out of Disk Space).
+
+#### 2. Root Cause
+1. **Unmanaged Temporary Directory**: Unlike Python's `tempfile.TemporaryDirectory()`, `tempfile.mkdtemp()` does not provide automatic cleanup on context exit or process termination. Python's official documentation states: *"The user of `mkdtemp()` is responsible for deleting a temporary directory and its contents when done with it."*
+2. **Missing Service Lifecycle & Eviction**: The service returned `validated_report` at the end of the method without a `finally` block or cleanup hook.
+3. **Absence of Content-Addressed Caching**: Identical commit SHAs were downloaded repeatedly on every run, wasting upstream GitHub API quota, bandwidth, and local storage.
+
+#### 3. Fix
+Implemented a commit-pinned, content-addressed disk cache with atomic write guarantees and LRU (Least Recently Used) bounded pruning:
+1. **Application Configuration ([`src/issuelens/config.py`](file:///c:/Projects/Issuelens/src/issuelens/config.py))**:
+   - Added `snapshot_cache_dir` (default: `.cache/issuelens/snapshots`).
+   - Added `max_cached_snapshots` (default: 10 snapshots).
+   - Added `max_cache_total_bytes` (default: 500,000,000 bytes / 500 MB).
+2. **Atomic Cache Manager ([`src/issuelens/repository/snapshot.py`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py))**:
+   - Implemented `get_snapshot_cache_key()` generating safe filesystem paths: `{owner}__{repo}__{commit_sha}`.
+   - Implemented `get_cached_snapshot()` which validates snapshot directory integrity via `.snapshot_metadata.json` and updates `last_accessed_at` timestamps on cache hits.
+   - Implemented `cache_and_create_snapshot_from_zip()` with crash-resilient atomic staging (`.staging_...` directory moved to target only after complete extraction and metadata generation).
+   - Implemented `prune_snapshot_cache()` enforcing strict maximum snapshot count and total disk byte budget by evicting oldest accessed snapshots first.
+3. **Investigation Service Integration ([`src/issuelens/agent/service.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py))**:
+   - Checks `get_cached_snapshot()` before making network calls.
+   - On cache hit: reuses existing snapshot immediately with 0 downloads and 0 additional disk usage.
+   - On cache miss: downloads zipball and stores in the bounded cache, automatically pruning older entries.
+4. **Git Protection ([`.gitignore`](file:///c:/Projects/Issuelens/.gitignore))**: Added `.cache/` to ensure cached repositories are never committed.
+
+#### 4. Verification
+Ran complete automated test suite, including new dedicated cache unit tests:
+```powershell
+uv run pytest
+uv run ruff check .
+uv run mypy src tests
+```
+**Output**:
+```text
+tests\unit\test_snapshot_cache.py ........                               [100%]
+============================= 124 passed in 4.26s =============================
+All checks passed!
+Success: no issues found in 44 source files
+```
+
+#### 5. Engineering Lesson
+Temporary directory utilities like `tempfile.mkdtemp()` are dangerous in stateless or long-running backend services unless wrapped with explicit lifecycle management. When a service processes external resources (such as git repositories), combining **content-addressed immutability** (keying by commit SHA) with **bounded LRU cache eviction** eliminates redundant network overhead while guaranteeing a hard ceiling on storage consumption.
+
+#### 6. Regression Test
+- Dedicated test suite in [`tests/unit/test_snapshot_cache.py`](file:///c:/Projects/Issuelens/tests/unit/test_snapshot_cache.py):
+  - `test_get_cached_snapshot_miss_and_corruption`
+  - `test_cache_and_create_snapshot_success`
+  - `test_get_cached_snapshot_hit_and_timestamp_touch`
+  - `test_prune_snapshot_cache_lru_count_limit`
+  - `test_prune_snapshot_cache_size_budget`
+  - `test_staging_cleanup_on_extraction_failure`
+  - `test_investigation_service_end_to_end_caching`
+
+#### 7. Alternatives & Trade-offs
+- *Alternative 1: Ephemeral In-Memory or Immediate Deletion (`try...finally: shutil.rmtree`)*:
+  - *Trade-off*: Deleting snapshots immediately avoids storage leaks, but forces duplicate zipball downloads and extra GitHub API quota usage whenever multiple issues against the same repository are investigated in succession.
+- *Alternative 2: Global Git Clone Directory*:
+  - *Trade-off*: Keeping full git clones requires executing git binary commands or libgit2, consumes vastly more disk space for git history/objects, and violates the minimal-dependency product boundary. The commit-pinned zipball cache with LRU limits provides the optimal trade-off of speed, bounded storage, and architectural simplicity.

@@ -29,10 +29,22 @@ IssueLens is an evidence-backed AI debugging assistant for public GitHub bug rep
 
 ### Phase 2: Code Search Baseline (Complete)
 - Bounded repository snapshots (`RepoSnapshot`) pinned to specific commit SHAs with path traversal protection, size limits (50MB repository, 500KB file), and automatic exclusions (`.git`, `.venv`, `.env`, binary files).
+- Commit-pinned, content-addressed disk cache with atomic staging and bounded LRU pruning to prevent unbounded disk accumulation.
 - Deterministic lexical code search (`search_code`) with ripgrep integration and pure-Python regex fallback.
 - Python AST symbol parsing (`parse_python_symbols`) without code execution, extracting classes, functions, and methods with exact 1-indexed line spans.
 - Enclosing symbol expansion and safe line-numbered snippet extraction (`read_snippet`).
 - Fixture test suite with mock repository (`tests/fixtures/sample_repo/`).
+
+### Phase 3: First End-to-End Report (Complete)
+- LangChain adapter with structured output producing Pydantic-validated `InvestigationReportPayload`.
+- Orchestrator service (`InvestigationService`) linking GitHub issue ingestion, lexical code search, and LLM reasoning.
+- Strict prompt injection defenses isolating untrusted issue text and code comments into quarantined user blocks.
+- End-to-end REST endpoint (`POST /v1/investigations/run`).
+
+### Phase 4: Evidence Validation & Citation Guardrails (Complete)
+- Deterministic evidence citation validation (`validate_investigation_report`, `validate_citation`) confirming referenced paths, line numbers, commit SHAs, and excerpts against snapshot source code.
+- Grounding validation ensuring hypotheses cite verified evidence items; automatic confidence demotion for ungrounded hypotheses.
+- Insufficient-evidence guardrails detecting empty retrievals or weak support.
 
 ---
 
@@ -82,6 +94,7 @@ uv run uvicorn issuelens.main:app --reload --host 127.0.0.1 --port 8000
 - **Readiness probe**: `GET http://127.0.0.1:8000/readyz`
 - **Ingest Issue Context**: `POST http://127.0.0.1:8000/v1/issues/ingest`
 - **Create Investigation**: `POST http://127.0.0.1:8000/v1/investigations`
+- **Execute Investigation**: `POST http://127.0.0.1:8000/v1/investigations/run`
 - **Get Investigation Status**: `GET http://127.0.0.1:8000/v1/investigations/{run_id}`
 - **Interactive API Documentation (Swagger)**: `GET http://127.0.0.1:8000/docs`
 
@@ -124,11 +137,21 @@ issuelens/
       README.md               # ADR guidelines, criteria, and index
       ADR-TEMPLATE.md         # Standardized ADR template
       ADR-001-github-api-client.md
+      ADR-002-llm-provider-adapter-and-report-generation.md
+      ADR-003-deterministic-citation-validation-and-insufficient-evidence.md
+      ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md
   src/
     issuelens/
       __init__.py
       main.py                 # FastAPI application factory & lifespan
       config.py               # Pydantic Settings & environment validation
+      agent/
+        __init__.py
+        llm.py                # LLM provider adapter with LangChain
+        prompts.py            # Prompt engineering & prompt-injection quarantine
+        report.py             # Pydantic models for reports and evidence
+        service.py            # End-to-end investigation orchestrator
+        validator.py          # Deterministic citation validation & insufficient-evidence logic
       api/
         __init__.py
         routes.py             # Health, ingestion, and investigation endpoints
@@ -147,7 +170,7 @@ issuelens/
         code_search.py        # Ripgrep search, Python fallback, CodeHit schema
         python_symbols.py     # AST-based symbol parsing and line range extraction
         snippets.py           # Safe line-numbered excerpt reader
-        snapshot.py           # Bounded repository snapshot and path security
+        snapshot.py           # Bounded repository snapshot and commit-pinned cache
   tests/
     fixtures/
       sample_repo/            # Controlled mock repository for deterministic testing
@@ -157,12 +180,19 @@ issuelens/
       test_github_client.py   # GitHub adapter tests with mocked HTTP transport
       test_github_models.py   # GitHub data model serialization tests
       test_health.py          # Liveness & readiness endpoints tests
+      test_investigation_api.py # Investigation REST API endpoint tests
+      test_investigation_service.py # Investigation service orchestrator tests
       test_issue_api.py       # REST API endpoints tests
+      test_llm_client.py      # LLM provider adapter tests
       test_logging.py         # Secret redaction tests
+      test_prompts.py         # Prompt builder & injection defense tests
       test_python_symbols.py  # AST symbol extraction and error resilience tests
+      test_report_schema.py   # Pydantic report serialization tests
       test_snapshot.py        # Snapshot path safety and traversal tests
+      test_snapshot_cache.py  # Commit-pinned snapshot cache & LRU pruning tests
       test_snippets.py        # Line-numbered snippet reader tests
       test_url_parser.py      # Issue URL parsing & edge cases tests
+      test_validator.py       # Deterministic citation validation tests
 ```
 
 ---
@@ -171,8 +201,8 @@ issuelens/
 
 The project maintains a structured documentation ecosystem inside `docs/`:
 
-- **[`docs/BUILD_SPECIFICATION.md`](file:///c:/Projects/Issuelens/docs/BUILD_SPECIFICATION.md)**: Product source of truth, architecture overview, security boundaries, and phased build plan with definitions of done.
-- **[`docs/LEARNING_GUIDE.md`](file:///c:/Projects/Issuelens/docs/LEARNING_GUIDE.md)**: Senior-to-junior engineering walkthrough explaining how each implemented feature works step-by-step, including design choices, error handling, tests, core concepts, and trade-offs.
-- **[`docs/BUILD_LOG.md`](file:///c:/Projects/Issuelens/docs/BUILD_LOG.md)**: Engineering journal documenting verified root causes, code fixes, regression tests, and lessons learned from real implementation bugs.
-- **[`docs/decisions/`](file:///c:/Projects/Issuelens/docs/decisions/)**: Architecture Decision Records (ADRs) tracking significant architectural choices, alternatives considered, and conditions for reconsideration.
-- **[`AGENTS.md`](file:///c:/Projects/Issuelens/AGENTS.md)**: AI agent rules and safety boundaries maintained at the repository root for automatic discovery by coding agents.
+- **[`docs/BUILD_SPECIFICATION.md`](docs/BUILD_SPECIFICATION.md)**: Product source of truth, architecture overview, security boundaries, and phased build plan with definitions of done.
+- **[`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md)**: Senior-to-junior engineering walkthrough explaining how each implemented feature works step-by-step, including design choices, error handling, tests, core concepts, and trade-offs.
+- **[`docs/BUILD_LOG.md`](docs/BUILD_LOG.md)**: Engineering journal documenting verified root causes, code fixes, regression tests, and lessons learned from real implementation bugs.
+- **[`docs/decisions/`](docs/decisions/)**: Architecture Decision Records (ADRs) tracking significant architectural choices, alternatives considered, and conditions for reconsideration.
+- **[`AGENTS.md`](AGENTS.md)**: AI agent rules and safety boundaries maintained at the repository root for automatic discovery by coding agents.

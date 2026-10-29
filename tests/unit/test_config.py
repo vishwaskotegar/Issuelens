@@ -17,6 +17,9 @@ def test_default_settings() -> None:
     assert settings.max_tool_calls == 12
     assert settings.max_retrieval_rounds == 3
     assert settings.max_report_tokens == 2500
+    assert settings.snapshot_cache_dir == ".cache/issuelens/snapshots"
+    assert settings.max_cached_snapshots == 10
+    assert settings.max_cache_total_bytes == 500_000_000
 
 
 def test_invalid_settings_limits() -> None:

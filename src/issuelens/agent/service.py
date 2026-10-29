@@ -3,6 +3,7 @@
 import json
 import re
 import uuid
+from pathlib import Path
 from typing import Any
 
 from issuelens.agent.llm import LLMClientProtocol, get_llm_client
@@ -19,7 +20,11 @@ from issuelens.github.client import GitHubClient, GitHubClientProtocol
 from issuelens.github.models import GitHubIssueContext
 from issuelens.github.url_parser import IssueTarget, parse_issue_target
 from issuelens.repository.code_search import search_code
-from issuelens.repository.snapshot import RepoSnapshot, create_snapshot_from_zip
+from issuelens.repository.snapshot import (
+    RepoSnapshot,
+    cache_and_create_snapshot_from_zip,
+    get_cached_snapshot,
+)
 
 logger = get_logger("issuelens.agent.service")
 
@@ -112,20 +117,44 @@ class InvestigationService:
         # 2. Acquire repository snapshot if not supplied
         active_snapshot = snapshot
         if active_snapshot is None:
-            logger.info("Downloading repository archive for %s at %s", target, context.commit_sha)
-            zip_bytes = await self.github_client.download_archive(
+            cache_dir = Path(self.settings.snapshot_cache_dir)
+            active_snapshot = get_cached_snapshot(
+                cache_dir=cache_dir,
                 owner=target.owner,
                 repo=target.repo,
-                ref=context.commit_sha,
-                max_bytes=self.settings.max_repository_bytes,
-            )
-            active_snapshot = create_snapshot_from_zip(
-                zip_bytes=zip_bytes,
-                repo_full_name=context.repository,
                 commit_sha=context.commit_sha,
-                max_repository_bytes=self.settings.max_repository_bytes,
                 max_file_bytes=self.settings.max_file_bytes,
             )
+            if active_snapshot is not None:
+                logger.info(
+                    "Reusing cached repository snapshot for %s at %s (%s)",
+                    target,
+                    context.commit_sha,
+                    active_snapshot.root_path,
+                )
+            else:
+                logger.info(
+                    "Downloading repository archive for %s at %s",
+                    target,
+                    context.commit_sha,
+                )
+                zip_bytes = await self.github_client.download_archive(
+                    owner=target.owner,
+                    repo=target.repo,
+                    ref=context.commit_sha,
+                    max_bytes=self.settings.max_repository_bytes,
+                )
+                active_snapshot = cache_and_create_snapshot_from_zip(
+                    cache_dir=cache_dir,
+                    owner=target.owner,
+                    repo=target.repo,
+                    commit_sha=context.commit_sha,
+                    zip_bytes=zip_bytes,
+                    max_repository_bytes=self.settings.max_repository_bytes,
+                    max_file_bytes=self.settings.max_file_bytes,
+                    max_cached_snapshots=self.settings.max_cached_snapshots,
+                    max_cache_total_bytes=self.settings.max_cache_total_bytes,
+                )
 
         # 3. Deterministic lexical and AST code search
         search_query = compile_search_query(context)

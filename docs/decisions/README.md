@@ -63,6 +63,7 @@ Write an ADR for **significant architectural, infrastructure, or technical desig
 | [ADR-001](file:///c:/Projects/Issuelens/docs/decisions/ADR-001-github-api-client.md) | GitHub REST API Client Adapter with Dependency Injection Protocol | Accepted | 2026-10-26 | Phase 1 | Reconstructed |
 | [ADR-002](file:///c:/Projects/Issuelens/docs/decisions/ADR-002-llm-provider-adapter-and-report-generation.md) | LangChain Provider Adapter with Structured Output and Snapshot Provenance Binding | Accepted | 2026-10-29 | Phase 3 | Original |
 | [ADR-003](file:///c:/Projects/Issuelens/docs/decisions/ADR-003-deterministic-citation-validation-and-insufficient-evidence.md) | Deterministic Evidence Citation Validation and Insufficient-Evidence Guardrails | Accepted | 2026-10-29 | Phase 4 | Original |
+| [ADR-004](file:///c:/Projects/Issuelens/docs/decisions/ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md) | Commit-Pinned Repository Snapshot Disk Cache with Bounded LRU Eviction | Accepted | 2026-10-29 | Phase 4 | Original |
 
 ---
 

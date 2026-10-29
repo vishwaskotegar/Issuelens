@@ -438,15 +438,16 @@ Execution flow (`POST /v1/investigations`):
 
 ---
 
-### Feature 2.1: Bounded Repository Snapshots & Traversal Defense
+### Feature 2.1: Bounded Repository Snapshots, Cache Management & Traversal Defense
 
 #### 1. What it does
-Provides a secure container for inspecting repository files at a pinned commit SHA. It enforces safety boundaries: rejecting directory traversal attacks, excluding confidential files (`.env`, secrets, `.git`), ignoring binary files, and strictly capping file and repository size limits.
+Provides a secure, bounded container for inspecting repository files at a pinned commit SHA. It enforces safety boundaries: rejecting directory traversal attacks, excluding confidential files (`.env`, secrets, `.git`), ignoring binary files, capping file and archive size limits, and maintaining a **commit-pinned disk cache with automatic LRU pruning** to prevent disk space exhaustion across thousands of runs.
 
 #### 2. How it works
 - **Source file**: [`src/issuelens/repository/snapshot.py`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py)
 - **Class**: [`RepoSnapshot`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L74-L200)
 - **Key Methods**: [`safe_resolve()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L92-L136), [`is_path_excluded()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L138-L147), [`list_source_files()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L149-L190), [`is_binary_file()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L63-L70)
+- **Cache Functions**: [`get_cached_snapshot()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py), [`cache_and_create_snapshot_from_zip()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py), [`prune_snapshot_cache()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py)
 
 Execution flow (`safe_resolve(relative_path)`):
 1. **Absolute Path Check**: Rejects paths starting with `/`, `\`, or Windows drive letters (`C:`).
@@ -454,6 +455,12 @@ Execution flow (`safe_resolve(relative_path)`):
 3. **Containment Check**: Verifies `resolved.relative_to(self.root_path)`. If the path traverses outside (e.g., `../../etc/passwd`), Python raises `ValueError`, which `safe_resolve` catches and raises `SafetyViolationError`.
 4. **Existence & Type**: Verifies path exists and is a regular file.
 5. **Size Limit Check**: Verifies file size is `<= max_file_bytes` (default 500 KB).
+
+Execution flow for Commit-Pinned Cache:
+1. **Cache Lookup**: Before calling GitHub's download API, the service computes `get_snapshot_cache_key(owner, repo, commit_sha)` (`{owner}__{repo}__{commit_sha}`).
+2. **Integrity Check**: Checks if `.snapshot_metadata.json` exists in `.cache/issuelens/snapshots/{key}`. If present, it updates `last_accessed_at` and reuses the snapshot instantly.
+3. **Crash-Resilient Extraction**: On cache miss, streams the zipball, extracts it into a staging folder (`.staging_{key}_{uuid}`), writes verified metadata, and atomically renames staging to the target cache directory.
+4. **LRU Pruning**: Scans existing snapshots and evicts the least recently accessed directories whenever snapshot count exceeds `max_cached_snapshots` (default: 10) or total disk bytes exceed `max_cache_total_bytes` (default: 500 MB).
 
 `is_path_excluded(file_path)`:
 - Ignores `.git`, `.venv`, `__pycache__`, `node_modules`, `build`, `dist`.
@@ -463,14 +470,17 @@ Execution flow (`safe_resolve(relative_path)`):
 - Reads initial 1024 bytes; checks for null bytes (`b"\x00"`).
 
 #### 3. Implementation decisions
-- **Chosen approach**: Strict path resolution using `pathlib.Path.resolve()` and `relative_to()`.
+- **Chosen approach**: Strict path containment resolution + Content-Addressed commit-pinned disk cache with LRU limits.
 - **Alternatives considered**:
   - Simple string concatenation `root + "/" + path`: Trivial to bypass using `../`.
-  - Shell `tar` / `zip` commands: Subject to command injection and zip-slip attacks.
+  - Ephemeral extraction with unmanaged `tempfile.mkdtemp()`: Discovered as a major architectural leak accumulating hundreds of gigabytes across repeated runs.
+- **See ADR**: [`docs/decisions/ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md`](file:///c:/Projects/Issuelens/docs/decisions/ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md)
+- **See Build Log**: [`docs/BUILD_LOG.md: Entry 011`](file:///c:/Projects/Issuelens/docs/BUILD_LOG.md#entry-011-unbounded-disk-space-accumulation-via-orphaned-tempfilemkdtemp-snapshots) for discovery, root cause analysis, and resolution.
 
 #### 4. Error handling
 - Raises `SafetyViolationError` on traversal attempts, drive letters, non-regular files, or oversized files.
-- Raises `ResourceNotFoundError` if file does not exist in snapshot.
+- Automatically cleans up staging directories if extraction or decompression fails.
+- Automatically detects and purges corrupted cache folders missing `.snapshot_metadata.json`.
 
 #### 5. Testing
 - **Test files**: [`tests/unit/test_snapshot.py`](file:///c:/Projects/Issuelens/tests/unit/test_snapshot.py), [`tests/unit/test_snapshot_cache.py`](file:///c:/Projects/Issuelens/tests/unit/test_snapshot_cache.py)

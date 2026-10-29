@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     )
     max_repository_bytes: int = Field(
         default=50_000_000,
-        ge=1_000,
+        ge=1000,
         description="Maximum allowed repository archive size in bytes (default: 50MB)",
     )
     max_files_scanned: int = Field(
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     )
     max_file_bytes: int = Field(
         default=500_000,
-        ge=1_000,
+        ge=1000,
         description="Maximum individual file size to read or search in bytes",
     )
     max_tool_calls: int = Field(
@@ -64,6 +64,21 @@ class Settings(BaseSettings):
         default=2500,
         ge=100,
         description="Maximum allowed token estimate for generated reports",
+    )
+    snapshot_cache_dir: str = Field(
+        default=".cache/issuelens/snapshots",
+        description="Directory path for storing commit-pinned repository snapshots",
+    )
+    max_cached_snapshots: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum number of distinct repository snapshots to keep in cache",
+    )
+    max_cache_total_bytes: int = Field(
+        default=500_000_000,
+        ge=10_000,
+        description="Maximum total bytes across all cached snapshots (default: 500MB)",
     )
 
     # Service & Client Secrets (Placeholders for upcoming phases)
