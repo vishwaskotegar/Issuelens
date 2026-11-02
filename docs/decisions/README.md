@@ -29,7 +29,7 @@ Create an ADR when a decision **materially affects**:
 
 ### Do NOT create an ADR for:
 - Trivial implementation choices (e.g., naming a variable, helper function splits).
-- Routine bug fixes or tactical patches (use [`docs/BUILD_LOG.md`](file:///c:/Projects/Issuelens/docs/BUILD_LOG.md) for root-cause analyses and debugging lessons).
+- Routine bug fixes or tactical patches (use [`docs/BUILD_LOG.md`](../BUILD_LOG.md) for root-cause analyses and debugging lessons).
 - Standard linting rules or code formatting adjustments.
 - Routine dependency version bumps that do not change system behavior.
 
@@ -37,7 +37,7 @@ Create an ADR when a decision **materially affects**:
 
 ## 3. How to Create and Maintain an ADR
 
-1. **Copy the Template**: Copy [`docs/decisions/ADR-TEMPLATE.md`](file:///c:/Projects/Issuelens/docs/decisions/ADR-TEMPLATE.md) to a new file in this directory.
+1. **Copy the Template**: Copy [`docs/decisions/ADR-TEMPLATE.md`](ADR-TEMPLATE.md) to a new file in this directory.
 2. **Assign the Next Sequential Number**: Follow the naming convention `ADR-XXX-<kebab-case-title>.md` using three digits, for example:
    - `ADR-001-github-api-client.md`
    - `ADR-002-code-search-strategy.md`
@@ -76,10 +76,10 @@ Create an ADR when a decision **materially affects**:
 
 | ADR | Title | Status | Date | Phase | Rationale Type |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| [**ADR-001**](file:///c:/Projects/Issuelens/docs/decisions/ADR-001-github-api-client.md) | GitHub REST API Client Adapter with Dependency Injection Protocol | Accepted | 2026-10-26 | Phase 1 | Reconstructed |
-| [**ADR-002**](file:///c:/Projects/Issuelens/docs/decisions/ADR-002-llm-provider-adapter-and-report-generation.md) | LangChain Provider Adapter with Structured Output and Snapshot Provenance Binding | Accepted | 2026-10-29 | Phase 3 | Original |
-| [**ADR-003**](file:///c:/Projects/Issuelens/docs/decisions/ADR-003-deterministic-citation-validation-and-insufficient-evidence.md) | Deterministic Evidence Citation Validation and Insufficient-Evidence Guardrails | Accepted | 2026-10-29 | Phase 4 | Original |
-| [**ADR-004**](file:///c:/Projects/Issuelens/docs/decisions/ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md) | Commit-Pinned Repository Snapshot Disk Cache with Bounded LRU Eviction | Accepted | 2026-10-29 | Phase 4 | Original |
+| [**ADR-001**](ADR-001-github-api-client.md) | GitHub REST API Client Adapter with Dependency Injection Protocol | Accepted | 2026-10-26 | Phase 1 | Reconstructed |
+| [**ADR-002**](ADR-002-llm-provider-adapter-and-report-generation.md) | LangChain Provider Adapter with Structured Output and Snapshot Provenance Binding | Accepted | 2026-10-29 | Phase 3 | Original |
+| [**ADR-003**](ADR-003-deterministic-citation-validation-and-insufficient-evidence.md) | Deterministic Evidence Citation Validation and Insufficient-Evidence Guardrails | Accepted | 2026-10-29 | Phase 4 | Original |
+| [**ADR-004**](ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md) | Commit-Pinned Repository Snapshot Disk Cache with Bounded LRU Eviction | Accepted | 2026-10-29 | Phase 4 | Original |
 
 ---
 

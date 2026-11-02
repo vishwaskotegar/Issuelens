@@ -75,14 +75,14 @@ tests/
 ### Key Test Boundaries & Test Doubles
 
 1. **GitHub Network Boundary**:
-   - In [`tests/unit/test_github_client.py`](file:///c:/Projects/Issuelens/tests/unit/test_github_client.py), network requests are intercepted using `httpx.MockTransport`. No HTTP sockets are opened; tests provide synthetic responses for `/issues`, `/comments`, `/repos`, `/commits`, and zipball streaming.
-   - For higher-level route and service tests, `FakeGitHubClient` implements [`GitHubClientProtocol`](file:///c:/Projects/Issuelens/src/issuelens/github/client.py#L32), returning predetermined [`GitHubIssueContext`](file:///c:/Projects/Issuelens/src/issuelens/github/models.py#L79) structures without serialization overhead.
+   - In [`tests/unit/test_github_client.py`](../../tests/unit/test_github_client.py), network requests are intercepted using `httpx.MockTransport`. No HTTP sockets are opened; tests provide synthetic responses for `/issues`, `/comments`, `/repos`, `/commits`, and zipball streaming.
+   - For higher-level route and service tests, `FakeGitHubClient` implements [`GitHubClientProtocol`](../../src/issuelens/github/client.py#L32), returning predetermined [`GitHubIssueContext`](../../src/issuelens/github/models.py#L79) structures without serialization overhead.
 2. **LLM Provider Boundary**:
-   - In [`tests/unit/test_llm_client.py`](file:///c:/Projects/Issuelens/tests/unit/test_llm_client.py) and service tests, LLM interactions are decoupled via [`LLMClientProtocol`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py#L23).
-   - Tests inject [`MockLLMClient`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py#L87), which records prompts and returns deterministic, valid (or deliberately malformed) [`InvestigationReportPayload`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L87) objects.
+   - In [`tests/unit/test_llm_client.py`](../../tests/unit/test_llm_client.py) and service tests, LLM interactions are decoupled via [`LLMClientProtocol`](../../src/issuelens/agent/llm.py#L23).
+   - Tests inject [`MockLLMClient`](../../src/issuelens/agent/llm.py#L87), which records prompts and returns deterministic, valid (or deliberately malformed) [`InvestigationReportPayload`](../../src/issuelens/agent/report.py#L87) objects.
 3. **Repository Filesystem Boundary**:
-   - Tests execute against a committed fixture repository at [`tests/fixtures/sample_repo/`](file:///c:/Projects/Issuelens/tests/fixtures/sample_repo/).
-   - Includes edge case files: [`broken_syntax.py`](file:///c:/Projects/Issuelens/tests/fixtures/sample_repo/sample_pkg/broken_syntax.py) (verifies that `ast.parse` handles `SyntaxError` without crashing) and a fixture `.env` (verifies that secret files are excluded from searches and file listings).
+   - Tests execute against a committed fixture repository at [`tests/fixtures/sample_repo/`](../../tests/fixtures/sample_repo).
+   - Includes edge case files: [`broken_syntax.py`](../../tests/fixtures/sample_repo/sample_pkg/broken_syntax.py) (verifies that `ast.parse` handles `SyntaxError` without crashing) and a fixture `.env` (verifies that secret files are excluded from searches and file listings).
 
 ---
 

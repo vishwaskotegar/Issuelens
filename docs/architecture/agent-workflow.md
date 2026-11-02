@@ -6,7 +6,7 @@ This document details the internal agent workflow of IssueLens, contrasting the 
 
 ## 1. Implemented Workflow: Synchronous Pipeline (Phases 3–4)
 
-In the current implementation, the agent logic is orchestrated by [`InvestigationService`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py) in [`src/issuelens/agent/service.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py). It coordinates deterministic context gathering, lexical/AST code search, prompt assembly, structured LLM generation, and physical citation validation.
+In the current implementation, the agent logic is orchestrated by [`InvestigationService`](../../src/issuelens/agent/service.py) in [`src/issuelens/agent/service.py`](../../src/issuelens/agent/service.py). It coordinates deterministic context gathering, lexical/AST code search, prompt assembly, structured LLM generation, and physical citation validation.
 
 ### Flow Diagram
 
@@ -46,18 +46,18 @@ flowchart TD
 
 ### Execution Steps & Participating Symbols
 
-1. **Context Ingestion**: Calls [`GitHubClient.fetch_issue_context()`](file:///c:/Projects/Issuelens/src/issuelens/github/client.py#L318), extracting issue title, body, comments, repository visibility, and resolving the default branch head to a stable 40-character commit SHA.
-2. **Snapshot Acquisition & Cache Check**: Calls [`get_cached_snapshot()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L210). On cache hit, reuses the local snapshot immediately without network calls. On cache miss, downloads the repository zipball, extracts it atomically into `.cache/issuelens/snapshots/`, and enforces LRU disk limits via [`prune_snapshot_cache()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L250).
-3. **Query Compilation**: [`compile_search_query()`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py#L60) combines issue title, the first 1500 characters of the issue body, and up to 3 comments (500 chars each).
-4. **Deterministic Code Search**: [`search_code()`](file:///c:/Projects/Issuelens/src/issuelens/repository/code_search.py#L150) runs ripgrep (or pure-Python regex fallback) against the snapshot root, identifies matched line ranges, and expands hits to their enclosing AST symbols using [`expand_hit_to_enclosing_symbol()`](file:///c:/Projects/Issuelens/src/issuelens/repository/python_symbols.py#L168).
-5. **Evidence Formulation**: Converts code hits into typed [`EvidenceItem`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L12) records assigned unique IDs (`ev_1`, `ev_2`, etc.) with repository-relative paths and exact line coordinates.
-6. **Prompt Assembly**: [`build_investigation_messages()`](file:///c:/Projects/Issuelens/src/issuelens/agent/prompts.py#L125) formats untrusted text into delimited XML enclaves (`<untrusted_issue_data>`, `<untrusted_repository_evidence>`) and attaches system directives instructing the model to cite only provided evidence IDs.
-7. **Structured LLM Inference**: [`LangChainLLMClient.generate_report_payload()`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py#L45) sends the message payload to the configured LLM provider using LangChain's `.with_structured_output(InvestigationReportPayload)`.
-8. **Provenance Binding**: [`InvestigationReport.from_payload()`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py#L190) combines the LLM's analytical payload with the immutable commit SHA, issue coordinates, and verified evidence list.
-9. **Deterministic Citation Validation**: [`validate_investigation_report()`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py#L257) executes physical file checks against the disk snapshot:
+1. **Context Ingestion**: Calls [`GitHubClient.fetch_issue_context()`](../../src/issuelens/github/client.py#L318), extracting issue title, body, comments, repository visibility, and resolving the default branch head to a stable 40-character commit SHA.
+2. **Snapshot Acquisition & Cache Check**: Calls [`get_cached_snapshot()`](../../src/issuelens/repository/snapshot.py#L210). On cache hit, reuses the local snapshot immediately without network calls. On cache miss, downloads the repository zipball, extracts it atomically into `.cache/issuelens/snapshots/`, and enforces LRU disk limits via [`prune_snapshot_cache()`](../../src/issuelens/repository/snapshot.py#L250).
+3. **Query Compilation**: [`compile_search_query()`](../../src/issuelens/agent/service.py#L60) combines issue title, the first 1500 characters of the issue body, and up to 3 comments (500 chars each).
+4. **Deterministic Code Search**: [`search_code()`](../../src/issuelens/repository/code_search.py#L150) runs ripgrep (or pure-Python regex fallback) against the snapshot root, identifies matched line ranges, and expands hits to their enclosing AST symbols using [`expand_hit_to_enclosing_symbol()`](../../src/issuelens/repository/python_symbols.py#L168).
+5. **Evidence Formulation**: Converts code hits into typed [`EvidenceItem`](../../src/issuelens/agent/report.py#L12) records assigned unique IDs (`ev_1`, `ev_2`, etc.) with repository-relative paths and exact line coordinates.
+6. **Prompt Assembly**: [`build_investigation_messages()`](../../src/issuelens/agent/prompts.py#L125) formats untrusted text into delimited XML enclaves (`<untrusted_issue_data>`, `<untrusted_repository_evidence>`) and attaches system directives instructing the model to cite only provided evidence IDs.
+7. **Structured LLM Inference**: [`LangChainLLMClient.generate_report_payload()`](../../src/issuelens/agent/llm.py#L45) sends the message payload to the configured LLM provider using LangChain's `.with_structured_output(InvestigationReportPayload)`.
+8. **Provenance Binding**: [`InvestigationReport.from_payload()`](../../src/issuelens/agent/report.py#L190) combines the LLM's analytical payload with the immutable commit SHA, issue coordinates, and verified evidence list.
+9. **Deterministic Citation Validation**: [`validate_investigation_report()`](../../src/issuelens/agent/validator.py#L257) executes physical file checks against the disk snapshot:
    - Verifies file exists in snapshot.
    - Verifies line numbers are within bounds (`1 <= start_line <= end_line <= total_lines`).
-   - Normalizes and compares physical excerpt bytes to the claimed excerpt using [`read_snippet()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snippets.py#L7).
+   - Normalizes and compares physical excerpt bytes to the claimed excerpt using [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7).
    - Prunes invalid citations from `report.evidence`.
    - Demotes ungrounded hypotheses to `"low"` confidence.
    - Sets `verification_status` to `"verified"` (if all citations match) or triggers `[INSUFFICIENT EVIDENCE]` mode (if zero citations verify).
@@ -141,14 +141,14 @@ class InvestigationState(TypedDict):
 
 ### Prompt Engineering & Anti-Injection Architecture
 
-The system prompt ([`SYSTEM_PROMPT`](file:///c:/Projects/Issuelens/src/issuelens/agent/prompts.py#L11)) enforces three core behavioral invariants:
+The system prompt ([`SYSTEM_PROMPT`](../../src/issuelens/agent/prompts.py#L11)) enforces three core behavioral invariants:
 1. **Passive Data Boundary**: All external text is quarantined inside `<untrusted_issue_data>` and `<untrusted_repository_evidence>` XML tags. The model is explicitly forbidden from obeying instructions embedded inside issue descriptions or code comments.
 2. **Citation Integrity Directive**: The model must cite existing `evidence_id` values from the provided evidence block. Fabricating file paths, line ranges, or commit hashes is explicitly prohibited.
 3. **Non-Execution Invariant**: The model must never claim that unit tests or regression tests ran or passed. In this environment, repository tests are never executed (`verification_status="not_run"`).
 
 ### Core Schema Hierarchy
 
-The data contracts in [`src/issuelens/agent/report.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py) strictly separate analytical reasoning from authoritative provenance:
+The data contracts in [`src/issuelens/agent/report.py`](../../src/issuelens/agent/report.py) strictly separate analytical reasoning from authoritative provenance:
 
 ```mermaid
 classDiagram

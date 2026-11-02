@@ -65,9 +65,9 @@
 ## 6. Implementation References
 *Which source files, classes, functions, models, configuration settings, or tests realize this decision?*
 
-- **Primary Implementation**: [`src/issuelens/...`](file:///c:/Projects/Issuelens/src/issuelens/...)
-- **Configuration Settings**: [`src/issuelens/config.py`](file:///c:/Projects/Issuelens/src/issuelens/config.py)
-- **Unit & Integration Tests**: [`tests/unit/...`](file:///c:/Projects/Issuelens/tests/unit/...)
+- **Primary Implementation**: [`src/issuelens/...`](../../src/issuelens...)
+- **Configuration Settings**: [`src/issuelens/config.py`](../../src/issuelens/config.py)
+- **Unit & Integration Tests**: [`tests/unit/...`](../../tests/unit...)
 
 ---
 
@@ -84,5 +84,5 @@ Revisit this decision if:
 ## 8. Related ADRs
 *Which other Architecture Decision Records relate to, depend upon, or are affected by this decision?*
 
-- [ADR-001: GitHub REST API Client Adapter](file:///c:/Projects/Issuelens/docs/decisions/ADR-001-github-api-client.md): [Example relationship: Precedes / Complements / Supersedes]
+- [ADR-001: GitHub REST API Client Adapter](ADR-001-github-api-client.md): [Example relationship: Precedes / Complements / Supersedes]
 - None (if standalone)

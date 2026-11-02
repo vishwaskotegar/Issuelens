@@ -11,7 +11,7 @@
 ## 1. Context and Problem
 IssueLens investigates public GitHub issues by retrieving code snapshots pinned to verified commit SHAs. In Phase 2 and 3, snapshots were extracted via `tempfile.mkdtemp(prefix="issuelens_snapshot_")`.
 
-During code inspection and scalability review of [`InvestigationService.investigate()`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py#L83) and [`create_snapshot_from_zip()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L290), a critical production hazard was discovered:
+During code inspection and scalability review of [`InvestigationService.investigate()`](../../src/issuelens/agent/service.py#L83) and [`create_snapshot_from_zip()`](../../src/issuelens/repository/snapshot.py#L290), a critical production hazard was discovered:
 1. `tempfile.mkdtemp()` creates directories that are never cleaned up by the Python runtime or operating system.
 2. The service returned generated reports without a cleanup lifecycle.
 3. Every investigation downloaded and unpacked archives from scratch, even when querying multiple issues for the exact same repository and commit SHA.
@@ -31,12 +31,12 @@ We implement a **Commit-Pinned, Content-Addressed Disk Cache with Bounded LRU Ev
 2. **Atomic Crash-Resilient Extraction**:
    Archives are unpacked into an isolated staging directory (`.staging_{key}_{uuid}`) and verified before being atomically moved into their final cache path. Each snapshot contains a `.snapshot_metadata.json` manifest certifying extraction completion and recording access timestamps.
 3. **Dual Bounded Eviction (Count & Byte Budget)**:
-   The cache enforces two configurable limits in [`Settings`](file:///c:/Projects/Issuelens/src/issuelens/config.py):
+   The cache enforces two configurable limits in [`Settings`](../../src/issuelens/config.py):
    - `max_cached_snapshots` (default: 10 snapshots)
    - `max_cache_total_bytes` (default: 500,000,000 bytes / 500 MB)
    When either limit is exceeded during ingestion, least-recently-used (LRU) snapshots are evicted until the cache operates within budget.
 4. **Service-Level Fast Path**:
-   [`InvestigationService.investigate()`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py) checks the cache prior to invoking GitHub archive download APIs. Cache hits bypass network download entirely.
+   [`InvestigationService.investigate()`](../../src/issuelens/agent/service.py) checks the cache prior to invoking GitHub archive download APIs. Cache hits bypass network download entirely.
 
 ---
 
@@ -81,12 +81,12 @@ We implement a **Commit-Pinned, Content-Addressed Disk Cache with Bounded LRU Ev
 
 ## 6. Implementation References
 
-- **Cache & Snapshot Implementation**: [`src/issuelens/repository/snapshot.py`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py)
-- **Configuration Limits**: [`src/issuelens/config.py`](file:///c:/Projects/Issuelens/src/issuelens/config.py) (`max_cached_snapshots`, `max_cache_total_bytes`)
-- **Service Integration**: [`src/issuelens/agent/service.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py)
-- **Git Ignore Rule**: [`.gitignore`](file:///c:/Projects/Issuelens/.gitignore) (`.cache/`)
-- **Unit & Integration Tests**: [`tests/unit/test_snapshot_cache.py`](file:///c:/Projects/Issuelens/tests/unit/test_snapshot_cache.py)
-- **Build Log Entry**: [`docs/BUILD_LOG.md: Entry 011`](file:///c:/Projects/Issuelens/docs/BUILD_LOG.md#entry-011-unbounded-disk-space-accumulation-via-orphaned-tempfilemkdtemp-snapshots)
+- **Cache & Snapshot Implementation**: [`src/issuelens/repository/snapshot.py`](../../src/issuelens/repository/snapshot.py)
+- **Configuration Limits**: [`src/issuelens/config.py`](../../src/issuelens/config.py) (`max_cached_snapshots`, `max_cache_total_bytes`)
+- **Service Integration**: [`src/issuelens/agent/service.py`](../../src/issuelens/agent/service.py)
+- **Git Ignore Rule**: [`.gitignore`](../../.gitignore) (`.cache/`)
+- **Unit & Integration Tests**: [`tests/unit/test_snapshot_cache.py`](../../tests/unit/test_snapshot_cache.py)
+- **Build Log Entry**: [`docs/BUILD_LOG.md: Entry 011`](../BUILD_LOG.md#entry-011-unbounded-disk-space-accumulation-via-orphaned-tempfilemkdtemp-snapshots)
 
 ---
 
@@ -100,5 +100,5 @@ Revisit this decision if:
 
 ## 8. Related ADRs
 
-- [ADR-001: GitHub REST API Client Adapter](file:///c:/Projects/Issuelens/docs/decisions/ADR-001-github-api-client.md): Supplies the archive zipball stream cached by this subsystem.
-- [ADR-003: Deterministic Evidence Citation Validation](file:///c:/Projects/Issuelens/docs/decisions/ADR-003-deterministic-citation-validation-and-insufficient-evidence.md): Verifies citations against the cached snapshot files.
+- [ADR-001: GitHub REST API Client Adapter](ADR-001-github-api-client.md): Supplies the archive zipball stream cached by this subsystem.
+- [ADR-003: Deterministic Evidence Citation Validation](ADR-003-deterministic-citation-validation-and-insufficient-evidence.md): Verifies citations against the cached snapshot files.

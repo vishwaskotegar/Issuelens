@@ -31,7 +31,7 @@ We needed a deterministic, verifiable, offline guardrail subsystem that guarante
 ---
 
 ## 2. Decision and Rationale
-We implemented a deterministic post-generation validation and sanitation pipeline in [`src/issuelens/agent/validator.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py) with the following architectural rules:
+We implemented a deterministic post-generation validation and sanitation pipeline in [`src/issuelens/agent/validator.py`](../../src/issuelens/agent/validator.py) with the following architectural rules:
 
 1. **Deterministic Multi-Stage Citation Validation (`validate_citation`)**:
    Every `EvidenceItem` with `source_type="code"` is checked against the physical `RepoSnapshot`:
@@ -108,10 +108,10 @@ We implemented a deterministic post-generation validation and sanitation pipelin
 
 ## 6. Implementation References
 
-- **Validator Implementation**: [`src/issuelens/agent/validator.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/validator.py)
-- **Snippet Extractor**: [`src/issuelens/repository/snippets.py`](file:///c:/Projects/Issuelens/src/issuelens/repository/snippets.py)
-- **Snapshot Integration**: [`src/issuelens/repository/snapshot.py`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py)
-- **Unit Tests**: [`tests/unit/test_validator.py`](file:///c:/Projects/Issuelens/tests/unit/test_validator.py)
+- **Validator Implementation**: [`src/issuelens/agent/validator.py`](../../src/issuelens/agent/validator.py)
+- **Snippet Extractor**: [`src/issuelens/repository/snippets.py`](../../src/issuelens/repository/snippets.py)
+- **Snapshot Integration**: [`src/issuelens/repository/snapshot.py`](../../src/issuelens/repository/snapshot.py)
+- **Unit Tests**: [`tests/unit/test_validator.py`](../../tests/unit/test_validator.py)
 
 ---
 
@@ -125,5 +125,5 @@ Revisit this decision if:
 
 ## 8. Related ADRs
 
-- [ADR-002: LangChain Provider Adapter with Structured Output](file:///c:/Projects/Issuelens/docs/decisions/ADR-002-llm-provider-adapter-and-report-generation.md): Emits the unvalidated report that `validator.py` processes.
-- [ADR-004: Commit-Pinned Repository Snapshot Disk Cache](file:///c:/Projects/Issuelens/docs/decisions/ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md): Supplies the immutable snapshot bytes against which citations are verified.
+- [ADR-002: LangChain Provider Adapter with Structured Output](ADR-002-llm-provider-adapter-and-report-generation.md): Emits the unvalidated report that `validator.py` processes.
+- [ADR-004: Commit-Pinned Repository Snapshot Disk Cache](ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md): Supplies the immutable snapshot bytes against which citations are verified.

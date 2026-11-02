@@ -31,10 +31,10 @@ OSError: Readme file does not exist: README.md
 ```
 
 #### 2. Root Cause
-In [pyproject.toml](file:///c:/Projects/Issuelens/pyproject.toml), `readme = "README.md"` was specified under the `[project]` metadata table. The Hatchling build backend validates that all referenced metadata files exist on disk before generating editable wheel metadata. Because [README.md](file:///c:/Projects/Issuelens/README.md) had not yet been created, the build halted.
+In [pyproject.toml](../pyproject.toml), `readme = "README.md"` was specified under the `[project]` metadata table. The Hatchling build backend validates that all referenced metadata files exist on disk before generating editable wheel metadata. Because [README.md](../README.md) had not yet been created, the build halted.
 
 #### 3. Fix
-Created [README.md](file:///c:/Projects/Issuelens/README.md) with project documentation, architecture overview, and setup instructions before running package installation.
+Created [README.md](../README.md) with project documentation, architecture overview, and setup instructions before running package installation.
 
 #### 4. Verification
 Ran package installation in editable mode:
@@ -52,7 +52,7 @@ Installed 37 packages in 1.28s
 Build backends (like Hatchling, Flit, and Setuptools) treat package metadata files declared in `pyproject.toml` (such as `readme` and `license`) as mandatory prerequisites during wheel builds. Always create base project documentation before installing an editable package.
 
 #### 6. Regression Test
-Verified by `uv pip install -e ".[dev]"` passing in CI/bootstrap workflow and `test_root_endpoint` in [tests/unit/test_health.py](file:///c:/Projects/Issuelens/tests/unit/test_health.py).
+Verified by `uv pip install -e ".[dev]"` passing in CI/bootstrap workflow and `test_root_endpoint` in [tests/unit/test_health.py](../tests/unit/test_health.py).
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Remove `readme = "README.md"` from `pyproject.toml` temporarily.
@@ -97,7 +97,7 @@ All checks passed!
 In modern Python (3.9+ / 3.12) and modern FastAPI, `Annotated[Type, Depends(...)]` is the recommended pattern. It is cleaner, fully compatible with static analysis tools, and avoids default argument evaluation traps.
 
 #### 6. Regression Test
-Covered by [tests/unit/test_health.py](file:///c:/Projects/Issuelens/tests/unit/test_health.py) (`test_healthz_liveness`, `test_readyz_readiness`).
+Covered by [tests/unit/test_health.py](../tests/unit/test_health.py) (`test_healthz_liveness`, `test_readyz_readiness`).
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Add `# noqa: B008` or ignore `B008` in `pyproject.toml`.
@@ -147,7 +147,7 @@ Success: no issues found in 9 source files
 Python allows reusing variable names in the same function scope across branches, but strict type checkers track variable types across scopes. Giving distinct variables descriptive, specific names prevents type collisions and improves readability.
 
 #### 6. Regression Test
-Enforced by `uv run mypy src tests` and unit test [tests/unit/test_logging.py](file:///c:/Projects/Issuelens/tests/unit/test_logging.py).
+Enforced by `uv run mypy src tests` and unit test [tests/unit/test_logging.py](../tests/unit/test_logging.py).
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Explicitly annotate `handler: logging.Handler = logging.StreamHandler()` at the top.
@@ -167,10 +167,10 @@ AssertionError: assert None == 'Bearer ghp_fakeSecretToken1234567890'
 ```
 
 #### 2. Root Cause
-In [src/issuelens/github/client.py](file:///c:/Projects/Issuelens/src/issuelens/github/client.py), `GitHubClient.__init__` constructed default headers in `self._headers`, including `"Authorization": f"Bearer {raw_token}"` and API version headers. When an external `http_client` was injected (as is standard during unit testing or connection pool sharing), `_request()` called `await client.request(method, url, **kwargs)`. Because the injected client was instantiated outside `GitHubClient`, it did not contain `self._headers` on its session, and `_request()` did not pass default headers into request calls.
+In [src/issuelens/github/client.py](../src/issuelens/github/client.py), `GitHubClient.__init__` constructed default headers in `self._headers`, including `"Authorization": f"Bearer {raw_token}"` and API version headers. When an external `http_client` was injected (as is standard during unit testing or connection pool sharing), `_request()` called `await client.request(method, url, **kwargs)`. Because the injected client was instantiated outside `GitHubClient`, it did not contain `self._headers` on its session, and `_request()` did not pass default headers into request calls.
 
 #### 3. Fix
-Updated `_request()` in [src/issuelens/github/client.py](file:///c:/Projects/Issuelens/src/issuelens/github/client.py) to explicitly merge `self._headers` with any per-request headers:
+Updated `_request()` in [src/issuelens/github/client.py](../src/issuelens/github/client.py) to explicitly merge `self._headers` with any per-request headers:
 ```python
 headers = dict(self._headers)
 if "headers" in kwargs:
@@ -194,7 +194,7 @@ tests\unit\test_github_client.py .                                       [100%]
 When writing client adapters that support dependency injection of HTTP sessions, never assume an externally provided client instance knows about the adapter's configuration or default headers. Explicitly merge and propagate adapter headers at the request call site. Furthermore, never mutate an externally passed client object's headers directly, as that can cause side effects for other callers sharing the client.
 
 #### 6. Regression Test
-[tests/unit/test_github_client.py:test_token_authorization_header](file:///c:/Projects/Issuelens/tests/unit/test_github_client.py).
+[tests/unit/test_github_client.py:test_token_authorization_header](../tests/unit/test_github_client.py).
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Mutate `http_client.headers.update(...)` in `__init__`.
@@ -216,7 +216,7 @@ AssertionError: Regex pattern did not match.
 ```
 
 #### 2. Root Cause
-In [src/issuelens/github/url_parser.py](file:///c:/Projects/Issuelens/src/issuelens/github/url_parser.py), the guard check was:
+In [src/issuelens/github/url_parser.py](../src/issuelens/github/url_parser.py), the guard check was:
 ```python
 if not raw_input or not isinstance(raw_input, str):
     raise InvalidInputError("Issue URL or coordinates cannot be empty.")
@@ -246,7 +246,7 @@ tests\unit\test_url_parser.py ..............                             [100%]
 In Python, strings containing only whitespace (e.g., `" "`) are truthy in boolean expressions (`bool(" ") == True`). When validating that user input is non-empty, always incorporate `.strip()` into the emptiness test before proceeding to parsing logic.
 
 #### 6. Regression Test
-[tests/unit/test_url_parser.py:test_reject_empty_or_whitespace](file:///c:/Projects/Issuelens/tests/unit/test_url_parser.py).
+[tests/unit/test_url_parser.py:test_reject_empty_or_whitespace](../tests/unit/test_url_parser.py).
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Perform `cleaned = (raw_input or "").strip()` as the first line and check `if not cleaned:`.
@@ -263,10 +263,10 @@ In Python, strings containing only whitespace (e.g., `" "`) are truthy in boolea
 Acceptance criteria US-01 and Phase 1 Definition of Done require proper 4xx and status handling for malformed (400), missing (404), rate-limited (429), and timed-out (504) GitHub issue requests. However, the existing FastAPI exception handler in `src/issuelens/main.py` hardcoded `HTTP 400 Bad Request` for all domain errors derived from `IssueLensError`, returning 400 even when a GitHub issue was not found (404) or rate limits were exhausted (429).
 
 #### 2. Root Cause
-Domain exception classes in [src/issuelens/core/errors.py](file:///c:/Projects/Issuelens/src/issuelens/core/errors.py) only tracked `message` and `code`, without HTTP transport status information. The FastAPI exception handler in [src/issuelens/main.py](file:///c:/Projects/Issuelens/src/issuelens/main.py) had no mechanism to determine the appropriate HTTP status code from domain exceptions.
+Domain exception classes in [src/issuelens/core/errors.py](../src/issuelens/core/errors.py) only tracked `message` and `code`, without HTTP transport status information. The FastAPI exception handler in [src/issuelens/main.py](../src/issuelens/main.py) had no mechanism to determine the appropriate HTTP status code from domain exceptions.
 
 #### 3. Fix
-Added an explicit `status_code: int = 400` attribute to [IssueLensError](file:///c:/Projects/Issuelens/src/issuelens/core/errors.py#L4) and configured specific HTTP status codes on subclasses:
+Added an explicit `status_code: int = 400` attribute to [IssueLensError](../src/issuelens/core/errors.py#L4) and configured specific HTTP status codes on subclasses:
 - `InvalidInputError`: `400 Bad Request`
 - `ResourceNotFoundError`: `404 Not Found`
 - `RateLimitExceededError`: `429 Too Many Requests`
@@ -274,7 +274,7 @@ Added an explicit `status_code: int = 400` attribute to [IssueLensError](file://
 - `SafetyViolationError`: `400 Bad Request`
 - `ConfigurationError`: `500 Internal Server Error`
 
-Updated `issuelens_exception_handler` in [src/issuelens/main.py](file:///c:/Projects/Issuelens/src/issuelens/main.py) to return `status_code=exc.status_code`.
+Updated `issuelens_exception_handler` in [src/issuelens/main.py](../src/issuelens/main.py) to return `status_code=exc.status_code`.
 
 #### 4. Verification
 Ran REST API unit tests:
@@ -292,7 +292,7 @@ All endpoints correctly emitted 400, 404, 429, and 504 status codes.
 Domain-driven applications should keep business logic decoupled from HTTP frameworks like FastAPI, but domain errors intended for API presentation should carry semantic error codes and HTTP status mappings. This allows global exception handlers to emit accurate HTTP responses without tight coupling in route handlers.
 
 #### 6. Regression Test
-[tests/unit/test_issue_api.py](file:///c:/Projects/Issuelens/tests/unit/test_issue_api.py) (`test_ingest_issue_endpoint_not_found`, `test_ingest_issue_endpoint_rate_limited`, and `test_ingest_issue_endpoint_timeout`).
+[tests/unit/test_issue_api.py](../tests/unit/test_issue_api.py) (`test_ingest_issue_endpoint_not_found`, `test_ingest_issue_endpoint_rate_limited`, and `test_ingest_issue_endpoint_timeout`).
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Raise FastAPI `HTTPException` directly in `client.py` and `url_parser.py`.
@@ -317,7 +317,7 @@ Found 2 errors in 1 file (errors prevented further checking)
 `tests/fixtures/sample_repo/sample_pkg/broken_syntax.py` was created deliberately as an invalid Python file to verify that `parse_python_symbols` handles `SyntaxError` without crashing. When running `mypy src tests`, Mypy traversed the entire `tests` directory and attempted to parse the broken fixture file as application source code.
 
 #### 3. Fix
-Added explicit exclusions for the `tests/fixtures` directory in [pyproject.toml](file:///c:/Projects/Issuelens/pyproject.toml):
+Added explicit exclusions for the `tests/fixtures` directory in [pyproject.toml](../pyproject.toml):
 ```toml
 [tool.ruff]
 extend-exclude = ["tests/fixtures"]
@@ -340,7 +340,7 @@ Success: no issues found in 31 source files
 When testing fault-tolerant parsers or compilers, intentionally corrupted or unparseable fixture files must be excluded from build-time static linters and type checkers. Declaring `exclude = ["tests/fixtures"]` in project configuration ensures real failure cases can be tested without breaking CI gates.
 
 #### 6. Regression Test
-Verified by `uv run mypy src tests` passing while [tests/unit/test_python_symbols.py:test_syntax_error_handled_gracefully](file:///c:/Projects/Issuelens/tests/unit/test_python_symbols.py) tests the broken fixture.
+Verified by `uv run mypy src tests` passing while [tests/unit/test_python_symbols.py:test_syntax_error_handled_gracefully](../tests/unit/test_python_symbols.py) tests the broken fixture.
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Rename `broken_syntax.py` to `broken_syntax.txt`.
@@ -360,7 +360,7 @@ Phase 2 mandates ripgrep for fast lexical source searching. However, running `wh
 Ripgrep (`rg`) is an external compiled Rust binary that is not bundled by default in Python virtual environments. Relying strictly on `shutil.which("rg")` without a fallback makes the service unrunnable on standard developer machines or container images that do not have `ripgrep` pre-installed globally.
 
 #### 3. Fix
-Implemented a dual-engine lexical search strategy in [src/issuelens/repository/code_search.py](file:///c:/Projects/Issuelens/src/issuelens/repository/code_search.py):
+Implemented a dual-engine lexical search strategy in [src/issuelens/repository/code_search.py](../src/issuelens/repository/code_search.py):
 1. `find_ripgrep_executable()` scans system `PATH` and common IDE-bundled locations (such as Antigravity IDE / VS Code ripgrep distributions).
 2. If `rg` is not found, `_search_with_python_fallback()` executes a deterministic pure-Python lexical scanner adhering to identical boundary constraints, exclusions, and line number contracts.
 3. Both engines feed into the identical AST symbol expansion and snippet generation pipelines.
@@ -380,7 +380,7 @@ tests\unit\test_code_search.py ......                                    [100%]
 When integrating native binary performance tools into Python services, always implement a contract-compatible, deterministic fallback in pure Python. This provides the best of both worlds: high performance when native binaries are available, and zero-crash portability when running in lightweight environments.
 
 #### 6. Regression Test
-[tests/unit/test_code_search.py](file:///c:/Projects/Issuelens/tests/unit/test_code_search.py) (`test_search_code_python_fallback`, `test_search_code_ast_symbol_expansion`, and `test_search_code_excludes_secrets`).
+[tests/unit/test_code_search.py](../tests/unit/test_code_search.py) (`test_search_code_python_fallback`, `test_search_code_ast_symbol_expansion`, and `test_search_code_excludes_secrets`).
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Require developers and users to install `ripgrep` globally via package managers (`choco install ripgrep` or `apt-get install ripgrep`) as a hard prerequisite.
@@ -419,7 +419,7 @@ uv run pytest
 Asynchronous runtimes often have hidden platform-specific requirements. Python's `ProactorEventLoop` on Windows requires loopback socket communication even when running purely local, mocked code. When designing hermetic testing environments or running in sandboxed execution containers, ensure loopback socket creation (`127.0.0.1`) is permitted for process-internal concurrency mechanisms.
 
 #### 6. Regression Test
-Covered across all asynchronous test suites: [tests/unit/test_llm_client.py](file:///c:/Projects/Issuelens/tests/unit/test_llm_client.py), [tests/unit/test_investigation_service.py](file:///c:/Projects/Issuelens/tests/unit/test_investigation_service.py), and [tests/unit/test_github_client.py](file:///c:/Projects/Issuelens/tests/unit/test_github_client.py).
+Covered across all asynchronous test suites: [tests/unit/test_llm_client.py](../tests/unit/test_llm_client.py), [tests/unit/test_investigation_service.py](../tests/unit/test_investigation_service.py), and [tests/unit/test_github_client.py](../tests/unit/test_github_client.py).
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Force `WindowsSelectorEventLoopPolicy` globally.
@@ -435,14 +435,14 @@ Covered across all asynchronous test suites: [tests/unit/test_llm_client.py](fil
 - **Status**: Resolved
 
 #### 1. Symptom & Objective
-After integrating `validate_investigation_report()` into the end-to-end investigation pipeline in [`src/issuelens/agent/service.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py), existing end-to-end integration tests in [`tests/unit/test_investigation_service.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_service.py) and [`tests/unit/test_investigation_api.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_api.py) were expected to fail on the assertion `assert report.verification_status == "not_run"`.
+After integrating `validate_investigation_report()` into the end-to-end investigation pipeline in [`src/issuelens/agent/service.py`](../src/issuelens/agent/service.py), existing end-to-end integration tests in [`tests/unit/test_investigation_service.py`](../tests/unit/test_investigation_service.py) and [`tests/unit/test_investigation_api.py`](../tests/unit/test_investigation_api.py) were expected to fail on the assertion `assert report.verification_status == "not_run"`.
 
 #### 2. Root Cause
 In Phase 3, `InvestigationReport.from_payload()` initialized `verification_status="not_run"` as a preliminary placeholder because citation validation was planned for Phase 4.
 In Phase 4, `InvestigationService.investigate()` actively invokes `validate_investigation_report(report, snapshot)` before returning the report to the caller. Because the fixture repository snapshot contains the actual source code matched by the search step, all generated code citations physically exist, line numbers match, and excerpt lines match on disk. As a result, the deterministic validator correctly verified the report and assigned `verification_status="verified"`.
 
 #### 3. Fix
-Updated integration test assertions in [`tests/unit/test_investigation_service.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_service.py) (line 186) and [`tests/unit/test_investigation_api.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_api.py) (line 146) to assert `report.verification_status == "verified"`. In addition, added unit tests in [`tests/unit/test_validator.py`](file:///c:/Projects/Issuelens/tests/unit/test_validator.py) explicitly exercising unverified or ungrounded reports where `verification_status` remains `"not_run"` or `"partially_verified"`.
+Updated integration test assertions in [`tests/unit/test_investigation_service.py`](../tests/unit/test_investigation_service.py) (line 186) and [`tests/unit/test_investigation_api.py`](../tests/unit/test_investigation_api.py) (line 146) to assert `report.verification_status == "verified"`. In addition, added unit tests in [`tests/unit/test_validator.py`](../tests/unit/test_validator.py) explicitly exercising unverified or ungrounded reports where `verification_status` remains `"not_run"` or `"partially_verified"`.
 
 #### 4. Verification
 Ran full test suite:
@@ -458,9 +458,9 @@ uv run pytest
 When adding automated guardrails and validation layers into an existing service pipeline, existing mock expectations and integration assertions must be updated to reflect the new system contract. Preliminary fallback states (like `"not_run"`) should only persist when validation actually could not be executed or when evidence is missing.
 
 #### 6. Regression Test
-- [`tests/unit/test_investigation_service.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_service.py): `test_investigation_service_full_flow`
-- [`tests/unit/test_investigation_api.py`](file:///c:/Projects/Issuelens/tests/unit/test_investigation_api.py): `test_create_and_execute_investigation_full_flow`
-- [`tests/unit/test_validator.py`](file:///c:/Projects/Issuelens/tests/unit/test_validator.py): `test_validate_investigation_report_insufficient_evidence_fallback`
+- [`tests/unit/test_investigation_service.py`](../tests/unit/test_investigation_service.py): `test_investigation_service_full_flow`
+- [`tests/unit/test_investigation_api.py`](../tests/unit/test_investigation_api.py): `test_create_and_execute_investigation_full_flow`
+- [`tests/unit/test_validator.py`](../tests/unit/test_validator.py): `test_validate_investigation_report_insufficient_evidence_fallback`
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Leave `verification_status="not_run"` as the default and require an explicit secondary API call `/v1/investigations/{run_id}/validate`.
@@ -474,7 +474,7 @@ When adding automated guardrails and validation layers into an existing service 
 - **Status**: Resolved (Major Architectural Bug Discovery)
 
 #### 1. Symptom & Objective
-During code inspection of [`InvestigationService.investigate_issue()`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py#L113-L128) and [`create_snapshot_from_zip()`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py#L204), a critical resource leakage bug was uncovered:
+During code inspection of [`InvestigationService.investigate_issue()`](../src/issuelens/agent/service.py#L113-L128) and [`create_snapshot_from_zip()`](../src/issuelens/repository/snapshot.py#L204), a critical resource leakage bug was uncovered:
 When investigating issues without a pre-supplied snapshot, the service downloaded repository zipballs and unpacked them into unmanaged directories created via `tempfile.mkdtemp(prefix="issuelens_snapshot_")`. After the investigation finished, these directories were never cleaned up, deleted, or cached.
 
 In a production environment processing continuous requests:
@@ -489,20 +489,20 @@ In a production environment processing continuous requests:
 
 #### 3. Fix
 Implemented a commit-pinned, content-addressed disk cache with atomic write guarantees and LRU (Least Recently Used) bounded pruning:
-1. **Application Configuration ([`src/issuelens/config.py`](file:///c:/Projects/Issuelens/src/issuelens/config.py))**:
+1. **Application Configuration ([`src/issuelens/config.py`](../src/issuelens/config.py))**:
    - Added `snapshot_cache_dir` (default: `.cache/issuelens/snapshots`).
    - Added `max_cached_snapshots` (default: 10 snapshots).
    - Added `max_cache_total_bytes` (default: 500,000,000 bytes / 500 MB).
-2. **Atomic Cache Manager ([`src/issuelens/repository/snapshot.py`](file:///c:/Projects/Issuelens/src/issuelens/repository/snapshot.py))**:
+2. **Atomic Cache Manager ([`src/issuelens/repository/snapshot.py`](../src/issuelens/repository/snapshot.py))**:
    - Implemented `get_snapshot_cache_key()` generating safe filesystem paths: `{owner}__{repo}__{commit_sha}`.
    - Implemented `get_cached_snapshot()` which validates snapshot directory integrity via `.snapshot_metadata.json` and updates `last_accessed_at` timestamps on cache hits.
    - Implemented `cache_and_create_snapshot_from_zip()` with crash-resilient atomic staging (`.staging_...` directory moved to target only after complete extraction and metadata generation).
    - Implemented `prune_snapshot_cache()` enforcing strict maximum snapshot count and total disk byte budget by evicting oldest accessed snapshots first.
-3. **Investigation Service Integration ([`src/issuelens/agent/service.py`](file:///c:/Projects/Issuelens/src/issuelens/agent/service.py))**:
+3. **Investigation Service Integration ([`src/issuelens/agent/service.py`](../src/issuelens/agent/service.py))**:
    - Checks `get_cached_snapshot()` before making network calls.
    - On cache hit: reuses existing snapshot immediately with 0 downloads and 0 additional disk usage.
    - On cache miss: downloads zipball and stores in the bounded cache, automatically pruning older entries.
-4. **Git Protection ([`.gitignore`](file:///c:/Projects/Issuelens/.gitignore))**: Added `.cache/` to ensure cached repositories are never committed.
+4. **Git Protection ([`.gitignore`](../.gitignore))**: Added `.cache/` to ensure cached repositories are never committed.
 
 #### 4. Verification
 Ran complete automated test suite, including new dedicated cache unit tests:
@@ -523,7 +523,7 @@ Success: no issues found in 44 source files
 Temporary directory utilities like `tempfile.mkdtemp()` are dangerous in stateless or long-running backend services unless wrapped with explicit lifecycle management. When a service processes external resources (such as git repositories), combining **content-addressed immutability** (keying by commit SHA) with **bounded LRU cache eviction** eliminates redundant network overhead while guaranteeing a hard ceiling on storage consumption.
 
 #### 6. Regression Test
-- Dedicated test suite in [`tests/unit/test_snapshot_cache.py`](file:///c:/Projects/Issuelens/tests/unit/test_snapshot_cache.py):
+- Dedicated test suite in [`tests/unit/test_snapshot_cache.py`](../tests/unit/test_snapshot_cache.py):
   - `test_get_cached_snapshot_miss_and_corruption`
   - `test_cache_and_create_snapshot_success`
   - `test_get_cached_snapshot_hit_and_timestamp_touch`

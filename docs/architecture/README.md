@@ -24,12 +24,12 @@ The architecture is documented across six core blueprints:
 
 | Document | Title | Purpose & Scope |
 | :--- | :--- | :--- |
-| [**`system-overview.md`**](file:///c:/Projects/Issuelens/docs/architecture/system-overview.md) | System Overview | High-level component architecture, responsibilities, inputs/outputs, and integration contracts. |
-| [**`request-lifecycle.md`**](file:///c:/Projects/Issuelens/docs/architecture/request-lifecycle.md) | Request Lifecycle & Execution Paths | End-to-end request tracing from HTTP submission to verified report, including all failure paths. |
-| [**`agent-workflow.md`**](file:///c:/Projects/Issuelens/docs/architecture/agent-workflow.md) | Agent Workflow & State Machine | Current synchronous orchestrator and planned LangGraph multi-round cyclic state machine. |
-| [**`codebase-map.md`**](file:///c:/Projects/Issuelens/docs/architecture/codebase-map.md) | Codebase Map & Package Boundaries | Module dependencies, structural layering, symbol directory, and developer change navigation. |
-| [**`data-flow-and-trust-boundaries.md`**](file:///c:/Projects/Issuelens/docs/architecture/data-flow-and-trust-boundaries.md) | Data Flow & Trust Boundaries | Threat modeling, untrusted data enclaves, prompt injection defenses, and security limits. |
-| [**`testing-and-evaluation.md`**](file:///c:/Projects/Issuelens/docs/architecture/testing-and-evaluation.md) | Testing & Evaluation Architecture | Hermetic test suites, test doubles, leak-proof retrospective benchmarks, and evaluation metrics. |
+| [**`system-overview.md`**](system-overview.md) | System Overview | High-level component architecture, responsibilities, inputs/outputs, and integration contracts. |
+| [**`request-lifecycle.md`**](request-lifecycle.md) | Request Lifecycle & Execution Paths | End-to-end request tracing from HTTP submission to verified report, including all failure paths. |
+| [**`agent-workflow.md`**](agent-workflow.md) | Agent Workflow & State Machine | Current synchronous orchestrator and planned LangGraph multi-round cyclic state machine. |
+| [**`codebase-map.md`**](codebase-map.md) | Codebase Map & Package Boundaries | Module dependencies, structural layering, symbol directory, and developer change navigation. |
+| [**`data-flow-and-trust-boundaries.md`**](data-flow-and-trust-boundaries.md) | Data Flow & Trust Boundaries | Threat modeling, untrusted data enclaves, prompt injection defenses, and security limits. |
+| [**`testing-and-evaluation.md`**](testing-and-evaluation.md) | Testing & Evaluation Architecture | Hermetic test suites, test doubles, leak-proof retrospective benchmarks, and evaluation metrics. |
 
 ---
 
