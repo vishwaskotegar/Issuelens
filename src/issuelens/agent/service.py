@@ -1,4 +1,4 @@
-"""Investigation service orchestrating issue ingestion, code search, and LLM report generation."""
+"""Investigation service orchestrating issue ingestion, code search, and report generation."""
 
 import json
 import re
@@ -6,20 +6,17 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from issuelens.agent.graph import create_investigation_graph
 from issuelens.agent.llm import LLMClientProtocol, get_llm_client
-from issuelens.agent.prompts import build_investigation_messages
-from issuelens.agent.report import (
-    EvidenceItem,
-    InvestigationReport,
-)
-from issuelens.agent.validator import validate_investigation_report
+from issuelens.agent.nodes import InvestigationNodes
+from issuelens.agent.report import InvestigationReport
+from issuelens.agent.state import InvestigationState
 from issuelens.config import Settings, get_settings
-from issuelens.core.errors import LLMOutputValidationError
+from issuelens.core.errors import IssueLensError, LLMOutputValidationError
 from issuelens.core.logging import get_logger
 from issuelens.github.client import GitHubClient, GitHubClientProtocol
 from issuelens.github.models import GitHubIssueContext
 from issuelens.github.url_parser import IssueTarget, parse_issue_target
-from issuelens.repository.code_search import search_code
 from issuelens.repository.snapshot import (
     RepoSnapshot,
     cache_and_create_snapshot_from_zip,
@@ -68,7 +65,7 @@ def compile_search_query(context: GitHubIssueContext) -> str:
 
 
 class InvestigationService:
-    """Service orchestrating evidence-backed investigation report generation."""
+    """Service orchestrating evidence-backed investigation report generation via LangGraph."""
 
     def __init__(
         self,
@@ -86,7 +83,7 @@ class InvestigationService:
         snapshot: RepoSnapshot | None = None,
         run_id: str | None = None,
     ) -> InvestigationReport:
-        """Run complete investigation flow for a target issue.
+        """Run complete investigation flow for a target issue via LangGraph state machine.
 
         Args:
             target_or_url: GitHub issue URL string or parsed IssueTarget.
@@ -104,7 +101,7 @@ class InvestigationService:
         )
 
         logger.info(
-            "Starting investigation %s for %s/%s#%d",
+            "Starting investigation %s for %s/%s#%d via LangGraph workflow",
             active_run_id,
             target.owner,
             target.repo,
@@ -156,64 +153,85 @@ class InvestigationService:
                     max_cache_total_bytes=self.settings.max_cache_total_bytes,
                 )
 
-        # 3. Deterministic lexical and AST code search
-        search_query = compile_search_query(context)
-        code_hits = search_code(
-            query=search_query,
-            repo_snapshot=active_snapshot,
-            max_results=10,
+        repo_full = context.repository
+        owner_name, repo_name = (
+            repo_full.split("/", 1) if "/" in repo_full else (repo_full, repo_full)
         )
 
-        # 4. Construct verified evidence items
-        evidence_items: list[EvidenceItem] = [
-            EvidenceItem(
-                evidence_id=f"ev_{idx}",
-                source_type="code",
-                path_or_url=hit.path,
-                start_line=hit.start_line,
-                end_line=hit.end_line,
-                excerpt=hit.excerpt,
-                commit_sha=hit.commit_sha,
-            )
-            for idx, hit in enumerate(code_hits, start=1)
-        ]
+        # 3. Construct initial LangGraph workflow state
+        initial_state: InvestigationState = {
+            "run_id": active_run_id,
+            "issue": {
+                "number": context.issue.number,
+                "title": context.issue.title,
+                "body": context.issue.body,
+                "state": context.issue.state,
+                "author": context.issue.author,
+                "labels": context.issue.labels,
+                "created_at": context.issue.created_at,
+                "updated_at": context.issue.updated_at,
+                "closed_at": context.issue.closed_at,
+                "comments_count": context.issue.comments_count,
+                "html_url": context.issue.html_url,
+                "comments": [c.model_dump() for c in context.comments],
+            },
+            "repository": {
+                "name": repo_name,
+                "full_name": repo_full,
+                "owner": owner_name,
+                "default_branch": context.default_branch,
+                "private": False,
+                "html_url": f"https://github.com/{repo_full}",
+                "description": None,
+            },
+            "commit_sha": context.commit_sha,
+            "issue_summary": {},
+            "evidence": [],
+            "hypotheses": [],
+            "missing_information": [],
+            "retrieval_round": 0,
+            "tool_trace": [],
+            "errors": [],
+            "final_report": None,
+            "max_retrieval_rounds": 3,
+            "followup_queries": [],
+            "stop_reason": None,
+            "observed_facts": [],
+            "suggested_tests": [],
+            "recommended_next_steps": [],
+            "limitations": [],
+            "verification_status": "not_run",
+        }
 
-        logger.info(
-            "Retrieved %d code evidence items for run %s",
-            len(evidence_items),
-            active_run_id,
-        )
-
-        # 5. Build prompt messages with prompt injection defense
-        messages = build_investigation_messages(context, evidence_items)
-
-        # 6. Request structured completion from LangChain LLM client
-        payload = await self.llm_client.generate_report_payload(messages)
-
-        # 7. Construct final report binding LLM analysis with verified snapshot provenance
-        raw_report = InvestigationReport.from_payload(
-            payload=payload,
-            run_id=active_run_id,
-            issue_url=context.issue_url,
-            repository=context.repository,
-            commit_sha=context.commit_sha,
-            evidence=evidence_items,
-        )
-
-        # 8. Deterministically validate code citations against physical repository snapshot
-        validated_report, validation_result = validate_investigation_report(
-            report=raw_report,
+        # 4. Instantiate nodes and compile LangGraph state machine
+        nodes = InvestigationNodes(
             snapshot=active_snapshot,
+            llm_client=self.llm_client,
+            settings=self.settings,
         )
+        graph = create_investigation_graph(nodes)
 
+        # 5. Execute state machine
+        final_state = await graph.ainvoke(initial_state)
+
+        # 6. Extract validated report from final state
+        report_data = final_state.get("final_report")
+        if not report_data:
+            raise IssueLensError(
+                "Investigation workflow completed without generating a final report.",
+                code="WORKFLOW_EXECUTION_ERROR",
+                status_code=500,
+            )
+
+        report = InvestigationReport.model_validate(report_data)
         logger.info(
-            "Investigation report %s validated: status=%s, %d valid citations, %d invalid",
+            "Investigation %s finished via LangGraph: status=%s, rounds=%d, tools=%d",
             active_run_id,
-            validated_report.verification_status,
-            len(validation_result.valid_evidence_ids),
-            len(validation_result.invalid_evidence_ids),
+            report.verification_status,
+            final_state.get("retrieval_round", 1),
+            len(final_state.get("tool_trace", [])),
         )
-        return validated_report
+        return report
 
 
 def get_investigation_service(

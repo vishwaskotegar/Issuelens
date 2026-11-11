@@ -184,6 +184,26 @@ def test_validate_citation_altered_excerpt() -> None:
     assert "Excerpt content does not match" in str(result.error_reason)
 
 
+def test_validate_citation_documentation_altered_excerpt() -> None:
+    """Verify documentation evidence is still checked against snapshot bytes."""
+    snapshot = get_fixture_snapshot()
+    item = EvidenceItem(
+        evidence_id="ev_doc_fake",
+        source_type="documentation",
+        path_or_url="README.md",
+        start_line=1,
+        end_line=2,
+        excerpt="1: Completely fabricated documentation text",
+        commit_sha=SAMPLE_COMMIT,
+    )
+
+    result = validate_citation(item, snapshot)
+    assert result.is_valid is False
+    assert result.file_exists is True
+    assert result.excerpt_matches is False
+
+
+
 def test_validate_investigation_report_fully_verified() -> None:
     """Verify report with valid citations receives 'verified' status."""
     snapshot = get_fixture_snapshot()

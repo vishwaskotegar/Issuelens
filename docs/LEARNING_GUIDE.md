@@ -488,20 +488,23 @@ Inspecting untrusted git repositories introduces security and operational hazard
 Bug reports frequently contain exact error strings, function names, or stack trace tokens. LLMs are slow, expensive, and hallucinate line numbers when used as search engines. However, relying strictly on native `ripgrep` (`rg`) binaries causes crashes on environments where ripgrep is not pre-installed.
 
 #### 2. What happens from input to output
-1. The search query is compiled from the issue title, body, and comments.
-2. [`find_ripgrep_executable()`](../src/issuelens/repository/code_search.py#L39) scans system `PATH` and common IDE-bundled locations for `rg`.
-3. If found: executes `rg --json --line-number` with a 5-second subprocess timeout.
-4. If missing or times out: falls back to [`_search_with_python()`](../src/issuelens/repository/code_search.py#L322), scanning safe source files via Python regex.
-5. Matches are expanded to their enclosing AST function/class symbol and returned as ranked [`CodeHit`](../src/issuelens/repository/code_search.py#L23) objects.
+1. The issue-derived query is compiled with high-signal identifiers (error types, file paths, symbols, stack frames) before prose.
+2. [`select_search_terms()`](../src/issuelens/repository/code_search.py) scores each token as path-like, identifier-like, or prose, and drops prose entirely when at least three identifiers exist.
+3. [`find_ripgrep_executable()`](../src/issuelens/repository/code_search.py) scans system `PATH` and common IDE-bundled locations for `rg`.
+4. If found: executes `rg --json --fixed-strings` with a per-file match cap and a 10-second subprocess timeout.
+5. If missing or it times out: falls back to [`_search_with_python_fallback()`](../src/issuelens/repository/code_search.py), scanning safe source files via Python regex with per-file/per-term caps.
+6. Matches are expanded to their enclosing AST function/class symbol, scored (code > tests > docs, explicit path/symbol bonuses), deduplicated, ranked globally, then capped per file.
+7. The ranked [`CodeHit`](../src/issuelens/repository/code_search.py) objects are returned with excerpt bounds that exactly match `start_line..end_line`.
 
 #### 3. Which files and functions participate
 - **Source file**: [`src/issuelens/repository/code_search.py`](../src/issuelens/repository/code_search.py)
-- **Functions**: [`search_code()`](../src/issuelens/repository/code_search.py#L150), `find_ripgrep_executable()`, `_search_with_ripgrep()`, `_search_with_python()`.
-- **Model**: [`CodeHit`](../src/issuelens/repository/code_search.py#L23).
-- **Build Log**: [`BUILD_LOG.md: Entry 008`](BUILD_LOG.md#entry-008-external-ripgrep-binary-portability-and-deterministic-fallback).
+- **Functions**: [`search_code()`](../src/issuelens/repository/code_search.py), `select_search_terms()`, `term_weight()`, `classify_path()`, `find_ripgrep_executable()`, `_search_with_ripgrep()`, `_search_with_python_fallback()`.
+- **Model**: [`CodeHit`](../src/issuelens/repository/code_search.py).
+- **Build Log**: [`BUILD_LOG.md: Entry 008`](BUILD_LOG.md#entry-008-external-ripgrep-binary-portability-and-deterministic-fallback), [`Entry 014`](BUILD_LOG.md#entry-014-irrelevant-evidence-from-unranked-lexical-matches-and-prose-heavy-queries).
 
 #### 4. Why the implementation is structured this way
 - **Dual-Engine Design**: Combines maximum speed when native binaries are present with 100% crash-free portability when running in lightweight containers.
+- **Deterministic Ranking**: Lexical hit order is an artifact of the filesystem walk. Explicit scoring keeps results reproducible and prevents one noisy file (such as a changelog) from consuming the whole evidence budget.
 
 #### 5. What alternatives exist and their trade-offs
 - *Alternative*: Vector embeddings and semantic search across all code.
@@ -510,11 +513,13 @@ Bug reports frequently contain exact error strings, function names, or stack tra
   - *Trade-off*: Increases developer friction and breaks lightweight CI containers.
 
 #### 6. What can fail and how failures are handled
-- Ripgrep timeouts (after 5 seconds) trigger an automatic, seamless fallback to the pure-Python scanner.
+- Ripgrep timeouts (after 10 seconds) return any hits already collected and never raise into the graph.
+- Unparseable/binary files are skipped; a per-term/per-file cap keeps the Python fallback bounded.
+- Invalid regexes are impossible because ripgrep is invoked with `--fixed-strings`.
 
 #### 7. How the feature is tested
 - **Test file**: [`tests/unit/test_code_search.py`](../tests/unit/test_code_search.py)
-- **Verifications**: Ripgrep execution, pure-Python fallback, AST symbol expansion, and empty results handling.
+- **Verifications**: Ripgrep execution, pure-Python fallback, AST symbol expansion, source-over-changelog ranking, per-file budget, path anchoring, exact excerpt/range alignment, and empty results handling.
 - **Run command**:
   ```powershell
   uv run pytest tests/unit/test_code_search.py
@@ -573,18 +578,20 @@ When a search hits a single line inside a 50-line function, the agent needs the 
 The LLM requires line-numbered code snippets to generate verifiable citations. Unchecked line extraction risks reading arbitrary files, running out of memory on giant files, or crashing on non-UTF-8 characters.
 
 #### 2. What happens from input to output
-1. [`read_snippet()`](../src/issuelens/repository/snippets.py#L7) accepts a relative path, `start_line`, `end_line`, and `context_lines` padding.
+1. [`read_snippet_with_bounds()`](../src/issuelens/repository/snippets.py) accepts a relative path, `start_line`, `end_line`, and `context_lines` padding.
 2. Resolves path safely via `snapshot.safe_resolve()`.
 3. Reads text with `utf-8` encoding and `errors="replace"`.
 4. Clamps lines to `[1, total_lines]` and limits total snippet lines to 100.
-5. Formats each line with 1-indexed line numbers (`"15: def connect():"`).
+5. Returns `(actual_start, actual_end, text)` so callers record exactly the window they display.
+6. Formats each line with 1-indexed line numbers (`"15: def connect():"`).
 
 #### 3. Which files and functions participate
 - **Source file**: [`src/issuelens/repository/snippets.py`](../src/issuelens/repository/snippets.py)
-- **Function**: [`read_snippet()`](../src/issuelens/repository/snippets.py#L7).
+- **Functions**: [`read_snippet_with_bounds()`](../src/issuelens/repository/snippets.py), [`read_snippet()`](../src/issuelens/repository/snippets.py).
 
 #### 4. Why the implementation is structured this way
 - Line-number prefixing (`15: ...`) grounds the LLM's attention mechanism on exact physical coordinates corresponding to the pinned commit.
+- Returning the actual bounds prevents a subtle integrity bug: an excerpt that includes context lines outside the declared range makes the citation's `start_line`/`end_line` disagree with the text the model sees.
 
 #### 5. What alternatives exist and their trade-offs
 - *Alternative*: Supplying raw file text without line numbers.
@@ -595,7 +602,7 @@ The LLM requires line-numbered code snippets to generate verifiable citations. U
 
 #### 7. How the feature is tested
 - **Test file**: [`tests/unit/test_snippets.py`](../tests/unit/test_snippets.py)
-- **Verifications**: Valid snippet formatting, context line padding, line boundary clamping, and safety limits.
+- **Verifications**: Valid snippet formatting, context line padding, line boundary clamping, safety limits, and excerpt/range alignment via `test_search_code_excerpt_matches_declared_range`.
 - **Run command**:
   ```powershell
   uv run pytest tests/unit/test_snippets.py
@@ -860,14 +867,114 @@ When some citations in a report are valid while others are invalid, blindly fail
 
 ---
 
-## Planned Implementation Roadmap (Phases 5 - 9)
+## Phase 5: LangGraph Agent Workflow & Cyclic State Machine
 
-The following phases are specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md), but are **[PLANNED]** and have not yet been implemented. When each phase is implemented, it will be documented above following the 8-facet standard:
+---
 
-### Phase 5: LangGraph Multi-Round Investigation Workflow [PLANNED]
-- **Goal**: Multi-turn stateful agent workflow with explicit nodes (`parse_issue` -> `retrieve_initial` -> `form_hypotheses` -> `retrieve_followup` -> `evaluate_evidence` -> `build_report`) and bounded retry loops (max 3 rounds).
-- **Architecture**: `src/issuelens/agent/graph.py`, `src/issuelens/agent/state.py`.
-- **Criteria**: Deterministic state transitions, loop cap enforcement, tool failure resilience. See [`docs/architecture/agent-workflow.md`](architecture/agent-workflow.md).
+### Feature 5.1: LangGraph Multi-Round State Machine & Conditional Routing
+
+#### 1. What problem it solves
+In complex bug reports, an initial search query often retrieves entrypoint methods or stack frame snippets, but lacks the necessary context to confirm a diagnosis (e.g., helper functions, caller modules, or configuration constants). A single-pass pipeline is unable to perform targeted follow-up queries. Feature 5.1 replaces the synchronous pipeline with an explicit, typed, cyclic state machine powered by **LangGraph**, giving the agent the ability to inspect evidence, generate testable hypotheses, identify missing information, and execute bounded follow-up retrieval rounds (capped at 3 rounds) before generating the final report.
+
+#### 2. What happens from input to output
+1. **Workflow Initialization**: [`InvestigationService.investigate()`](../src/issuelens/agent/service.py) constructs an initial [`InvestigationState`](../src/issuelens/agent/state.py) dict containing target coordinates, issue metadata, repository visibility, and an empty evidence list.
+2. **Issue Parsing (`parse_issue`)**: Extracts symptoms, Python error types (`ValueError`, `ConnectionError`), stack frame paths, and backticked symbols via regex, compiling a structured `issue_summary`. Identifier-like signals are ordered before prose in `raw_query`, and extraction order is deterministic (`dict.fromkeys`, no `set`).
+3. **Initial Retrieval (`retrieve_initial`)**: Executes ranked deterministic lexical and AST symbol search on the snapshot, populating `evidence` (round 1) and classifying each item as `code` or `documentation`.
+4. **Hypothesis Formation (`form_hypotheses`)**: Invokes the LLM client with isolated XML enclaves, generating up to 3 testable hypotheses with supporting evidence IDs and `missing_information`.
+5. **Evidence Evaluation (`evaluate_evidence`)**: Verifies whether cited evidence IDs exist, marks hypotheses as `supported` or `unsupported`, and formulates candidate queries for unproven claims. Only identifier/path-like terms are queued for follow-up; natural-language sentences are ignored.
+6. **Conditional Routing (`decide_next_step`)**:
+   - If `retrieval_round < max_retrieval_rounds` (default: 3) and `followup_queries` has queued items: routes to `retrieve_followup`.
+   - If loop cap is reached, queries are exhausted, or evidence is empty: routes to `validate_citations`.
+7. **Follow-Up Retrieval (`retrieve_followup`)**: Pops the next query, searches the snapshot for new files, increments `retrieval_round`, appends new `EvidenceItem` records, and loops back to `evaluate_evidence`.
+8. **Physical Citation Validation (`validate_citations`)**: Compares referenced line ranges and excerpts against physical bytes on disk, pruning hallucinated citations and demoting ungrounded hypotheses.
+9. **Report Synthesis (`build_report`)**: Assembles the validated [`InvestigationReport`](../src/issuelens/agent/report.py) model.
+
+#### 3. Which files and functions participate
+- [`src/issuelens/agent/state.py`](../src/issuelens/agent/state.py): Defines [`InvestigationState`](../src/issuelens/agent/state.py), [`ToolTraceItem`](../src/issuelens/agent/state.py), and [`IssueSummary`](../src/issuelens/agent/state.py).
+- [`src/issuelens/agent/nodes.py`](../src/issuelens/agent/nodes.py): Implements [`InvestigationNodes`](../src/issuelens/agent/nodes.py) and [`decide_next_step()`](../src/issuelens/agent/nodes.py).
+- [`src/issuelens/agent/graph.py`](../src/issuelens/agent/graph.py): Assembles and compiles the StateGraph via [`create_investigation_graph()`](../src/issuelens/agent/graph.py).
+- [`src/issuelens/agent/service.py`](../src/issuelens/agent/service.py): Orchestrates snapshot resolution and graph execution in [`InvestigationService.investigate()`](../src/issuelens/agent/service.py).
+
+#### 4. Why the implementation is structured this way
+- **Dependency Injection via Class Nodes**: Encapsulating node functions inside [`InvestigationNodes`](../src/issuelens/agent/nodes.py) allows injecting dependencies (`snapshot`, `llm_client`, `settings`) cleanly at runtime without resorting to global state, thread-local variables, or monkey-patching.
+- **TypedDict State Schema**: Using Python's native `TypedDict` for `InvestigationState` ensures seamless JSON serialization, zero coupling to proprietary ORMs, and strict static type checking with Mypy.
+- **Deterministic Routing**: Placing all branch decisions inside [`decide_next_step()`](../src/issuelens/agent/nodes.py) guarantees that the execution loop has provable, testable termination invariants.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative 1: Autonomous ReAct Tool-Calling Agent (`AgentExecutor`)*: Letting the LLM dynamically decide when to call tools in an open loop.
+  - *Trade-off*: Nondeterministic; vulnerable to prompt injection loops; prone to hallucinating tool arguments; impossible to formally bound cost and latency.
+- *Alternative 2: Custom Python `while` Loop*: A hardcoded loop inside `service.py`.
+  - *Trade-off*: Conflates business logic with graph state management and prevents visualizing or instrumenting execution nodes. LangGraph provides standard graph boundaries while remaining completely deterministic.
+
+#### 6. What can fail and how failures are handled
+- **Infinite Loop / Runaway Recursion**: Strictly prevented by checking `current_round >= max_rounds` in `decide_next_step()`. The loop terminates at the cap regardless of remaining queries.
+- **Missing or Corrupted Snapshot**: If no snapshot is available, retrieval nodes gracefully record `status="skipped"` in the trace and set `verification_status="not_run"`.
+- **Fatal Domain Errors**: Domain exceptions (such as `LLMOutputValidationError` or `RateLimitExceededError`) are allowed to propagate to FastAPI exception handlers, returning clean 4xx/5xx responses.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_graph.py`](../tests/unit/test_graph.py)
+- **Verifications**: End-to-end success flow (`test_graph_success_flow`), loop cap termination (`test_graph_loop_cap_enforcement`), conditional branch routing (`test_decide_next_step_routes`), and identifier-only follow-up queries (`test_evaluate_evidence_ignores_prose_missing_information`).
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_graph.py
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- Autonomous agents must have strict deterministic boundaries. A graph architecture where node responsibilities are separated from routing decisions makes complex AI systems debuggable, auditable, and resilient to infinite loops.
+
+---
+
+### Feature 5.2: Tool Tracing, Fault Resilience, and Insufficient Evidence Guardrails
+
+#### 1. What problem it solves
+When an AI assistant performs multi-step retrieval and inference, tracking *what tools were executed*, *how long each took*, and *which step failed* is essential for reproducing errors (US-07) and auditing behavior. Furthermore, if a local tool (e.g. `ripgrep`) encounters an unexpected operating system exception, the service must not crash unhandled. Feature 5.2 implements structured tool execution tracing and graceful fallback handling.
+
+#### 2. What happens from input to output
+1. **Execution Timing**: Each node captures `start_time = time.perf_counter()`.
+2. **Tool Execution & Exception Trapping**: When executing code search or AST parsing, unexpected OS/subprocess exceptions are caught, logged as warnings, and converted into structured error records in `state["errors"]`.
+3. **Trace Item Formulation**: The node builds a [`ToolTraceItem`](../src/issuelens/agent/state.py) recording:
+   - `tool_name`: Name of executed node/tool (`parse_issue`, `retrieve_initial`, `form_hypotheses`, etc.).
+   - `round`: Retrieval round index.
+   - `inputs`: Sanitized summary of parameters.
+   - `output_summary`: Human-readable outcome (e.g., *"Retrieved 5 code evidence hits"*).
+   - `status`: `"success"`, `"error"`, or `"skipped"`.
+   - `duration_ms`: Execution duration in milliseconds.
+   - `error_message`: Sanitized error description if failed.
+4. **Insufficient Evidence Fallback**: If all retrieval rounds return zero code evidence, `build_report` flags the report with `verification_status="not_run"` and prefixes `summary` with `[INSUFFICIENT EVIDENCE]`.
+
+#### 3. Which files and functions participate
+- [`src/issuelens/agent/state.py`](../src/issuelens/agent/state.py): Defines [`ToolTraceItem`](../src/issuelens/agent/state.py).
+- [`src/issuelens/agent/nodes.py`](../src/issuelens/agent/nodes.py): Implements tool trace recording and exception isolation across all node methods.
+- [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py): Computes citation validity and sets `insufficient_evidence` flags.
+
+#### 4. Why the implementation is structured this way
+- **Append-Only Traces**: Each node appends its execution telemetry to `state["tool_trace"]`. Because the state is serializable, traces can be persisted to the database in Phase 6 without schema transformations.
+- **Fail-Safe Degradation**: Internal tool glitches (like a missing ripgrep binary) fall back to empty evidence or pure-Python equivalents rather than dropping the HTTP connection.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Unstructured Python Logging*: Rely solely on `logger.info()` output.
+  - *Trade-off*: Logs are difficult to query programmatically, cannot be returned in API diagnostics, and get lost across distributed worker processes. Storing structured telemetry directly in graph state ensures complete traceability.
+
+#### 6. What can fail and how failures are handled
+- **Tool Exception during Search**: Trapped by `try...except Exception as exc:` in `retrieve_initial` and `retrieve_followup`, appending an entry to `state["errors"]` and proceeding with available evidence.
+- **Zero Hits Found**: Handled by `build_report` by generating an evidence-deficit report instead of raising a 404 or 500 error.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_graph.py`](../tests/unit/test_graph.py)
+- **Verifications**: Tool failure resilience (`test_graph_tool_failure_resilience`) and zero-hit insufficient evidence handling (`test_graph_empty_retrieval_insufficient_evidence`).
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_graph.py
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- Production-grade systems treat observability as a first-class architectural concern, not an afterthought. Instrumenting tools with structured duration, parameter, and status traces turns opaque black boxes into transparent, debuggable systems.
+
+---
+
+## Planned Implementation Roadmap (Phases 6 - 9)
+
+The following phases are specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md), but are **[PLANNED]** and have not yet been implemented (Phases 0–5 are fully implemented):
 
 ### Phase 6: Persistence & Run History [PLANNED]
 - **Goal**: Relational PostgreSQL storage via SQLAlchemy 2.0 and Alembic migrations. Persist investigation runs, evidence items, hypotheses, and final reports.

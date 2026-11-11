@@ -49,7 +49,7 @@ flowchart TD
 1. **Context Ingestion**: Calls [`GitHubClient.fetch_issue_context()`](../../src/issuelens/github/client.py#L318), extracting issue title, body, comments, repository visibility, and resolving the default branch head to a stable 40-character commit SHA.
 2. **Snapshot Acquisition & Cache Check**: Calls [`get_cached_snapshot()`](../../src/issuelens/repository/snapshot.py#L210). On cache hit, reuses the local snapshot immediately without network calls. On cache miss, downloads the repository zipball, extracts it atomically into `.cache/issuelens/snapshots/`, and enforces LRU disk limits via [`prune_snapshot_cache()`](../../src/issuelens/repository/snapshot.py#L250).
 3. **Query Compilation**: [`compile_search_query()`](../../src/issuelens/agent/service.py#L60) combines issue title, the first 1500 characters of the issue body, and up to 3 comments (500 chars each).
-4. **Deterministic Code Search**: [`search_code()`](../../src/issuelens/repository/code_search.py#L150) runs ripgrep (or pure-Python regex fallback) against the snapshot root, identifies matched line ranges, and expands hits to their enclosing AST symbols using [`expand_hit_to_enclosing_symbol()`](../../src/issuelens/repository/python_symbols.py#L168).
+4. **Deterministic Code Search**: [`search_code()`](../../src/issuelens/repository/code_search.py) runs ripgrep (or pure-Python regex fallback) against the snapshot root, identifies matched line ranges, expands hits to their enclosing AST symbols via [`find_enclosing_symbol()`](../../src/issuelens/repository/python_symbols.py), and ranks results deterministically (source > tests > docs, explicit path/symbol bonuses, per-file budget) before returning them.
 5. **Evidence Formulation**: Converts code hits into typed [`EvidenceItem`](../../src/issuelens/agent/report.py#L12) records assigned unique IDs (`ev_1`, `ev_2`, etc.) with repository-relative paths and exact line coordinates.
 6. **Prompt Assembly**: [`build_investigation_messages()`](../../src/issuelens/agent/prompts.py#L125) formats untrusted text into delimited XML enclaves (`<untrusted_issue_data>`, `<untrusted_repository_evidence>`) and attaches system directives instructing the model to cite only provided evidence IDs.
 7. **Structured LLM Inference**: [`LangChainLLMClient.generate_report_payload()`](../../src/issuelens/agent/llm.py#L45) sends the message payload to the configured LLM provider using LangChain's `.with_structured_output(InvestigationReportPayload)`.
@@ -64,11 +64,11 @@ flowchart TD
 
 ---
 
-## 2. Planned Workflow: LangGraph Multi-Round State Machine (Phase 5)
+## 2. Implemented Workflow: LangGraph Multi-Round State Machine (Phase 5)
 
-Phase 5 will migrate the single-pass service pipeline into a multi-turn, stateful agent graph using **LangGraph**. The state machine enables the agent to inspect initial evidence, form tentative hypotheses, recognize missing information, and trigger bounded follow-up retrieval rounds (up to 3 rounds) to confirm or refute causes before finalizing the report.
+In Phase 5, the agent workflow is orchestrated via a multi-turn, stateful agent graph using **LangGraph** (`src/issuelens/agent/graph.py`). The state machine inspects initial evidence, forms tentative hypotheses, identifies missing information, and triggers bounded follow-up retrieval rounds (up to 3 rounds) to confirm or refute causes before finalizing the report.
 
-### Planned State Machine Architecture
+### State Machine Architecture
 
 ```mermaid
 flowchart TD
@@ -91,23 +91,14 @@ flowchart TD
     NodeValidate --> NodeBuildReport["build_report<br/>(Pydantic schema validation)"]
     
     NodeBuildReport --> EndGraph([__end__])
-
-    style NodeParse stroke-dasharray: 5 5
-    style NodeInitialRetrieve stroke-dasharray: 5 5
-    style NodeHypothesize stroke-dasharray: 5 5
-    style NodeEvaluate stroke-dasharray: 5 5
-    style NodeDecide stroke-dasharray: 5 5
-    style NodeFollowup stroke-dasharray: 5 5
-    style NodeValidate stroke-dasharray: 5 5
-    style NodeBuildReport stroke-dasharray: 5 5
 ```
 
-### Planned State Schema (`InvestigationState`)
+### Implemented State Schema (`InvestigationState`)
 
-The state schema will be defined as a Python `TypedDict` in `src/issuelens/agent/state.py`:
+The state schema is defined as a typed Python `TypedDict` in [`src/issuelens/agent/state.py`](../../src/issuelens/agent/state.py):
 
 ```python
-class InvestigationState(TypedDict):
+class InvestigationState(TypedDict, total=False):
     run_id: str                      # Unique investigation execution ID
     issue: dict[str, Any]            # GitHub issue metadata, title, author, labels
     repository: dict[str, Any]       # Repository metadata and visibility
@@ -117,12 +108,15 @@ class InvestigationState(TypedDict):
     hypotheses: list[dict[str, Any]] # Current ranked hypotheses and confidence ratings
     missing_information: list[str]   # Specific missing facts needed to prove root cause
     retrieval_round: int             # Monotonically increasing loop counter (max 3)
-    tool_trace: list[dict[str, Any]] # Audit log of tools executed during investigation
+    tool_trace: list[ToolTraceItem]  # Audit log of tools executed during investigation
     errors: list[dict[str, Any]]     # Non-fatal warnings and diagnostic events
     final_report: dict[str, Any] | None # Final validated InvestigationReport
+    max_retrieval_rounds: int        # Maximum loop iterations cap (default: 3)
+    followup_queries: list[str]      # Queued search queries for secondary retrieval
+    stop_reason: str | None          # Termination cause
 ```
 
-### Planned Node Responsibilities & Exit Conditions
+### Implemented Node Responsibilities & Exit Conditions
 
 | Node Name | Responsibility | Exit Condition / Gate |
 | :--- | :--- | :--- |

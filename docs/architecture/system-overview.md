@@ -40,11 +40,15 @@ flowchart TD
         CodeSearch --> SnippetReader
     end
 
-    subgraph AgentOrchestration["4. Agent Orchestration & LLM (Implemented)"]
+    subgraph AgentOrchestration["4. Agent Orchestration & LangGraph Workflow (Implemented)"]
         ServiceOrchestrator["Investigation Service<br/><code>InvestigationService.investigate()</code><br/><code>src/issuelens/agent/service.py</code>"]
+        LangGraphEngine["LangGraph State Machine<br/><code>create_investigation_graph()</code><br/><code>src/issuelens/agent/graph.py</code>"]
+        GraphNodes["Discrete Graph Nodes<br/><code>parse_issue, retrieve_initial, form_hypotheses...</code><br/><code>src/issuelens/agent/nodes.py</code>"]
         PromptBuilder["Prompt Enclave Builder<br/>XML Injection Defense<br/><code>src/issuelens/agent/prompts.py</code>"]
         LLMAdapter["LangChain LLM Adapter<br/><code>LangChainLLMClient</code><br/><code>src/issuelens/agent/llm.py</code>"]
-        ServiceOrchestrator --> PromptBuilder
+        ServiceOrchestrator --> LangGraphEngine
+        LangGraphEngine --> GraphNodes
+        GraphNodes --> PromptBuilder
         PromptBuilder --> LLMAdapter
     end
 
@@ -61,8 +65,7 @@ flowchart TD
         PostgresDB[("PostgreSQL Database<br/>Runs, Reports, Evidence<br/><code>src/issuelens/persistence/</code> (Planned Phase 6)")]
     end
 
-    subgraph PlannedComponents["7. Planned Future Systems (Phases 5, 7, 8)"]
-        LangGraphNodes["LangGraph Multi-Round State Machine<br/>(Planned Phase 5)"]
+    subgraph PlannedComponents["7. Planned Future Systems (Phases 6, 7, 8)"]
         EvalHarness["Retrospective Evaluation Benchmark<br/>(Planned Phase 7)"]
         DocumentRAG["Doc Chunking & BM25 / Vector RAG<br/>(Planned Phase 8)"]
     end
@@ -74,23 +77,22 @@ flowchart TD
     GitHubClient -->|"External HTTPS (REST API)"| GitHubAPI[("GitHub REST API v3")]
     ServiceOrchestrator -->|"Acquire / Query Cache"| SnapshotManager
     SnapshotManager -->|"Disk Cache (.cache/issuelens/snapshots)"| DiskFS[("Local Disk Snapshot Cache")]
-    ServiceOrchestrator -->|"Search Tokens"| CodeSearch
-    SnippetReader -->|"CodeHit / EvidenceItem"| ServiceOrchestrator
-    ServiceOrchestrator -->|"Untrusted Data + Evidence"| PromptBuilder
+    ServiceOrchestrator -->|"Invoke State Machine"| LangGraphEngine
+    GraphNodes -->|"Search Tokens"| CodeSearch
+    SnippetReader -->|"CodeHit / EvidenceItem"| GraphNodes
     LLMAdapter -->|"Structured Output Request"| ExternalLLM[("External LLM Provider<br/>OpenAI / Anthropic")]
-    LLMAdapter -->|"InvestigationReportPayload"| ServiceOrchestrator
-    ServiceOrchestrator -->|"Raw Report + Snapshot"| CitationValidator
-    ReportSanitizer -->|"Validated InvestigationReport"| APIRouter
+    LLMAdapter -->|"InvestigationReportPayload"| GraphNodes
+    GraphNodes -->|"Validate Excerpts"| CitationValidator
+    ReportSanitizer -->|"Validated InvestigationReport"| ServiceOrchestrator
+    ServiceOrchestrator -->|"Final Report"| APIRouter
     APIRouter -->|"Store Run"| InMemoryRegistry
     APIRouter -.->|"Future Store Run"| PostgresDB
     APIRouter -->|"JSON Report"| User
 
-    ServiceOrchestrator -.->|"Future Multi-Turn Loop"| LangGraphNodes
-    ServiceOrchestrator -.->|"Future Doc Retrieval"| DocumentRAG
+    GraphNodes -.->|"Future Doc Retrieval"| DocumentRAG
     ReportSanitizer -.->|"Future Quality Evaluation"| EvalHarness
 
     style PlannedComponents stroke-dasharray: 5 5
-    style LangGraphNodes stroke-dasharray: 5 5
     style PostgresDB stroke-dasharray: 5 5
     style EvalHarness stroke-dasharray: 5 5
     style DocumentRAG stroke-dasharray: 5 5
@@ -122,7 +124,7 @@ flowchart TD
 - **Responsibility**: Safely download and extract commit-pinned repository archives, maintain a content-addressed snapshot cache with atomic staging and bounded LRU pruning, perform deterministic lexical searches (via ripgrep with pure-Python fallback), parse Python AST symbol spans without code execution, and format line-numbered code snippets.
 - **Key Modules**:
   - [`src/issuelens/repository/snapshot.py`](../../src/issuelens/repository/snapshot.py): [`RepoSnapshot`](../../src/issuelens/repository/snapshot.py#L74), containment checker [`safe_resolve()`](../../src/issuelens/repository/snapshot.py#L92), [`cache_and_create_snapshot_from_zip()`](../../src/issuelens/repository/snapshot.py#L305), and LRU cache pruner [`prune_snapshot_cache()`](../../src/issuelens/repository/snapshot.py#L250).
-  - [`src/issuelens/repository/code_search.py`](../../src/issuelens/repository/code_search.py): Lexical search engine [`search_code()`](../../src/issuelens/repository/code_search.py#L150), [`find_ripgrep_executable()`](../../src/issuelens/repository/code_search.py#L39), and [`_search_with_python()`](../../src/issuelens/repository/code_search.py#L322).
+  - [`src/issuelens/repository/code_search.py`](../../src/issuelens/repository/code_search.py): Lexical search engine [`search_code()`](../../src/issuelens/repository/code_search.py), [`find_ripgrep_executable()`](../../src/issuelens/repository/code_search.py), [`_search_with_python_fallback()`](../../src/issuelens/repository/code_search.py), and deterministic ranking helpers (`select_search_terms`, `term_weight`, `classify_path`).
   - [`src/issuelens/repository/python_symbols.py`](../../src/issuelens/repository/python_symbols.py): AST visitor [`_SymbolVisitor`](../../src/issuelens/repository/python_symbols.py#L32) and symbol locator [`parse_python_symbols()`](../../src/issuelens/repository/python_symbols.py#L107).
   - [`src/issuelens/repository/snippets.py`](../../src/issuelens/repository/snippets.py): Line-numbered excerpt extractor [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7).
 - **Inputs**: Pinned commit SHA, repository zipball archive, search query tokens.

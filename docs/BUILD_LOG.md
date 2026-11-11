@@ -540,3 +540,188 @@ Temporary directory utilities like `tempfile.mkdtemp()` are dangerous in statele
 
 ---
 
+
+### Entry 012: Generic Type Parameter Requirements on `CompiledStateGraph` under Strict Mypy
+- **Date**: 2026-11-04
+- **Phase**: Phase 5 (LangGraph Workflow)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+When compiling the LangGraph workflow with `create_investigation_graph() -> CompiledStateGraph`, running `uv run mypy src tests` failed with:
+```text
+src\issuelens\agent\graph.py:15: error: Missing type arguments for generic type "CompiledStateGraph"  [type-arg]
+```
+
+#### 2. Root Cause
+In LangGraph 0.2+, `CompiledStateGraph` is defined as a generic class parameterized by four type variables: `(~StateT, ~ContextT, ~InputT, ~OutputT)`. In our codebase, Mypy is configured in strict mode (`disallow_any_generics = true`), which strictly rejects using unparameterized generic types like `CompiledStateGraph`.
+
+#### 3. Fix
+Specified explicit type arguments on the return annotation in [`src/issuelens/agent/graph.py`](../src/issuelens/agent/graph.py):
+```python
+def create_investigation_graph(
+    nodes: InvestigationNodes,
+) -> CompiledStateGraph[Any, Any, Any, Any]:
+```
+
+#### 4. Verification
+Ran Mypy static type checking:
+```powershell
+uv run mypy src tests
+```
+**Output**:
+```text
+Success: no issues found in 48 source files
+```
+
+#### 5. Engineering Lesson
+When working with rapidly evolving agent frameworks like LangGraph under strict type checking, always inspect generic type parameters (`inspect` or runtime `__parameters__`). Explicitly parameterizing framework types guarantees compatibility across strict linter and type-checker configurations.
+
+#### 6. Regression Test
+Enforced by `uv run mypy src tests` and covered in [`tests/unit/test_graph.py`](../tests/unit/test_graph.py).
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Add `# type: ignore[type-arg]` on the function definition.
+- *Trade-off*: Suppressing type warnings hides potential typing bugs. Explicit generic parameterization is cleaner, conforms to strict Mypy standards, and preserves static type safety.
+
+---
+
+### Entry 013: Subtlety of Uncurated Follow-up Search Terms Matching Repository Documentation
+- **Date**: 2026-11-04
+- **Phase**: Phase 5 (LangGraph Workflow)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+In [`tests/unit/test_graph.py`](../tests/unit/test_graph.py) (`test_graph_empty_retrieval_insufficient_evidence`), the test intended to verify that when no code matches an issue, the graph emits an insufficient evidence report with zero evidence items (`len(report["evidence"]) == 0`). However, the test unexpectedly failed with `AssertionError: assert 5 == 0`.
+
+#### 2. Root Cause
+In the test fixture, `mock_payload` contained `missing_information=["Reproduction files not in repository."]`. During `evaluate_evidence`, the node formulated follow-up queries from `missing_information`. The secondary retrieval node (`retrieve_followup`) searched for the phrase *"Reproduction files not in repository."*, which tokenized to terms like `files` and `repository`. Because the sample repository's `README.md` and `database.py` contained those exact English words, the follow-up retrieval unexpectedly discovered valid repository hits, turning what was intended to be an empty retrieval test into a successful secondary match.
+
+#### 3. Fix
+In the empty retrieval test case, adjusted the mocked `missing_information` to an unmatchable token (`"xyz_unobtainable_secret_log_token"`) and ensured initial query tokens (`"zzzjklmn_404_notfound_abc"`) did not overlap with common English words in repository documentation.
+
+#### 4. Verification
+Ran test suite:
+```powershell
+uv run pytest tests/unit/test_graph.py
+```
+**Output**:
+```text
+tests/unit/test_graph.py::test_graph_empty_retrieval_insufficient_evidence PASSED [ 50%]
+============================== 6 passed in 0.93s ==============================
+```
+
+#### 5. Engineering Lesson
+In lexical code search systems, common natural language words in issue bodies or LLM missing-information strings can easily trigger false-positive documentation hits. In testing empty-retrieval edge cases, test doubles must be carefully isolated from vocabulary present in test fixture repositories.
+
+#### 6. Regression Test
+Safeguarded by [`tests/unit/test_graph.py`](../tests/unit/test_graph.py) (`test_graph_empty_retrieval_insufficient_evidence`).
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Disable follow-up retrieval query generation for natural language text.
+- *Trade-off*: Would prevent the agent from searching for valuable clues mentioned in missing information. Keeping query extraction active while ensuring hermetic test fixtures maintains the optimal balance.
+
+---
+
+### Entry 014: Irrelevant Evidence from Unranked Lexical Matches and Prose-Heavy Queries
+- **Date**: 2026-11-11
+- **Phase**: Phase 5 (LangGraph Workflow) — retrieval quality follow-up
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+An offline investigation of `psf/requests` against a realistic bug report about
+`ChunkedEncodingError` returned ten evidence items that were all matches from
+`HISTORY.md` changelog prose. The actual defining source (`src/requests/exceptions.py`)
+and the raising call site (`src/requests/models.py`,
+`iter_content.generate` → `raise ChunkedEncodingError(e)`) never appeared in the
+evidence list, so the LLM had no relevant code to reason about.
+
+#### 2. Root Cause
+Three independent defects in the retrieval path combined:
+
+1. **Query pollution** — `parse_issue` concatenated the title, error types, file
+   names, symbols and up to 800–1000 characters of issue body into one query string.
+   `extract_search_terms` then treated ordinary English words (`when`, `using`,
+   `large`, `raised`) as equal search terms.
+2. **No relevance ranking** — `search_code` grouped raw hits by file in ripgrep walk
+   order and truncated at `max_results`. A single file that matched an early term
+   could consume the entire budget before any source file was visited.
+3. **No source/documentation distinction** — changelog, docs and tests scored the
+   same as production code, and the resulting evidence was always labelled
+   `source_type="code"`.
+
+A fourth integrity issue was observed while debugging: for non-symbol hits the
+excerpt included `context_lines` outside the declared `start_line..end_line`
+window, so the cited range did not fully describe the excerpt shown to the model.
+
+#### 3. Fix
+- [`src/issuelens/repository/code_search.py`](../src/issuelens/repository/code_search.py):
+  - Added deterministic term weighting (`term_weight`, `is_high_signal_term`,
+    `select_search_terms`). When at least three identifier-like terms exist, prose
+    words are dropped entirely.
+  - Added `classify_path` and a ranking function: production code `+4`,
+    documentation `-3`, test paths `-2`, explicit file-path references `+6`, and
+    symbol-name matches `+5`.
+  - Hits are now globally sorted by score, then path, then line; a per-file budget
+    (`max_results_per_file`, default 3) prevents one file from dominating.
+  - `--fixed-strings` is passed to ripgrep so identifiers containing `.` or other
+    regex metacharacters are matched literally.
+  - Files explicitly named in the issue are anchored as evidence even if their
+    content does not match prose terms.
+- [`src/issuelens/repository/snippets.py`](../src/issuelens/repository/snippets.py):
+  added `read_snippet_with_bounds`, which returns the actual clamped/expanded
+  window. `search_code` now records those bounds, so `excerpt` always equals
+  `start_line..end_line`.
+- [`src/issuelens/agent/nodes.py`](../src/issuelens/agent/nodes.py):
+  `parse_issue` puts identifiers/paths/symbols/stack frames before prose in
+  `raw_query`; evidence items derive `source_type` from `classify_path`; follow-up
+  queries are built only from high-signal terms instead of whole missing-information
+  sentences.
+- [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py):
+  documentation evidence is now validated against snapshot bytes too; only issue
+  and commit sources skip filesystem verification.
+
+#### 4. Verification
+```powershell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest -q
+```
+**Results**:
+```text
+All checks passed!
+Success: no issues found in 48 source files
+139 passed in 5.09s
+```
+A manual replay against the cached `psf/requests` snapshot now ranks
+`src/requests/models.py` (`iter_content.generate`), `src/requests/exceptions.py`
+(`class ChunkedEncodingError`) and `src/requests/sessions.py` above changelog/docs.
+
+#### 5. Engineering Lesson
+Lexical search is only as good as its *ranking*. Returning the first N filesystem
+matches is not "retrieval"; a single noisy term can silently starve the result set.
+Separate "which terms are discriminating?" from "which file is the best evidence?"
+and make both decisions explicit, deterministic and testable.
+
+#### 6. Regression Test
+- [`tests/unit/test_code_search.py`](../tests/unit/test_code_search.py):
+  `test_search_code_ranks_source_code_above_changelog`,
+  `test_search_code_excerpt_matches_declared_range`,
+  `test_search_code_enforces_per_file_budget`,
+  `test_search_code_anchors_explicitly_named_file`,
+  `test_select_search_terms_drops_prose_when_identifiers_exist`.
+- [`tests/unit/test_graph.py`](../tests/unit/test_graph.py):
+  `test_evaluate_evidence_ignores_prose_missing_information`.
+- [`tests/unit/test_validator.py`](../tests/unit/test_validator.py):
+  `test_validate_citation_documentation_altered_excerpt`.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: BM25/TF-IDF ranking or embedding search.
+  - *Trade-off*: Better natural-language recall, but adds index infrastructure and
+    non-determinism; the spec starts with deterministic lexical search and defers
+    BM25/embeddings to Phase 8.
+- *Alternative*: Reject all documentation matches.
+  - *Trade-off*: Changelogs and docs can legitimately explain behavior; the safer
+    choice is to down-rank them rather than exclude them.
+
+---
+

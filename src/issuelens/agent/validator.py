@@ -111,8 +111,9 @@ def validate_citation(
     snapshot: RepoSnapshot,
 ) -> CitationValidationResult:
     """Validate a single EvidenceItem against the physical repository snapshot."""
-    if evidence.source_type != "code":
-        # Non-code sources (issues, commits, docs) validated by format checks
+    if evidence.source_type in ("issue", "commit"):
+        # Issue and commit references are validated by provenance checks upstream,
+        # not against the repository snapshot filesystem.
         return CitationValidationResult(
             evidence_id=evidence.evidence_id,
             is_valid=True,
