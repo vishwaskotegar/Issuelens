@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -10,8 +11,13 @@ from fastapi.testclient import TestClient
 from issuelens.agent.llm import MockLLMClient
 from issuelens.agent.report import InvestigationReport
 from issuelens.agent.service import InvestigationService
-from issuelens.api.routes import get_github_client, get_investigation_service
+from issuelens.api.routes import (
+    _INVESTIGATIONS,
+    get_github_client,
+    get_investigation_service,
+)
 from issuelens.config import Settings
+from issuelens.core.errors import LLMOutputValidationError
 from issuelens.github.client import GitHubClientProtocol
 from issuelens.github.models import (
     GitHubComment,
@@ -173,3 +179,36 @@ def test_execute_investigation_not_found(api_test_app: FastAPI) -> None:
     client = TestClient(api_test_app)
     response = client.post("/v1/investigations/nonexistent_123/execute")
     assert response.status_code == 404
+
+
+def test_create_investigation_sync_failure_records_failed_status(
+    api_test_app: FastAPI,
+) -> None:
+    """Verify sync execution failure records failed status in registry."""
+    client = TestClient(api_test_app)
+    with patch(
+        "issuelens.agent.service.InvestigationService.investigate",
+        side_effect=LLMOutputValidationError("Simulated LLM schema parsing failure"),
+    ):
+        response = client.post(
+            "/v1/investigations",
+            json={"issue_url": "https://github.com/sample/repo/issues/10", "execute": True},
+        )
+        assert response.status_code == 502
+
+    # Verify run was recorded in _INVESTIGATIONS
+    matching_runs = [
+        r for r in _INVESTIGATIONS.values()
+        if r["repository"] == "sample/repo" and r["status"] == "failed"
+    ]
+    assert len(matching_runs) == 1
+    failed_run = matching_runs[0]
+    assert failed_run["status"] == "failed"
+    assert "Simulated LLM schema parsing failure" in str(failed_run["error"])
+
+    # Verify GET /v1/investigations/{run_id} returns the failed status
+    status_resp = client.get(f"/v1/investigations/{failed_run['run_id']}")
+    assert status_resp.status_code == 200
+    assert status_resp.json()["status"] == "failed"
+    assert "Simulated LLM schema parsing failure" in str(status_resp.json()["error"])
+

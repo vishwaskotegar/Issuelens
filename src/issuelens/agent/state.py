@@ -37,6 +37,7 @@ class InvestigationState(TypedDict, total=False):
     issue: dict[str, Any]
     repository: dict[str, Any]
     commit_sha: str
+    summary: str
     issue_summary: dict[str, Any]
     evidence: list[dict[str, Any]]
     hypotheses: list[dict[str, Any]]

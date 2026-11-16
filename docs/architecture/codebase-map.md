@@ -98,7 +98,7 @@ issuelens/
 │       ├── repository/         # Repository snapshot manager, code search, AST
 │       └── agent/              # LangGraph workflow, nodes, state, LLM, and validator
 └── tests/
-    ├── unit/                   # 130 hermetic unit and integration tests
+    ├── unit/                   # 156 hermetic unit and integration tests
     └── fixtures/               # Offline test repositories and broken code fixtures
 ```
 
@@ -118,8 +118,11 @@ issuelens/
 | [`src/issuelens/repository/snapshot.py`](../../src/issuelens/repository/snapshot.py) | [`RepoSnapshot`](../../src/issuelens/repository/snapshot.py#L74), [`cache_and_create_snapshot_from_zip()`](../../src/issuelens/repository/snapshot.py#L305), `prune_snapshot_cache` | Path traversal defense, commit-pinned disk cache, atomic staging, and LRU pruning. |
 | [`src/issuelens/repository/code_search.py`](../../src/issuelens/repository/code_search.py) | [`search_code()`](../../src/issuelens/repository/code_search.py), `select_search_terms`, `term_weight`, `classify_path`, `find_ripgrep_executable`, `_search_with_python_fallback`, [`CodeHit`](../../src/issuelens/repository/code_search.py) | Dual-engine lexical code search with deterministic relevance ranking, automatic fallback, AST symbol enrichment, and per-file result budgets. |
 | [`src/issuelens/repository/python_symbols.py`](../../src/issuelens/repository/python_symbols.py) | [`parse_python_symbols()`](../../src/issuelens/repository/python_symbols.py#L107), `find_enclosing_symbol` | Pure AST visitor extracting classes and functions with 1-indexed line spans without execution. |
-| [`src/issuelens/repository/snippets.py`](../../src/issuelens/repository/snippets.py) | [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7) | Safe line-numbered snippet extractor with boundary clamping and context padding. |
+| [`src/issuelens/repository/snippets.py`](../../src/issuelens/repository/snippets.py) | [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7), [`read_snippet_with_bounds()`](../../src/issuelens/repository/snippets.py) | Safe line-numbered snippet extractor with boundary clamping, context padding, and bounds verification. |
 | [`src/issuelens/agent/service.py`](../../src/issuelens/agent/service.py) | [`InvestigationService`](../../src/issuelens/agent/service.py#L70), `compile_search_query` | Orchestrator connecting GitHub context, snapshot cache, search, LLM, and validator. |
+| [`src/issuelens/agent/graph.py`](../../src/issuelens/agent/graph.py) | `create_investigation_graph` | Compiled multi-round LangGraph state machine with cyclic follow-up retrieval and loop caps. |
+| [`src/issuelens/agent/nodes.py`](../../src/issuelens/agent/nodes.py) | `InvestigationNodes`, `decide_next_step` | Discrete workflow nodes (`parse_issue`, `retrieve_initial`, `form_hypotheses`, `evaluate_evidence`, `retrieve_followup`, `validate_citations`, `build_report`). |
+| [`src/issuelens/agent/state.py`](../../src/issuelens/agent/state.py) | `InvestigationState`, `ToolTraceItem`, `IssueSummary` | Typed dictionary schemas for immutable workflow state and audit tool traces. |
 | [`src/issuelens/agent/llm.py`](../../src/issuelens/agent/llm.py) | [`LangChainLLMClient`](../../src/issuelens/agent/llm.py#L35), [`LLMClientProtocol`](../../src/issuelens/agent/llm.py#L23), [`MockLLMClient`](../../src/issuelens/agent/llm.py#L87) | LangChain chat model wrapper enforcing Pydantic structured output. |
 | [`src/issuelens/agent/prompts.py`](../../src/issuelens/agent/prompts.py) | `SYSTEM_PROMPT`, [`build_investigation_messages()`](../../src/issuelens/agent/prompts.py#L125), `format_evidence_block` | Anti-injection prompt builder wrapping untrusted external data in XML enclaves. |
 | [`src/issuelens/agent/report.py`](../../src/issuelens/agent/report.py) | [`InvestigationReport`](../../src/issuelens/agent/report.py#L126), [`Hypothesis`](../../src/issuelens/agent/report.py#L51), [`EvidenceItem`](../../src/issuelens/agent/report.py#L12), `InvestigationReportPayload` | Domain models for evidence, hypotheses, and reports with provenance binding. |

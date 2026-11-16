@@ -156,13 +156,8 @@ All failure paths emit standardized, machine-readable JSON payloads conforming t
 
 ```json
 {
-  "error": {
-    "code": "RATE_LIMIT_EXCEEDED",
-    "message": "GitHub API rate limit exhausted. Resets at 2026-10-29T18:30:00Z.",
-    "details": {
-      "rate_limit_reset": "2026-10-29T18:30:00Z"
-    }
-  }
+  "error": "GitHub API rate limit exceeded when requesting /repos/owner/repo/issues/123. Rate limit resets at 2026-10-29T18:30:00Z.",
+  "code": "RATE_LIMIT_EXCEEDED"
 }
 ```
 

@@ -184,6 +184,7 @@ async def test_investigation_service_full_flow() -> None:
     assert report.repository == "sample/repo"
     assert report.commit_sha == "1122334455667788990011223344556677889900"
     assert report.verification_status == "verified"
+    assert "Mock investigation identified probable cause" in report.summary
     assert len(report.evidence) > 0
     assert report.evidence[0].evidence_id == "ev_1"
     assert len(report.hypotheses) == 1

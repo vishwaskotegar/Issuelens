@@ -880,14 +880,14 @@ In complex bug reports, an initial search query often retrieves entrypoint metho
 1. **Workflow Initialization**: [`InvestigationService.investigate()`](../src/issuelens/agent/service.py) constructs an initial [`InvestigationState`](../src/issuelens/agent/state.py) dict containing target coordinates, issue metadata, repository visibility, and an empty evidence list.
 2. **Issue Parsing (`parse_issue`)**: Extracts symptoms, Python error types (`ValueError`, `ConnectionError`), stack frame paths, and backticked symbols via regex, compiling a structured `issue_summary`. Identifier-like signals are ordered before prose in `raw_query`, and extraction order is deterministic (`dict.fromkeys`, no `set`).
 3. **Initial Retrieval (`retrieve_initial`)**: Executes ranked deterministic lexical and AST symbol search on the snapshot, populating `evidence` (round 1) and classifying each item as `code` or `documentation`.
-4. **Hypothesis Formation (`form_hypotheses`)**: Invokes the LLM client with isolated XML enclaves, generating up to 3 testable hypotheses with supporting evidence IDs and `missing_information`.
+4. **Hypothesis Formation (`form_hypotheses`)**: Invokes the LLM client with isolated XML enclaves, generating up to 3 testable hypotheses with supporting evidence IDs, `missing_information`, and synthesized analytical `summary`.
 5. **Evidence Evaluation (`evaluate_evidence`)**: Verifies whether cited evidence IDs exist, marks hypotheses as `supported` or `unsupported`, and formulates candidate queries for unproven claims. Only identifier/path-like terms are queued for follow-up; natural-language sentences are ignored.
 6. **Conditional Routing (`decide_next_step`)**:
    - If `retrieval_round < max_retrieval_rounds` (default: 3) and `followup_queries` has queued items: routes to `retrieve_followup`.
    - If loop cap is reached, queries are exhausted, or evidence is empty: routes to `validate_citations`.
 7. **Follow-Up Retrieval (`retrieve_followup`)**: Pops the next query, searches the snapshot for new files, increments `retrieval_round`, appends new `EvidenceItem` records, and loops back to `evaluate_evidence`.
-8. **Physical Citation Validation (`validate_citations`)**: Compares referenced line ranges and excerpts against physical bytes on disk, pruning hallucinated citations and demoting ungrounded hypotheses.
-9. **Report Synthesis (`build_report`)**: Assembles the validated [`InvestigationReport`](../src/issuelens/agent/report.py) model.
+8. **Physical Citation Validation (`validate_citations`)**: Compares referenced line ranges and excerpts against physical bytes on disk, pruning hallucinated citations, demoting ungrounded hypotheses, and propagating enriched `summary`, `missing_information`, and `limitations`.
+9. **Report Synthesis (`build_report`)**: Assembles the validated [`InvestigationReport`](../src/issuelens/agent/report.py) model, preserving the LLM's analytical `summary` and ensuring `[INSUFFICIENT EVIDENCE]` warnings are attached if verified evidence is absent.
 
 #### 3. Which files and functions participate
 - [`src/issuelens/agent/state.py`](../src/issuelens/agent/state.py): Defines [`InvestigationState`](../src/issuelens/agent/state.py), [`ToolTraceItem`](../src/issuelens/agent/state.py), and [`IssueSummary`](../src/issuelens/agent/state.py).

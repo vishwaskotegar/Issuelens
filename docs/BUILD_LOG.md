@@ -857,7 +857,67 @@ All lint, type checks, and 153+ unit tests passed cleanly.
 - *Alternative*: Exclude `docs_src/` entirely from code search.
   - *Trade-off*: Documentation snippets may be relevant if the bug is a docs error; classifying as `"documentation"` down-ranks them so production code always takes priority while keeping docs accessible if no production matches exist.
 
-
 ---
+
+### Entry 017: Agent Summary and Guardrail State Loss, Inverted Snippet Line Bounds, and Failed Run Ingress
+- **Date**: 2026-11-17
+- **Phase**: Phase 5 (Real Bug Testing & Hardening)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During codebase audit and state-flow tracing across the LangGraph agent pipeline and API layers:
+1. **LLM Summary and Validator Guardrails Dropped**: In `InvestigationNodes`, the LLM synthesized an executive `summary`, and `validate_investigation_report()` added insufficient evidence warnings to `missing_information` and citation guardrails to `limitations`. However, `form_hypotheses()` dropped `summary`, `validate_citations()` failed to propagate `summary`, `missing_information`, and `limitations`, and `build_report()` overwrote `summary` with generic boilerplate (`f"Investigation of {repo}#{number}: {title}"`).
+2. **Inverted Line Coordinates on Out-of-Bounds Queries**: When `read_snippet_with_bounds()` was invoked with `start_line > total_lines` (e.g. `start_line=50, end_line=60` on a 5-line file), `actual_start` was 50 and `actual_end` was clamped to 5, returning `(50, 5, "")`. This violated the `start_line <= end_line` coordinate invariant.
+3. **Lost Failed Ingestions in Memory Registry**: In `create_investigation()` (`POST /v1/investigations`), if synchronous execution failed (`service.investigate` raised an exception), the exception was re-raised before inserting into `_INVESTIGATIONS`. Consequently, subsequent status queries (`GET /v1/investigations/{run_id}`) returned 404 rather than status `failed` with error details.
+
+#### 2. Root Cause
+- [`src/issuelens/agent/state.py`](../src/issuelens/agent/state.py) & [`src/issuelens/agent/nodes.py`](../src/issuelens/agent/nodes.py):
+  - `InvestigationState` lacked a `summary` key. `form_hypotheses()` extracted hypotheses and missing info but omitted `payload.summary`.
+  - `validate_citations()` called `validate_investigation_report()`, which enriched `summary`, `missing_information`, and `limitations`, but the returned state dictionary only passed `evidence`, `hypotheses`, and `verification_status`.
+  - `build_report()` constructed its own generic title-based summary rather than prioritizing `state["summary"]`.
+- [`src/issuelens/repository/snippets.py`](../src/issuelens/repository/snippets.py):
+  - `read_snippet_with_bounds()` checked `total_lines == 0` but lacked an explicit check for `start_line > total_lines`, causing `actual_start > actual_end` when clamped against file length.
+- [`src/issuelens/api/routes.py`](../src/issuelens/api/routes.py):
+  - `_INVESTIGATIONS[run_id]` assignment occurred after `if payload.execute:` block without an exception handler recording the failed state.
+
+#### 3. Fix
+- **State Pipeline Synchronization**:
+  - Added `summary: str` to `InvestigationState` and initialized it in `InvestigationService.investigate()`.
+  - Captured `summary = payload.summary` in `form_hypotheses()`.
+  - Propagated `validated_report.summary`, `validated_report.missing_information`, and `validated_report.limitations` in `validate_citations()`.
+  - Updated `build_report()` to preserve `state.get("summary")`, falling back to title-based overview only if unset.
+- **Snippet Boundary Validation**:
+  - In `read_snippet_with_bounds()`, added validation `if start_line > total_lines: raise InvalidInputError(f"Start line ({start_line}) exceeds total lines in file ({total_lines}).")`.
+- **Failed Run Ingress Record**:
+  - In `create_investigation()`, added `except Exception as exc:` block recording `_INVESTIGATIONS[run_id]` with `status="failed"` and `error=error_msg` before re-raising.
+
+#### 4. Verification
+```powershell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest
+```
+**Results**:
+All lint checks passed cleanly, Mypy found 0 issues across 48 source files, and all 156 unit tests passed.
+
+#### 5. Engineering Lesson
+1. State management in cyclic graphs must have complete data symmetry: any domain attribute produced by an inference node or enriched by a validation node must be formally represented in the state schema, returned in node output updates, and consumed by downstream assembly nodes.
+2. Clamping line numbers against physical file boundaries must validate start offsets before applying clamping to prevent inverted range windows (`actual_start > actual_end`).
+3. Asynchronous or long-running execution registries must record failure states before re-raising exceptions to enable post-mortem status inspection by client systems.
+
+#### 6. Regression Tests
+- [`tests/unit/test_graph.py`](../tests/unit/test_graph.py):
+  `test_graph_success_flow` (asserts `report["summary"] == mock_payload.summary`),
+  `test_graph_empty_retrieval_insufficient_evidence` (asserts validator warnings in `missing_information` and `limitations`).
+- [`tests/unit/test_snippets.py`](../tests/unit/test_snippets.py):
+  `test_read_snippet_start_line_exceeds_total_lines`.
+- [`tests/unit/test_investigation_api.py`](../tests/unit/test_investigation_api.py):
+  `test_create_investigation_sync_failure_records_failed_status`.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Allow `read_snippet_with_bounds` to return `(0, 0, "")` on `start_line > total_lines` instead of raising.
+  - *Trade-off*: Raising `InvalidInputError` is consistent with `start_line < 1` and `end_line < start_line` and immediately exposes caller coordinate errors.
+- *Alternative*: Always overwrite the LLM's summary with a deterministic issue title summary.
+  - *Trade-off*: Discards valuable LLM synthesis and diagnostic insights; preserving the LLM summary while allowing the validator to prefix `[INSUFFICIENT EVIDENCE]` retains analytical value while enforcing truthfulness.
 
 

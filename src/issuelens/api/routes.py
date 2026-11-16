@@ -158,6 +158,19 @@ async def create_investigation(
         except Exception as exc:
             current_status = "failed"
             error_msg = str(exc)
+            _INVESTIGATIONS[run_id] = {
+                "run_id": run_id,
+                "status": "failed",
+                "issue_url": context.issue_url,
+                "repository": context.repository,
+                "issue_number": context.issue_number,
+                "commit_sha": context.commit_sha,
+                "issue_title": context.issue.title,
+                "created_at": now,
+                "context": context.model_dump(),
+                "report": None,
+                "error": error_msg,
+            }
             raise
 
     investigation_record = {

@@ -151,6 +151,7 @@ async def test_graph_success_flow(
     report = final_state["final_report"]
     assert report["run_id"] == "inv_test_run_001"
     assert report["verification_status"] == "verified"
+    assert report["summary"] == mock_payload.summary
     assert len(report["evidence"]) > 0
 
     # Assert tool trace captured all required stages
@@ -246,6 +247,8 @@ async def test_graph_empty_retrieval_insufficient_evidence(
     assert len(report["evidence"]) == 0
     assert report["verification_status"] == "not_run"
     assert "[INSUFFICIENT EVIDENCE]" in report["summary"]
+    assert any("No verified source code evidence" in info for info in report["missing_information"])
+    assert any("Citation Guardrail:" in lim for lim in report["limitations"])
 
 
 # ==============================================================================

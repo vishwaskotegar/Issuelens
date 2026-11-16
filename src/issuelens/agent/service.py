@@ -185,6 +185,7 @@ class InvestigationService:
                 "description": None,
             },
             "commit_sha": context.commit_sha,
+            "summary": "",
             "issue_summary": {},
             "evidence": [],
             "hypotheses": [],

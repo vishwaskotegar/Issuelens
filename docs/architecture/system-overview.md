@@ -155,14 +155,14 @@ flowchart TD
 
 ## 3. Planned vs. Implemented System Boundary Summary
 
-| Architectural Area | Implemented Baseline (Phases 0–4) | Planned Evolution (Phases 5–9) |
+| Architectural Area | Implemented Baseline (Phases 0–5) | Planned Evolution (Phases 6–9) |
 | :--- | :--- | :--- |
 | **API Entry** | Synchronous REST endpoints in FastAPI. | Asynchronous queue with worker threads (Phase 9). |
 | **Issue Ingestion** | GitHub REST API v3 with unauthenticated public access. | Webhook receiver and GitHub App installation (Phase 9). |
 | **Code Retrieval** | Ripgrep + pure-Python fallback; AST functions/classes. | Additional language parsers (TypeScript/Go). |
 | **Document Retrieval** | Issue description & comments only. | Markdown/Doc chunking, BM25, and optional pgvector (Phase 8). |
-| **Orchestration** | Direct single-pass service pipeline in `InvestigationService`. | LangGraph cyclic state machine with follow-up tool loop (Phase 5). |
-| **LLM Output** | LangChain `.with_structured_output()` schema enforcement. | Multi-turn reasoning with tool invocation nodes (Phase 5). |
+| **Orchestration** | Multi-round cyclic state machine via LangGraph (`src/issuelens/agent/graph.py`). | Worker-based async queue orchestration (Phase 9). |
+| **LLM Output** | LangChain `.with_structured_output()` schema enforcement. | Multi-turn reasoning with dynamic tool invocation nodes. |
 | **Validation** | Physical file existence, line range, commit, and excerpt match. | Automated test generation against containerized sandboxes (Future). |
 | **Persistence** | In-memory `_INVESTIGATIONS` map. | PostgreSQL + Alembic relational storage (Phase 6). |
-| **Evaluation** | Offline hermetic unit & integration test suite (124 tests). | Curated retrospective issue benchmark with metric telemetry (Phase 7). |
+| **Evaluation** | Offline hermetic unit & integration test suite (156 tests). | Curated retrospective issue benchmark with metric telemetry (Phase 7). |

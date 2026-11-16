@@ -51,6 +51,11 @@ def read_snippet_with_bounds(
     if total_lines == 0:
         return 0, 0, ""
 
+    if start_line > total_lines:
+        raise InvalidInputError(
+            f"Start line ({start_line}) exceeds total lines in file ({total_lines})."
+        )
+
     # Adjust window with context lines (clamped to 1 and total_lines)
     actual_start = max(1, start_line - context_lines)
     actual_end = min(total_lines, end_line + context_lines)

@@ -1,6 +1,6 @@
 # Agent Workflow & State Machine
 
-This document details the internal agent workflow of IssueLens, contrasting the **currently implemented orchestration pipeline** (Phases 3–4) with the **planned LangGraph multi-round cyclic state machine** (Phase 5).
+This document details the internal agent workflow of IssueLens, documenting both the foundational single-pass pipeline (Phases 3–4) and the active **LangGraph multi-round cyclic state machine** (Phase 5).
 
 ---
 

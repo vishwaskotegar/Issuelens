@@ -60,3 +60,10 @@ def test_read_snippet_clamped_to_file_boundaries(snapshot: RepoSnapshot) -> None
     lines = snippet.splitlines()
     assert len(lines) <= 5
     assert lines[0].startswith("1: ")
+
+
+def test_read_snippet_start_line_exceeds_total_lines(snapshot: RepoSnapshot) -> None:
+    """Verify start_line exceeding total lines raises InvalidInputError."""
+    with pytest.raises(InvalidInputError, match="exceeds total lines"):
+        read_snippet(snapshot, "sample_pkg/__init__.py", start_line=50, end_line=60)
+

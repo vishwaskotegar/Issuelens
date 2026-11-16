@@ -334,10 +334,12 @@ class InvestigationNodes:
         error_msg: str | None = None
         output_summary = "Formed hypotheses from evidence."
 
+        summary = ""
         try:
             payload: InvestigationReportPayload = (
                 await self.llm_client.generate_report_payload(messages)
             )
+            summary = payload.summary
             for h in payload.hypotheses:
                 hd = h.model_dump()
                 hd["support_status"] = "tentative"
@@ -360,6 +362,7 @@ class InvestigationNodes:
             logger.warning(error_msg, exc_info=True)
             errors.append({"node": "form_hypotheses", "error": str(exc)})
             output_summary = f"Hypothesis generation failed: {exc}"
+            summary = f"Investigation inconclusive due to inference error: {exc}"
             # Fallback hypothesis to allow graceful recovery
             hypotheses_dicts = [
                 Hypothesis(
@@ -386,6 +389,7 @@ class InvestigationNodes:
         tool_trace.append(trace_entry)
 
         return {
+            "summary": summary,
             "hypotheses": hypotheses_dicts,
             "missing_information": missing_info,
             "observed_facts": observed_facts,
@@ -551,7 +555,7 @@ class InvestigationNodes:
             issue_url=state.get("issue", {}).get("html_url", ""),
             repository=state.get("repository", {}).get("full_name", ""),
             commit_sha=state.get("commit_sha", "unknown"),
-            summary="Preliminary report awaiting validation",
+            summary=state.get("summary") or "Preliminary report awaiting validation",
             observed_facts=state.get("observed_facts", []),
             hypotheses=hypotheses,
             evidence=evidence_items,
@@ -575,11 +579,17 @@ class InvestigationNodes:
                 f"({len(validation_result.valid_evidence_ids)} valid, "
                 f"{len(validation_result.invalid_evidence_ids)} invalid citations)."
             )
+            final_summary = validated_report.summary
+            final_missing_info = validated_report.missing_information
+            final_limitations = validated_report.limitations
         else:
             output_evidence = [e.model_dump() for e in evidence_items]
             output_hypotheses = [h.model_dump() for h in hypotheses]
             verification_status = "not_run"
             output_summary = "Validation skipped: snapshot unavailable; status marked not_run."
+            final_summary = proto_report.summary
+            final_missing_info = proto_report.missing_information
+            final_limitations = proto_report.limitations
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
         trace_entry: ToolTraceItem = {
@@ -594,6 +604,9 @@ class InvestigationNodes:
         tool_trace.append(trace_entry)
 
         return {
+            "summary": final_summary,
+            "missing_information": final_missing_info,
+            "limitations": final_limitations,
             "evidence": output_evidence,
             "hypotheses": output_hypotheses,
             "verification_status": verification_status,
@@ -611,16 +624,19 @@ class InvestigationNodes:
         hypotheses = [Hypothesis.model_validate(h) for h in state.get("hypotheses", [])]
         verification_status = state.get("verification_status", "not_run")
 
-        summary_text = (
-            f"Investigation of {repo_data.get('full_name')}#{issue_data.get('number')}: "
-            f"{issue_data.get('title')}"
-        )
+        summary_text = state.get("summary")
+        if not summary_text or summary_text == "Preliminary report awaiting validation":
+            summary_text = (
+                f"Investigation of {repo_data.get('full_name')}#{issue_data.get('number')}: "
+                f"{issue_data.get('title')}"
+            )
 
         if not evidence_items:
-            summary_text = (
-                f"[INSUFFICIENT EVIDENCE] Unable to locate verifiable source code evidence "
-                f"for issue {issue_data.get('number')}. {summary_text}"
-            )
+            if not summary_text.startswith("[INSUFFICIENT EVIDENCE]"):
+                summary_text = (
+                    f"[INSUFFICIENT EVIDENCE] Unable to locate verifiable source code evidence "
+                    f"for issue {issue_data.get('number')}. {summary_text}"
+                ).strip()
             verification_status = "not_run"
 
         final_report = InvestigationReport(
