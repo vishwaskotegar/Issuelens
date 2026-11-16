@@ -801,9 +801,52 @@ def search_code(
         ):
             score += 4.0
 
-        key = (raw_hit.path, actual_start, actual_end)
-        existing = merged.get(key)
-        if existing is None:
+        # Check for overlapping snippet in the same file to avoid duplicate/fragmented excerpts
+        overlapping_key: tuple[str, int, int] | None = None
+        for epath, estart, eend in list(merged.keys()):
+            if (
+                epath == raw_hit.path
+                and actual_start <= (eend + 1)
+                and actual_end >= (estart - 1)
+                and (max(eend, actual_end) - min(estart, actual_start)) <= 60
+            ):
+                overlapping_key = (epath, estart, eend)
+                break
+
+        if overlapping_key is not None:
+            existing = merged.pop(overlapping_key)
+            merged_start = min(existing["start_line"], actual_start)
+            merged_end = max(existing["end_line"], actual_end)
+            if merged_start != existing["start_line"] or merged_end != existing["end_line"]:
+                try:
+                    _, _, merged_excerpt = read_snippet_with_bounds(
+                        snapshot=repo_snapshot,
+                        file_path=raw_hit.path,
+                        start_line=merged_start,
+                        end_line=merged_end,
+                        context_lines=0,
+                    )
+                except Exception:
+                    merged_excerpt = existing["excerpt"]
+            else:
+                merged_excerpt = existing["excerpt"]
+
+            new_terms = list(existing["matched_terms"])
+            if raw_hit.term not in new_terms:
+                new_terms.append(raw_hit.term)
+
+            new_key = (raw_hit.path, merged_start, merged_end)
+            merged[new_key] = {
+                "path": raw_hit.path,
+                "start_line": merged_start,
+                "end_line": merged_end,
+                "excerpt": merged_excerpt,
+                "matched_terms": new_terms,
+                "symbol_name": existing["symbol_name"] or symbol_name,
+                "score": max(float(existing["score"]), score),
+            }
+        else:
+            key = (raw_hit.path, actual_start, actual_end)
             merged[key] = {
                 "path": raw_hit.path,
                 "start_line": actual_start,
@@ -813,10 +856,6 @@ def search_code(
                 "symbol_name": symbol_name,
                 "score": score,
             }
-        else:
-            if raw_hit.term not in existing["matched_terms"]:
-                existing["matched_terms"].append(raw_hit.term)
-                existing["score"] = max(float(existing["score"]), score)
 
     # 5. Term co-occurrence boost: heavily reward hits that match multiple distinct query terms
     file_matched_terms: dict[str, set[str]] = {}

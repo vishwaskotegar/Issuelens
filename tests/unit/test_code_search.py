@@ -458,6 +458,47 @@ def test_search_code_surfaces_tests_matching_issue_or_pr_number(tmp_path: Path) 
     assert test_hits[0].score > 0
 
 
+def test_search_code_merges_overlapping_snippet_windows(tmp_path: Path) -> None:
+    """Verify that adjacent/overlapping matches within a single file merge into a single hit."""
+    src_dir = tmp_path / "src" / "pkg"
+    src_dir.mkdir(parents=True)
+
+    (src_dir / "service.py").write_text(
+        "import os\n"
+        "from typing import Optional\n"
+        "\n"
+        "class WorkerService:\n"
+        "    def run_job(self, task_id: str) -> None:\n"
+        "        worker_task_payload = self.load(task_id)\n"
+        "        worker_task_result = self.execute(worker_task_payload)\n"
+        "        return worker_task_result\n",
+        encoding="utf-8",
+    )
+
+    snapshot = RepoSnapshot(
+        root_path=tmp_path,
+        repo_full_name="sample/repo",
+        commit_sha="merge123",
+    )
+
+    with patch("issuelens.repository.code_search.find_ripgrep_executable", return_value=None):
+        hits = search_code(
+            query="worker_task_payload worker_task_result",
+            repo_snapshot=snapshot,
+            max_results=10,
+        )
+
+    # Should consolidate the adjacent matches into one hit rather than 2 overlapping fragments
+    file_hits = [h for h in hits if h.path == "src/pkg/service.py"]
+    assert len(file_hits) == 1
+    hit = file_hits[0]
+    assert "worker_task_payload" in hit.matched_terms
+    assert "worker_task_result" in hit.matched_terms
+    assert "worker_task_payload = self.load" in hit.excerpt
+    assert "worker_task_result = self.execute" in hit.excerpt
+
+
+
 
 
 
