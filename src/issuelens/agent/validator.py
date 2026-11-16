@@ -320,22 +320,27 @@ def validate_investigation_report(
         confidence = hyp.confidence
         rationale = hyp.confidence_rationale
 
-        if bad_supporting_ids:
+        if not verified_supporting_ids:
             ungrounded_titles.append(hyp.title)
-            # Demote confidence if supporting evidence was invalid or hallucinated
-            if not verified_supporting_ids:
-                confidence = "low"
+            confidence = "low"
+            if bad_supporting_ids:
                 demotion_note = (
                     f" [Citation Guardrail: Cited evidence {bad_supporting_ids} failed "
                     "physical validation against snapshot; confidence demoted to low.]"
                 )
-                rationale = (rationale + demotion_note).strip()
             else:
                 demotion_note = (
-                    f" [Citation Guardrail: Partial citations {bad_supporting_ids} "
-                    "invalid; retained verified citations only.]"
+                    " [Citation Guardrail: Hypothesis has no supporting evidence citations; "
+                    "confidence demoted to low.]"
                 )
-                rationale = (rationale + demotion_note).strip()
+            rationale = (rationale + demotion_note).strip()
+        elif bad_supporting_ids:
+            ungrounded_titles.append(hyp.title)
+            demotion_note = (
+                f" [Citation Guardrail: Partial citations {bad_supporting_ids} "
+                "invalid; retained verified citations only.]"
+            )
+            rationale = (rationale + demotion_note).strip()
 
         sanitized_hyp = Hypothesis(
             title=hyp.title,
@@ -373,7 +378,7 @@ def validate_investigation_report(
     computed_status: VerificationStatus
     if len(invalid_ids) == 0 and len(valid_ids) > 0 and not ungrounded_titles:
         computed_status = "verified"
-    elif len(valid_ids) > 0:
+    elif len(valid_ids) > 0 and any(h.supporting_evidence_ids for h in sanitized_hypotheses):
         computed_status = "partially_verified"
     else:
         computed_status = "not_run"

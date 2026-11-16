@@ -402,3 +402,46 @@ def test_validate_evidence_rejects_comment_only_code_citation(tmp_path: Path) ->
     assert val_res.is_valid is False
     assert sanitized_report.verification_status != "verified"
 
+
+def test_validate_investigation_report_demotes_empty_citations_hypothesis() -> None:
+    """Verify hypothesis with empty supporting_evidence_ids is demoted and not verified."""
+    snapshot = get_fixture_snapshot()
+    real_snippet = read_snippet(snapshot, "sample_pkg/auth.py", 1, 5)
+
+    valid_item = EvidenceItem(
+        evidence_id="ev_1",
+        source_type="code",
+        path_or_url="sample_pkg/auth.py",
+        start_line=1,
+        end_line=5,
+        excerpt=real_snippet,
+        commit_sha=SAMPLE_COMMIT,
+    )
+
+    hyp_unsupported = Hypothesis(
+        title="Unsubstantiated guess",
+        explanation="Mechanism guessed without citing code",
+        confidence="high",
+        confidence_rationale="High confidence based on user report only",
+        supporting_evidence_ids=[],
+        verification_steps=["Check changelog"],
+    )
+
+    report = InvestigationReport(
+        run_id="inv_empty_hyp",
+        issue_url="https://github.com/sample/repo/issues/100",
+        repository="sample/repo",
+        commit_sha=SAMPLE_COMMIT,
+        summary="Investigation summary",
+        hypotheses=[hyp_unsupported],
+        evidence=[valid_item],
+        verification_status="verified",
+    )
+
+    sanitized, val_res = validate_report_citations(report, snapshot)
+    assert sanitized.hypotheses[0].confidence == "low"
+    assert "no supporting evidence citations" in sanitized.hypotheses[0].confidence_rationale
+    assert sanitized.verification_status != "verified"
+    assert "Unsubstantiated guess" in val_res.ungrounded_hypotheses
+
+
