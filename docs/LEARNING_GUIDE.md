@@ -353,7 +353,7 @@ Interacting with the GitHub REST API requires handling rate limits (60 req/hr un
 1. [`GitHubClient`](../src/issuelens/github/client.py#L64) receives an [`IssueTarget`](../src/issuelens/github/url_parser.py#L18).
 2. Concurrently fetches issue metadata and comments via asynchronous HTTP (`httpx`).
 3. Fetches repository visibility and validates `is_private == False` (rejects private repos).
-4. Resolves the default branch head to a stable 40-character commit SHA via `/repos/{owner}/{repo}/commits/{default_branch}`.
+4. Parses candidate semver version patterns from issue title and labels (e.g. `v8.0.0`, `8.0.0`) and resolves the specific release tag commit SHA via `/repos/{owner}/{repo}/commits/{ref}`, falling back to `repository.default_branch` only if no tag is found or resolution 404s.
 5. Returns a unified [`GitHubIssueContext`](../src/issuelens/github/models.py#L79).
 
 #### 3. Which files and functions participate
@@ -488,19 +488,19 @@ Inspecting untrusted git repositories introduces security and operational hazard
 Bug reports frequently contain exact error strings, function names, or stack trace tokens. LLMs are slow, expensive, and hallucinate line numbers when used as search engines. However, relying strictly on native `ripgrep` (`rg`) binaries causes crashes on environments where ripgrep is not pre-installed.
 
 #### 2. What happens from input to output
-1. The issue-derived query is compiled with high-signal identifiers (error types, file paths, symbols, stack frames) before prose.
-2. [`select_search_terms()`](../src/issuelens/repository/code_search.py) scores each token as path-like, identifier-like, or prose, and drops prose entirely when at least three identifiers exist.
+1. The issue-derived query is compiled with high-signal identifiers (error types, file paths, symbols, CLI flags, stack frames) before prose.
+2. [`select_search_terms()`](../src/issuelens/repository/code_search.py) extracts CLI option flags (`--flag`, `-f`), issue/PR numbers (`#6643`), and identifier tokens, assigning top-tier weights (weight 8 for `--` flags and `#` issue refs). Prose words are dropped when at least three strong identifiers exist.
 3. [`find_ripgrep_executable()`](../src/issuelens/repository/code_search.py) scans system `PATH` and common IDE-bundled locations for `rg`.
 4. If found: executes `rg --json --fixed-strings` with a per-file match cap and a 10-second subprocess timeout.
 5. If missing or it times out: falls back to [`_search_with_python_fallback()`](../src/issuelens/repository/code_search.py), scanning safe source files via Python regex with per-file/per-term caps.
-6. Matches are expanded to their enclosing AST function/class symbol, scored (code > tests > docs, explicit path/symbol bonuses), deduplicated, ranked globally, then capped per file.
+6. Matches are expanded to enclosing AST symbols, filtered for executable substance via `has_code_substance()` (comment-only snippets rejected), scored with context awareness (softening test penalty for regressions, rewarding hits matching issue/PR numbers), boosted for multi-term co-occurrence (`score += 3.0 * (distinct_count - 1)`), deduplicated, ranked globally, and capped per file.
 7. The ranked [`CodeHit`](../src/issuelens/repository/code_search.py) objects are returned with excerpt bounds that exactly match `start_line..end_line`.
 
 #### 3. Which files and functions participate
 - **Source file**: [`src/issuelens/repository/code_search.py`](../src/issuelens/repository/code_search.py)
-- **Functions**: [`search_code()`](../src/issuelens/repository/code_search.py), `select_search_terms()`, `term_weight()`, `classify_path()`, `find_ripgrep_executable()`, `_search_with_ripgrep()`, `_search_with_python_fallback()`.
+- **Functions**: [`search_code()`](../src/issuelens/repository/code_search.py), `select_search_terms()`, `term_weight()`, `classify_path()`, `has_code_substance()`, `has_regression_or_pr_context()`, `extract_issue_or_pr_numbers()`, `find_ripgrep_executable()`, `_search_with_ripgrep()`, `_search_with_python_fallback()`.
 - **Model**: [`CodeHit`](../src/issuelens/repository/code_search.py).
-- **Build Log**: [`BUILD_LOG.md: Entry 008`](BUILD_LOG.md#entry-008-external-ripgrep-binary-portability-and-deterministic-fallback), [`Entry 014`](BUILD_LOG.md#entry-014-irrelevant-evidence-from-unranked-lexical-matches-and-prose-heavy-queries).
+- **Build Log**: [`BUILD_LOG.md: Entry 008`](BUILD_LOG.md#entry-008-external-ripgrep-binary-portability-and-deterministic-fallback), [`Entry 014`](BUILD_LOG.md#entry-014-irrelevant-evidence-from-unranked-lexical-matches-and-prose-heavy-queries), [`Entry 015`](BUILD_LOG.md#entry-015-retrieval-quality-cli-flag-preservation-and-version-drift-hardening).
 
 #### 4. Why the implementation is structured this way
 - **Dual-Engine Design**: Combines maximum speed when native binaries are present with 100% crash-free portability when running in lightweight containers.

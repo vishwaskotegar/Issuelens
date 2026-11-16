@@ -725,3 +725,75 @@ and make both decisions explicit, deterministic and testable.
 
 ---
 
+### Entry 015: Retrieval Quality, CLI Flag Preservation, and Version Drift Hardening
+- **Date**: 2026-11-17
+- **Phase**: Phase 5 (Real Bug Testing & Hardening)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During end-to-end testing against real public issues (`requests#6711` and `pytest#12021`):
+1. **Comment-Only Snippets**: Code search returned comment-only/empty excerpts (e.g. `src/_pytest/pytester.py:193-197`) that consumed evidence quotas and were stamped `verified`.
+2. **CLI Flag Loss**: CLI option flags (e.g. `--maxfail`) had leading dashes stripped, causing them to be treated as low-weight prose words.
+3. **Single-Term Flooding**: Broad terms (e.g. `pytest-xdist`) matched 8 unrelated files and pushed genuinely relevant files out of the top results.
+4. **Suppression of Reproduction Tests**: Tests reproducing regressions (e.g. `test_adapters.py` testing `#6643`) were penalized by `-2.0` test penalty despite being direct evidence.
+5. **Version Drift**: Defaulting to `repository.default_branch` (`main`) caused temporal version drift when the reported bug existed only in an earlier released version tag (e.g. `v8.0.0`).
+6. **Citation Pressure & Blame Shifting**: System prompts lacked explicit negative constraints, causing LLMs to cite irrelevant code sharing keywords or deflect blame to external plugins.
+
+#### 2. Root Cause
+- [`src/issuelens/repository/code_search.py`](../src/issuelens/repository/code_search.py):
+  - Lacked substance validation on candidate snippets; comment-only excerpts passed through as valid code.
+  - Tokenizer only captured `[a-zA-Z_]...`, discarding `--` prefixes and stripping hyphens.
+  - Snippet scoring only awarded `+0.25` for multiple term matches, which was too weak to beat broad single-term hits.
+  - Test files were penalized unconditionally by `-2.0`, even when the query was investigating regressions or referenced specific PR/issue numbers.
+- [`src/issuelens/github/client.py`](../src/issuelens/github/client.py):
+  - Always resolved `repository.default_branch` head without parsing semver versions or release tags from issue titles or labels.
+- [`src/issuelens/agent/prompts.py`](../src/issuelens/agent/prompts.py):
+  - System prompt lacked negative constraints forbidding keyword-only citations and plugin blame shifting.
+- [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py):
+  - Verified byte equality only without checking whether the code excerpt contained executable statements.
+
+#### 3. Fix
+- **Substance Filtering**: Added `has_code_substance()` to reject comment-only excerpts in `search_code()` and reject them in `validate_citation()`.
+- **CLI Flag Extraction**: Updated `extract_search_terms()` to retain `--[a-zA-Z0-9_][a-zA-Z0-9_-]*` and `-[a-zA-Z0-9]` formats and stripped identifiers, assigning weight 8 to `--` tokens in `term_weight()`.
+- **Multi-Term Co-occurrence Boost**: Added `score += 3.0 * (distinct_count - 1)` for snippets and files matching two or more distinct query terms.
+- **Context-Aware Test Scoring**: In `_file_priority()`, softened test penalty from `-2.0` to `0.0` for regression queries and awarded `+4.0` relevance bonus when test files match the specific issue/PR number.
+- **Release Tag Resolution**: Added semver parsing in `GitHubClient.fetch_issue_context()` to attempt resolving `v{version}` or `{version}` via `get_pinned_commit_sha()` before falling back to default branch.
+- **Prompt Calibration**: Added negative constraints in `SYSTEM_PROMPT` instructing the model to leave citations empty rather than citing keyword matches, and to focus on host repository changes rather than blaming external plugins.
+
+#### 4. Verification
+```powershell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest tests/unit/test_code_search.py tests/unit/test_github_client.py tests/unit/test_prompts.py tests/unit/test_validator.py
+```
+**Results**:
+All lint, type checks, and 52 unit tests passed.
+
+#### 5. Engineering Lesson
+Real-world bug reports often contain a mix of prose, CLI flags, regression references, and version numbers. Search and validation pipelines must be semantic-aware (verifying executable substance over comments), context-aware (prioritizing regression tests when investigating regressions), and temporally grounded (pinning exact release tags).
+
+#### 6. Regression Tests
+- [`tests/unit/test_code_search.py`](../tests/unit/test_code_search.py):
+  `test_has_code_substance`,
+  `test_search_code_rejects_comment_only_excerpts`,
+  `test_extract_search_terms_preserves_cli_flags`,
+  `test_term_weight_cli_flags`,
+  `test_search_code_boosts_multi_term_co_occurrence`,
+  `test_search_code_surfaces_tests_matching_issue_or_pr_number`.
+- [`tests/unit/test_github_client.py`](../tests/unit/test_github_client.py):
+  `test_get_issue_context_resolves_version_tag_from_title`,
+  `test_get_issue_context_falls_back_to_default_branch`.
+- [`tests/unit/test_prompts.py`](../tests/unit/test_prompts.py):
+  `test_system_prompt_calibration_negative_constraints`.
+- [`tests/unit/test_validator.py`](../tests/unit/test_validator.py):
+  `test_validate_evidence_rejects_comment_only_code_citation`.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Rely entirely on LLM re-ranking to filter comment snippets.
+  - *Trade-off*: More expensive in tokens and latency; deterministic pre-filtering with `has_code_substance()` is free, fast, and 100% reliable.
+- *Alternative*: Clone git repository locally to checkout release tags.
+  - *Trade-off*: Clones take seconds or minutes and hundreds of megabytes; GitHub REST API commit SHA resolution for release tags takes milliseconds and requires zero local git operations.
+
+---
+
+

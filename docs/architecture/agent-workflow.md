@@ -46,18 +46,19 @@ flowchart TD
 
 ### Execution Steps & Participating Symbols
 
-1. **Context Ingestion**: Calls [`GitHubClient.fetch_issue_context()`](../../src/issuelens/github/client.py#L318), extracting issue title, body, comments, repository visibility, and resolving the default branch head to a stable 40-character commit SHA.
+1. **Context Ingestion**: Calls [`GitHubClient.fetch_issue_context()`](../../src/issuelens/github/client.py#L318), extracting issue title, body, comments, repository visibility, and resolving candidate release tags (`v{version}`, `{version}`) before falling back to default branch head to pin a stable 40-character commit SHA.
 2. **Snapshot Acquisition & Cache Check**: Calls [`get_cached_snapshot()`](../../src/issuelens/repository/snapshot.py#L210). On cache hit, reuses the local snapshot immediately without network calls. On cache miss, downloads the repository zipball, extracts it atomically into `.cache/issuelens/snapshots/`, and enforces LRU disk limits via [`prune_snapshot_cache()`](../../src/issuelens/repository/snapshot.py#L250).
 3. **Query Compilation**: [`compile_search_query()`](../../src/issuelens/agent/service.py#L60) combines issue title, the first 1500 characters of the issue body, and up to 3 comments (500 chars each).
-4. **Deterministic Code Search**: [`search_code()`](../../src/issuelens/repository/code_search.py) runs ripgrep (or pure-Python regex fallback) against the snapshot root, identifies matched line ranges, expands hits to their enclosing AST symbols via [`find_enclosing_symbol()`](../../src/issuelens/repository/python_symbols.py), and ranks results deterministically (source > tests > docs, explicit path/symbol bonuses, per-file budget) before returning them.
+4. **Deterministic Code Search**: [`search_code()`](../../src/issuelens/repository/code_search.py) runs ripgrep (or pure-Python regex fallback) against the snapshot root, identifies matched line ranges, expands hits to their enclosing AST symbols via [`find_enclosing_symbol()`](../../src/issuelens/repository/python_symbols.py), filters comment-only excerpts via `has_code_substance()`, and ranks results deterministically (source > tests > docs, CLI flag extraction & weighting, multi-term co-occurrence boost, regression test bonuses, per-file budget) before returning them.
 5. **Evidence Formulation**: Converts code hits into typed [`EvidenceItem`](../../src/issuelens/agent/report.py#L12) records assigned unique IDs (`ev_1`, `ev_2`, etc.) with repository-relative paths and exact line coordinates.
-6. **Prompt Assembly**: [`build_investigation_messages()`](../../src/issuelens/agent/prompts.py#L125) formats untrusted text into delimited XML enclaves (`<untrusted_issue_data>`, `<untrusted_repository_evidence>`) and attaches system directives instructing the model to cite only provided evidence IDs.
+6. **Prompt Assembly**: [`build_investigation_messages()`](../../src/issuelens/agent/prompts.py#L125) formats untrusted text into delimited XML enclaves (`<untrusted_issue_data>`, `<untrusted_repository_evidence>`) and attaches system directives instructing the model to cite only directly demonstrated defect mechanisms and avoid blaming external plugins for regressions.
 7. **Structured LLM Inference**: [`LangChainLLMClient.generate_report_payload()`](../../src/issuelens/agent/llm.py#L45) sends the message payload to the configured LLM provider using LangChain's `.with_structured_output(InvestigationReportPayload)`.
 8. **Provenance Binding**: [`InvestigationReport.from_payload()`](../../src/issuelens/agent/report.py#L190) combines the LLM's analytical payload with the immutable commit SHA, issue coordinates, and verified evidence list.
 9. **Deterministic Citation Validation**: [`validate_investigation_report()`](../../src/issuelens/agent/validator.py#L257) executes physical file checks against the disk snapshot:
    - Verifies file exists in snapshot.
    - Verifies line numbers are within bounds (`1 <= start_line <= end_line <= total_lines`).
    - Normalizes and compares physical excerpt bytes to the claimed excerpt using [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7).
+   - Enforces code substance guardrail (`has_code_substance`), rejecting comment-only code snippets.
    - Prunes invalid citations from `report.evidence`.
    - Demotes ungrounded hypotheses to `"low"` confidence.
    - Sets `verification_status` to `"verified"` (if all citations match) or triggers `[INSUFFICIENT EVIDENCE]` mode (if zero citations verify).
