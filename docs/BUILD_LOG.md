@@ -796,4 +796,68 @@ Real-world bug reports often contain a mix of prose, CLI flags, regression refer
 
 ---
 
+### Entry 016: Validator Grounding, Documentation Directory Demotion, and Interval Deduplication
+- **Date**: 2026-11-17
+- **Phase**: Phase 5 (Real Bug Testing & Hardening)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During end-to-end investigation of `fastapi/fastapi#11143` ("Context managers in `Depends` are broken after 0.106"):
+1. **Empty Evidence Hypotheses Marked "Verified"**: The LLM produced a hypothesis with `confidence: "high"` and `supporting_evidence_ids: []`. The validator passed this report with `verification_status: "verified"`.
+2. **Tutorial/Example Directory Flooding**: In repositories like FastAPI where executable tutorials are placed under `docs_src/` or `examples/`, `.py` tutorial files received the `+4.0` code priority in `classify_path()`, flooding evidence slots with tutorial snippets (`docs_src/stream_data/tutorial002.py`, `docs_src/custom_response/tutorial007.py`) and displacing core framework files (`fastapi/dependencies/utils.py`).
+3. **Overlapping Snippet Interval Fragmentation**: Multiple search hits on adjacent lines in the same file created separate entries with near-identical ranges (e.g., `(path, 1, 4)` and `(path, 3, 7)`), consuming file budgets and cluttering reports with duplicate code.
+4. **Two-Digit Semver Release Tag 404s**: The issue title mentioned `0.106`, but FastAPI tags releases as `0.106.0`. Probing only `v0.106` and `0.106` returned 404, causing fallback to the default branch (`main`) instead of the affected version tag.
+
+#### 2. Root Cause
+- [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py):
+  - In `validate_investigation_report()`, `bad_supporting_ids = [eid for eid in cited_ids if eid not in valid_ids]`. If `cited_ids` was empty (`[]`), `bad_supporting_ids` was empty, bypassing the ungrounded check. Furthermore, `verification_status` calculation only checked if all hypotheses were contradicted or unverified, without enforcing that at least one grounded hypothesis had supporting citations.
+- [`src/issuelens/repository/code_search.py`](../src/issuelens/repository/code_search.py):
+  - `classify_path()` checked file extensions (`.py`, `.ts`, etc.) before checking directory names, classifying `.py` scripts in `docs_src/` or `examples/` as `"code"` (`+4.0` priority) rather than `"documentation"` (`-3.0` priority).
+  - Merged hits used `(path, start_line, end_line)` as exact keys. Adjacent matches created overlapping windows that did not consolidate.
+- [`src/issuelens/github/client.py`](../src/issuelens/github/client.py):
+  - `extract_candidate_versions()` parsed `0.106` as a 2-part semver candidate without offering the 3-part counterpart `0.106.0`, failing tag resolution on repositories using strict semver release tags.
+
+#### 3. Fix
+- **Grounding Guardrail in Validator**:
+  - In `validate_investigation_report()`, check if `not hyp.supporting_evidence_ids`. If empty, record the hypothesis as ungrounded, force `confidence = "low"`, and demote the report status. Require at least one grounded hypothesis for `partially_verified` or `verified`; fallback to `not_run` when no hypotheses are supported by citations.
+- **Documentation Directory Classification**:
+  - In `classify_path()`, added `DOCUMENTATION_DIRECTORY_NAMES` (`docs`, `docs_src`, `doc`, `doc_src`, `examples`, `samples`, `tutorials`, `tutorial`). Paths located within these directories are classified as `"documentation"` with `-3.0` priority, regardless of file extension.
+- **Snippet Interval Deduplication**:
+  - In `search_code()`, before adding a new hit, check if an existing snippet for the same file overlaps or is adjacent (`actual_start <= eend + 1 and actual_end >= estart - 1`) within a 60-line span. If overlapping, merge into a consolidated window `(min(estart, actual_start), max(eend, actual_end))`, re-read bounds, and merge matched terms.
+- **Two-Digit Semver Expansion**:
+  - In `extract_candidate_versions()`, if a captured version has two parts (`\d+\.\d+`), automatically append `f"{ver}.0"` to candidate versions, enabling probe of `v0.106`, `0.106`, `v0.106.0`, and `0.106.0`.
+
+#### 4. Verification
+```powershell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest
+```
+**Results**:
+All lint, type checks, and 153+ unit tests passed cleanly.
+
+#### 5. Engineering Lesson
+1. Absence of bad citations is not evidence of good citations. Validation logic must check that supporting evidence is present, not merely that invalid IDs are absent.
+2. File extensions cannot be trusted in isolation to determine code importance: tutorials, documentation snippets, and sample scripts are executable code files, but functionally belong to documentation.
+3. Git tags adhere to varied conventions (`X.Y.Z`, `vX.Y.Z`, `X.Y`). Flexible tag normalization prevents silent fallbacks to default branches.
+
+#### 6. Regression Tests
+- [`tests/unit/test_validator.py`](../tests/unit/test_validator.py):
+  `test_validate_investigation_report_demotes_empty_citations_hypothesis`.
+- [`tests/unit/test_code_search.py`](../tests/unit/test_code_search.py):
+  `test_classify_path_separates_code_and_documentation`,
+  `test_search_code_merges_overlapping_snippet_windows`.
+- [`tests/unit/test_github_client.py`](../tests/unit/test_github_client.py):
+  `test_extract_candidate_versions_expands_two_digit_semver`,
+  `test_get_issue_context_resolves_two_digit_version_tag`.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Reject any report where any hypothesis has empty citations.
+  - *Trade-off*: An investigation report may include a speculative or preliminary hypothesis alongside substantiated ones; demoting confidence to "low" and forbidding ungrounded "verified" status accurately reflects partial knowledge without throwing away valid findings.
+- *Alternative*: Exclude `docs_src/` entirely from code search.
+  - *Trade-off*: Documentation snippets may be relevant if the bug is a docs error; classifying as `"documentation"` down-ranks them so production code always takes priority while keeping docs accessible if no production matches exist.
+
+
+---
+
 

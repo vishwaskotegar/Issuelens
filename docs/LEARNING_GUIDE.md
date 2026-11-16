@@ -353,14 +353,14 @@ Interacting with the GitHub REST API requires handling rate limits (60 req/hr un
 1. [`GitHubClient`](../src/issuelens/github/client.py#L64) receives an [`IssueTarget`](../src/issuelens/github/url_parser.py#L18).
 2. Concurrently fetches issue metadata and comments via asynchronous HTTP (`httpx`).
 3. Fetches repository visibility and validates `is_private == False` (rejects private repos).
-4. Parses candidate semver version patterns from issue title and labels (e.g. `v8.0.0`, `8.0.0`) and resolves the specific release tag commit SHA via `/repos/{owner}/{repo}/commits/{ref}`, falling back to `repository.default_branch` only if no tag is found or resolution 404s.
+4. Parses candidate semver version patterns from issue title and labels (e.g. `v8.0.0`, `8.0.0`) and expands two-digit versions (e.g. `0.106` $\rightarrow$ `0.106.0`) to resolve the specific release tag commit SHA via `/repos/{owner}/{repo}/commits/{ref}`, falling back to `repository.default_branch` only if no tag is found or resolution 404s.
 5. Returns a unified [`GitHubIssueContext`](../src/issuelens/github/models.py#L79).
 
 #### 3. Which files and functions participate
 - **Source file**: [`src/issuelens/github/client.py`](../src/issuelens/github/client.py)
 - **Protocol**: [`GitHubClientProtocol`](../src/issuelens/github/client.py#L32).
 - **Class**: [`GitHubClient`](../src/issuelens/github/client.py#L64).
-- **ADR**: [`ADR-001: GitHub REST API Client Adapter`](decisions/ADR-001-github-api-client.md).
+- **ADR & Build Log**: [`ADR-001: GitHub REST API Client Adapter`](decisions/ADR-001-github-api-client.md), [`BUILD_LOG.md: Entry 015`](BUILD_LOG.md#entry-015-retrieval-quality-cli-flag-preservation-and-version-drift-hardening), [`Entry 016`](BUILD_LOG.md#entry-016-validator-grounding-documentation-directory-demotion-and-interval-deduplication).
 
 #### 4. Why the implementation is structured this way
 - **Dependency Inversion**: Handlers depend on [`GitHubClientProtocol`](../src/issuelens/github/client.py#L32), enabling unit tests to inject hermetic mocks (`FakeGitHubClient` or `httpx.MockTransport`) without making live network calls.
@@ -493,14 +493,14 @@ Bug reports frequently contain exact error strings, function names, or stack tra
 3. [`find_ripgrep_executable()`](../src/issuelens/repository/code_search.py) scans system `PATH` and common IDE-bundled locations for `rg`.
 4. If found: executes `rg --json --fixed-strings` with a per-file match cap and a 10-second subprocess timeout.
 5. If missing or it times out: falls back to [`_search_with_python_fallback()`](../src/issuelens/repository/code_search.py), scanning safe source files via Python regex with per-file/per-term caps.
-6. Matches are expanded to enclosing AST symbols, filtered for executable substance via `has_code_substance()` (comment-only snippets rejected), scored with context awareness (softening test penalty for regressions, rewarding hits matching issue/PR numbers), boosted for multi-term co-occurrence (`score += 3.0 * (distinct_count - 1)`), deduplicated, ranked globally, and capped per file.
+6. Matches are expanded to enclosing AST symbols, classified by path category (demoting `docs_src/`, `examples/`, and tutorial directories from code to documentation priority), filtered for executable substance via `has_code_substance()` (comment-only snippets rejected), deduplicated across overlapping snippet intervals within a 60-line window, scored with context awareness (softening test penalty for regressions, rewarding hits matching issue/PR numbers), boosted for multi-term co-occurrence (`score += 3.0 * (distinct_count - 1)`), ranked globally, and capped per file.
 7. The ranked [`CodeHit`](../src/issuelens/repository/code_search.py) objects are returned with excerpt bounds that exactly match `start_line..end_line`.
 
 #### 3. Which files and functions participate
 - **Source file**: [`src/issuelens/repository/code_search.py`](../src/issuelens/repository/code_search.py)
 - **Functions**: [`search_code()`](../src/issuelens/repository/code_search.py), `select_search_terms()`, `term_weight()`, `classify_path()`, `has_code_substance()`, `has_regression_or_pr_context()`, `extract_issue_or_pr_numbers()`, `find_ripgrep_executable()`, `_search_with_ripgrep()`, `_search_with_python_fallback()`.
 - **Model**: [`CodeHit`](../src/issuelens/repository/code_search.py).
-- **Build Log**: [`BUILD_LOG.md: Entry 008`](BUILD_LOG.md#entry-008-external-ripgrep-binary-portability-and-deterministic-fallback), [`Entry 014`](BUILD_LOG.md#entry-014-irrelevant-evidence-from-unranked-lexical-matches-and-prose-heavy-queries), [`Entry 015`](BUILD_LOG.md#entry-015-retrieval-quality-cli-flag-preservation-and-version-drift-hardening).
+- **Build Log**: [`BUILD_LOG.md: Entry 008`](BUILD_LOG.md#entry-008-external-ripgrep-binary-portability-and-deterministic-fallback), [`Entry 014`](BUILD_LOG.md#entry-014-irrelevant-evidence-from-unranked-lexical-matches-and-prose-heavy-queries), [`Entry 015`](BUILD_LOG.md#entry-015-retrieval-quality-cli-flag-preservation-and-version-drift-hardening), [`Entry 016`](BUILD_LOG.md#entry-016-validator-grounding-documentation-directory-demotion-and-interval-deduplication).
 
 #### 4. Why the implementation is structured this way
 - **Dual-Engine Design**: Combines maximum speed when native binaries are present with 100% crash-free portability when running in lightweight containers.
@@ -830,19 +830,19 @@ When some citations in a report are valid while others are invalid, blindly fail
 3. Invalid citations are pruned from `report.evidence`.
 4. For each hypothesis:
    - Purges ungrounded citation IDs from `supporting_evidence_ids`.
-   - If 0 valid citations remain: demotes `confidence` to `"low"` and appends an explanatory warning to `confidence_rationale`.
+   - If 0 valid citations remain (or if citations were empty): demotes `confidence` to `"low"`, flags the hypothesis as ungrounded, and appends an explanatory warning to `confidence_rationale`.
    - If partial citations remain: retains valid citations and notes pruned IDs.
-5. If zero code citations exist or all hypotheses carry low confidence:
+5. If zero code citations exist, all hypotheses lack supporting evidence, or all hypotheses carry low confidence:
    - Prepends `[INSUFFICIENT EVIDENCE]` to `summary`.
    - Appends warnings to `missing_information` and `limitations`.
    - Sets `verification_status="not_run"`.
-6. If all citations verify: sets `verification_status="verified"`.
+6. If at least one grounded hypothesis with supporting citations exists and all valid citations verify: sets `verification_status="verified"`.
 
 #### 3. Which files and functions participate
 - **Source file**: [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py)
 - **Functions**: [`validate_investigation_report()`](../src/issuelens/agent/validator.py#L257).
 - **Models**: [`ReportValidationResult`](../src/issuelens/agent/validator.py#L48), [`InvestigationReport`](../src/issuelens/agent/report.py#L126).
-- **ADR & Build Log**: [`ADR-003`](decisions/ADR-003-deterministic-citation-validation-and-insufficient-evidence.md), [`BUILD_LOG.md: Entry 010`](BUILD_LOG.md#entry-010-integration-test-contract-shift-from-unvalidated-to-snapshot-verified-reports).
+- **ADR & Build Log**: [`ADR-003`](decisions/ADR-003-deterministic-citation-validation-and-insufficient-evidence.md), [`BUILD_LOG.md: Entry 010`](BUILD_LOG.md#entry-010-integration-test-contract-shift-from-unvalidated-to-snapshot-verified-reports), [`BUILD_LOG.md: Entry 016`](BUILD_LOG.md#entry-016-validator-grounding-documentation-directory-demotion-and-interval-deduplication).
 
 #### 4. Why the implementation is structured this way
 - **Graceful Degradation**: Stripping bad citations and demoting confidence preserves useful hypotheses while guaranteeing that invalid citations can never silently escape to users.
