@@ -367,4 +367,49 @@ def test_term_weight_cli_flags() -> None:
     assert is_high_signal_term("--maxfail") is True
 
 
+def test_search_code_boosts_multi_term_co_occurrence(tmp_path: Path) -> None:
+    """Verify that hits matching multiple distinct query terms receive a co-occurrence boost."""
+    pkg = tmp_path / "src" / "pkg"
+    pkg.mkdir(parents=True)
+
+    # single_term.py matches only token_alpha
+    (pkg / "single_term.py").write_text(
+        "def process_alpha():\n"
+        "    token_alpha = 100\n"
+        "    return token_alpha\n",
+        encoding="utf-8",
+    )
+
+    # multi_term.py matches both token_alpha and token_beta
+    (pkg / "multi_term.py").write_text(
+        "def process_both():\n"
+        "    token_alpha = 1\n"
+        "    token_beta = 2\n"
+        "    return token_alpha + token_beta\n",
+        encoding="utf-8",
+    )
+
+    snapshot = RepoSnapshot(
+        root_path=tmp_path,
+        repo_full_name="sample/cooccurrence",
+        commit_sha="cooccur123",
+    )
+
+    with patch("issuelens.repository.code_search.find_ripgrep_executable", return_value=None):
+        hits = search_code(
+            query="token_alpha token_beta",
+            repo_snapshot=snapshot,
+            max_results=5,
+        )
+
+    assert len(hits) >= 2
+    # multi_term.py should outrank single_term.py due to multi-term co-occurrence boost (+3.0)
+    assert hits[0].path == "src/pkg/multi_term.py"
+    assert "token_alpha" in hits[0].matched_terms
+    assert "token_beta" in hits[0].matched_terms
+    assert hits[0].score > hits[1].score
+    assert hits[0].score - hits[1].score >= 3.0
+
+
+
 

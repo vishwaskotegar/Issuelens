@@ -741,9 +741,21 @@ def search_code(
         else:
             if raw_hit.term not in existing["matched_terms"]:
                 existing["matched_terms"].append(raw_hit.term)
-                existing["score"] = max(float(existing["score"]), score) + 0.25
+                existing["score"] = max(float(existing["score"]), score)
 
-    # 5. Rank globally, then enforce a per-file budget before the global budget
+    # 5. Term co-occurrence boost: heavily reward hits that match multiple distinct query terms
+    file_matched_terms: dict[str, set[str]] = {}
+    for raw_hit in raw_hits:
+        file_matched_terms.setdefault(raw_hit.path, set()).add(raw_hit.term)
+
+    for item in merged.values():
+        matched_terms = item["matched_terms"]
+        file_terms = file_matched_terms.get(str(item["path"]), set())
+        distinct_count = max(len(matched_terms), len(file_terms))
+        if distinct_count > 1:
+            item["score"] = float(item["score"]) + 3.0 * (distinct_count - 1)
+
+    # 6. Rank globally, then enforce a per-file budget before the global budget
     ranked = sorted(
         merged.values(),
         key=lambda item: (-float(item["score"]), str(item["path"]), int(item["start_line"])),
