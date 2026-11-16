@@ -330,6 +330,8 @@ def term_weight(term: str) -> int:
         return 0
     if term.startswith("--"):
         return 8
+    if term.startswith("#") and len(term) > 1 and term[1:].isdigit():
+        return 8
     if is_path_like_term(term):
         return 8
     if re.search(r"(error|exception|warning)$", lower) and len(term) > 5:
@@ -375,6 +377,16 @@ def extract_search_terms(query: str) -> list[str]:
         if stripped and stripped not in flag_terms and stripped.lower() not in STOP_WORDS:
             flag_terms.append(stripped)
 
+    # Extract issue and PR reference tokens (e.g. #6643)
+    issue_refs = re.findall(r"#\d+\b", query)
+    issue_terms: list[str] = []
+    for ref in issue_refs:
+        if ref not in issue_terms:
+            issue_terms.append(ref)
+        num = ref.lstrip("#")
+        if num and num not in issue_terms:
+            issue_terms.append(num)
+
     # Extract word tokens including dotted and slash-separated path forms
     raw_tokens = re.findall(r"[a-zA-Z_][a-zA-Z0-9_./\-]*", cleaned_query)
     words = [token.strip(".-/") for token in raw_tokens]
@@ -384,7 +396,7 @@ def extract_search_terms(query: str) -> list[str]:
 
     # Combine unique terms preserving order
     all_terms: list[str] = []
-    for term in phrases + flag_terms + filtered_words:
+    for term in phrases + flag_terms + issue_terms + filtered_words:
         if term and term not in all_terms:
             all_terms.append(term)
 
@@ -566,11 +578,41 @@ def _find_path_term_files(
     return matches
 
 
-def _file_priority(path: str) -> float:
+REGRESSION_INDICATORS = {
+    "bisect",
+    "bisected",
+    "broke",
+    "broken",
+    "introduced",
+    "regression",
+    "regressed",
+    "since",
+}
+
+
+def has_regression_or_pr_context(query: str) -> bool:
+    """Return True if query refers to a regression, issue number, or pull request."""
+    lowered = query.lower()
+    if any(indicator in lowered for indicator in REGRESSION_INDICATORS):
+        return True
+    return bool(re.search(r"(?:#\d+|pr\s*#?\d+|issue\s*#?\d+|gh-\d+)", lowered))
+
+
+def extract_issue_or_pr_numbers(query: str) -> list[str]:
+    """Extract distinct issue/PR numbers from query (e.g. '#6643' -> ['6643'])."""
+    matches = re.findall(r"(?:#|pr\s*#?|issue\s*#?|gh-)(\d+)", query, re.IGNORECASE)
+    result: list[str] = []
+    for m in matches:
+        if m not in result:
+            result.append(m)
+    return result
+
+
+def _file_priority(path: str, is_regression_context: bool = False) -> float:
     """Prefer production source files and penalize tests and prose documents."""
     priority = 4.0 if classify_path(path) == "code" else -3.0
     if _is_test_path(path):
-        priority -= 2.0
+        priority -= 0.0 if is_regression_context else 2.0
     return priority
 
 
@@ -637,6 +679,9 @@ def search_code(
     weighted_terms = select_search_terms(query)
     if not weighted_terms:
         return []
+
+    is_regression = has_regression_or_pr_context(query)
+    issue_numbers = extract_issue_or_pr_numbers(query)
 
     path_terms = [term for term, _ in weighted_terms if is_path_like_term(term)]
     content_terms = [
@@ -720,11 +765,23 @@ def search_code(
             )
             continue
 
-        score = float(raw_hit.weight) + _file_priority(raw_hit.path)
+        score = float(raw_hit.weight) + _file_priority(
+            raw_hit.path, is_regression_context=is_regression
+        )
         if raw_hit.path in path_matches:
             score += 6.0
         if symbol_name and _symbol_matches_terms(symbol_name, weighted_terms):
             score += 5.0
+        if (
+            _is_test_path(raw_hit.path) or classify_path(raw_hit.path) == "documentation"
+        ) and any(
+            num in raw_hit.term
+            or (f"#{num}" in excerpt)
+            or (f"_{num}" in excerpt)
+            or (f" {num}" in excerpt)
+            for num in issue_numbers
+        ):
+            score += 4.0
 
         key = (raw_hit.path, actual_start, actual_end)
         existing = merged.get(key)

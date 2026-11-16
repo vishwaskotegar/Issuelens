@@ -411,5 +411,50 @@ def test_search_code_boosts_multi_term_co_occurrence(tmp_path: Path) -> None:
     assert hits[0].score - hits[1].score >= 3.0
 
 
+def test_search_code_surfaces_tests_matching_issue_or_pr_number(tmp_path: Path) -> None:
+    """Verify that regression tests referencing issue or PR numbers surface with high relevance."""
+    src_dir = tmp_path / "src" / "pkg"
+    src_dir.mkdir(parents=True)
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir(parents=True)
+
+    # Generic production code
+    (src_dir / "adapters.py").write_text(
+        "class HTTPAdapter:\n"
+        "    def send(self, request):\n"
+        "        return 'response'\n",
+        encoding="utf-8",
+    )
+
+    # Reproduction test explicitly addressing issue #6643
+    (tests_dir / "test_adapters.py").write_text(
+        "def test_regression_issue_6643():\n"
+        "    # Test case verifying fix for #6643 regression\n"
+        "    adapter = HTTPAdapter()\n"
+        "    assert adapter.send(None) == 'response'\n",
+        encoding="utf-8",
+    )
+
+    snapshot = RepoSnapshot(
+        root_path=tmp_path,
+        repo_full_name="sample/repo",
+        commit_sha="repro123",
+    )
+
+    with patch("issuelens.repository.code_search.find_ripgrep_executable", return_value=None):
+        hits = search_code(
+            query="Regression in #6643: HTTPAdapter issue",
+            repo_snapshot=snapshot,
+            max_results=5,
+        )
+
+    assert len(hits) >= 1
+    test_hits = [h for h in hits if "test_adapters.py" in h.path]
+    assert len(test_hits) >= 1
+    assert "test_regression_issue_6643" in test_hits[0].excerpt
+    assert test_hits[0].score > 0
+
+
+
 
 
