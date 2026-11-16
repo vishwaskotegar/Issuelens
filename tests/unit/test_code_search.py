@@ -163,6 +163,9 @@ def test_classify_path_separates_code_and_documentation() -> None:
     assert classify_path("src/requests/models.py") == "code"
     assert classify_path("HISTORY.md") == "documentation"
     assert classify_path("docs/api.rst") == "documentation"
+    assert classify_path("docs_src/stream_data/tutorial002.py") == "documentation"
+    assert classify_path("examples/quickstart.py") == "documentation"
+    assert classify_path("tutorials/step1.py") == "documentation"
     assert classify_path("tests/test_requests.py") == "code"
 
 

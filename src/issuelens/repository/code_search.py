@@ -82,6 +82,19 @@ DOCUMENTATION_FILE_STEMS = {
     "support",
 }
 
+DOCUMENTATION_DIRECTORY_NAMES = {
+    "doc",
+    "docs",
+    "doc_src",
+    "docs_src",
+    "example",
+    "examples",
+    "sample",
+    "samples",
+    "tutorial",
+    "tutorials",
+}
+
 TEST_DIRECTORY_NAMES = {"__tests__", "spec", "specs", "test", "tests"}
 
 # Common English noise words that are poor code identifiers. This is deliberately
@@ -271,6 +284,11 @@ def is_path_like_term(term: str) -> bool:
 def classify_path(path: str) -> Literal["code", "documentation"]:
     """Classify a repository-relative path as executable source code or documentation."""
     posix = PurePosixPath(path.replace("\\", "/"))
+    # Check parent directory names for documentation/example folders
+    parent_parts = {part.lower() for part in posix.parts[:-1]}
+    if parent_parts & DOCUMENTATION_DIRECTORY_NAMES:
+        return "documentation"
+
     suffix = posix.suffix.lower()
     if suffix in DOCUMENTATION_EXTENSIONS:
         return "documentation"
