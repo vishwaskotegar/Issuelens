@@ -8,9 +8,11 @@ from issuelens.repository.code_search import (
     classify_path,
     extract_search_terms,
     has_code_substance,
+    is_high_signal_term,
     search_code,
     search_symbols,
     select_search_terms,
+    term_weight,
 )
 from issuelens.repository.snapshot import RepoSnapshot
 from issuelens.repository.snippets import read_snippet
@@ -338,5 +340,31 @@ def test_search_code_rejects_comment_only_excerpts(tmp_path: Path) -> None:
     assert hits[0].path == "src/pkg/real_code.py"
     assert "target_substance_token = 42" in hits[0].excerpt
     assert not any(hit.path == "src/pkg/comment_only.py" for hit in hits)
+
+
+def test_extract_search_terms_preserves_cli_flags() -> None:
+    """Verify CLI option flags retain both flag format (--flag, -f) and stripped identifier."""
+    query = "pytest --maxfail=1 -v --strict-markers -x"
+    terms = extract_search_terms(query)
+
+    assert "--maxfail" in terms
+    assert "maxfail" in terms
+    assert "--strict-markers" in terms
+    assert "strict-markers" in terms
+    assert "-v" in terms
+    assert "v" in terms
+    assert "-x" in terms
+    assert "x" in terms
+    assert "pytest" in terms
+
+
+def test_term_weight_cli_flags() -> None:
+    """Verify CLI flags starting with '--' receive top-tier weight (8)."""
+    assert term_weight("--maxfail") == 8
+    assert term_weight("--strict-markers") == 8
+    assert term_weight("--tb") == 8
+    assert term_weight("--capture") == 8
+    assert is_high_signal_term("--maxfail") is True
+
 
 

@@ -328,6 +328,8 @@ def term_weight(term: str) -> int:
     lower = term.lower()
     if lower in STOP_WORDS:
         return 0
+    if term.startswith("--"):
+        return 8
     if is_path_like_term(term):
         return 8
     if re.search(r"(error|exception|warning)$", lower) and len(term) > 5:
@@ -361,6 +363,18 @@ def extract_search_terms(query: str) -> list[str]:
     phrases = re.findall(r'"([^"]+)"', query)
     cleaned_query = re.sub(r'"[^"]+"', " ", query)
 
+    # Extract CLI option flags (e.g. --maxfail, -x)
+    cli_flags = re.findall(
+        r"(?<![\w-])(?:--[a-zA-Z0-9_][a-zA-Z0-9_-]*|-[a-zA-Z0-9])\b", query
+    )
+    flag_terms: list[str] = []
+    for flag in cli_flags:
+        if flag not in flag_terms:
+            flag_terms.append(flag)
+        stripped = flag.lstrip("-")
+        if stripped and stripped not in flag_terms and stripped.lower() not in STOP_WORDS:
+            flag_terms.append(stripped)
+
     # Extract word tokens including dotted and slash-separated path forms
     raw_tokens = re.findall(r"[a-zA-Z_][a-zA-Z0-9_./\-]*", cleaned_query)
     words = [token.strip(".-/") for token in raw_tokens]
@@ -370,7 +384,7 @@ def extract_search_terms(query: str) -> list[str]:
 
     # Combine unique terms preserving order
     all_terms: list[str] = []
-    for term in phrases + filtered_words:
+    for term in phrases + flag_terms + filtered_words:
         if term and term not in all_terms:
             all_terms.append(term)
 
