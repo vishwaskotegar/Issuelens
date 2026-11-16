@@ -42,6 +42,11 @@ def extract_candidate_versions(title: str, labels: list[str]) -> list[str]:
             ver = match.group(1).rstrip(".-")
             if ver and ver not in candidates:
                 candidates.append(ver)
+                # If two-digit version (e.g. "0.106"), also offer three-digit ("0.106.0")
+                if re.fullmatch(r"\d+\.\d+", ver):
+                    three_part = f"{ver}.0"
+                    if three_part not in candidates:
+                        candidates.append(three_part)
     return candidates
 
 
