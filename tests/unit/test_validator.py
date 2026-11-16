@@ -9,7 +9,9 @@ from issuelens.agent.report import (
 )
 from issuelens.agent.validator import (
     validate_citation,
+    validate_evidence_item,
     validate_investigation_report,
+    validate_report_citations,
 )
 from issuelens.repository.snapshot import RepoSnapshot
 from issuelens.repository.snippets import read_snippet
@@ -339,3 +341,64 @@ def test_validate_investigation_report_insufficient_evidence_fallback() -> None:
     )
     assert any("Citation Guardrail:" in lim for lim in sanitized_report.limitations)
     assert sanitized_report.verification_status == "not_run"
+
+
+def test_validate_evidence_rejects_comment_only_code_citation(tmp_path: Path) -> None:
+    """Verify code evidence with comment-only excerpt is rejected by substance guardrail."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    code_file = pkg / "comments.py"
+    code_file.write_text(
+        "# Header line\n"
+        "# Just a comment describing logic\n"
+        "# Another comment line\n",
+        encoding="utf-8",
+    )
+
+    snapshot = RepoSnapshot(
+        root_path=tmp_path,
+        repo_full_name="sample/repo",
+        commit_sha=SAMPLE_COMMIT,
+    )
+
+    item = EvidenceItem(
+        evidence_id="ev_comment_only",
+        source_type="code",
+        path_or_url="pkg/comments.py",
+        start_line=1,
+        end_line=3,
+        excerpt=(
+            "1: # Header line\n"
+            "2: # Just a comment describing logic\n"
+            "3: # Another comment line"
+        ),
+        commit_sha=SAMPLE_COMMIT,
+    )
+
+    res = validate_evidence_item(item, snapshot)
+    assert res.is_valid is False
+    assert res.error_reason == "Excerpt contains no executable code statements"
+
+    # Verify a report citing only this comment-only evidence is demoted
+    hyp = Hypothesis(
+        title="Comment fault",
+        explanation="Mechanism based on comments",
+        confidence="high",
+        confidence_rationale="High confidence",
+        supporting_evidence_ids=["ev_comment_only"],
+        verification_steps=["Inspect file"],
+    )
+    report = InvestigationReport(
+        run_id="inv_comments",
+        issue_url="https://github.com/sample/repo/issues/1",
+        repository="sample/repo",
+        commit_sha=SAMPLE_COMMIT,
+        summary="Summary citing comment-only evidence",
+        hypotheses=[hyp],
+        evidence=[item],
+        verification_status="verified",
+    )
+    sanitized_report, val_res = validate_report_citations(report, snapshot)
+    assert val_res.is_valid is False
+    assert sanitized_report.verification_status != "verified"
+

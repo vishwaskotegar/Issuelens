@@ -15,6 +15,7 @@ from issuelens.core.errors import (
     SafetyViolationError,
 )
 from issuelens.core.logging import get_logger
+from issuelens.repository.code_search import has_code_substance
 from issuelens.repository.snapshot import RepoSnapshot
 from issuelens.repository.snippets import read_snippet
 
@@ -243,6 +244,20 @@ def validate_citation(
             ),
         )
 
+    # 5. Substance guardrail for code citations
+    if evidence.source_type == "code" and not has_code_substance(evidence.excerpt):
+        return CitationValidationResult(
+            evidence_id=evidence.evidence_id,
+            is_valid=False,
+            source_type=evidence.source_type,
+            path_or_url=evidence.path_or_url,
+            commit_matches=commit_matches,
+            file_exists=True,
+            lines_valid=True,
+            excerpt_matches=True,
+            error_reason="Excerpt contains no executable code statements",
+        )
+
     return CitationValidationResult(
         evidence_id=evidence.evidence_id,
         is_valid=True,
@@ -253,6 +268,10 @@ def validate_citation(
         lines_valid=True,
         excerpt_matches=True,
     )
+
+
+# Compatibility aliases
+validate_evidence_item = validate_citation
 
 
 def validate_investigation_report(
@@ -411,3 +430,6 @@ def validate_investigation_report(
     )
 
     return sanitized_report, validation_result
+
+
+validate_report_citations = validate_investigation_report
