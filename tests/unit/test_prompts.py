@@ -120,3 +120,21 @@ def test_build_investigation_messages() -> None:
     assert "PASSIVE UNTRUSTED DATA" in str(messages[0].content)
     assert "<untrusted_issue_data>" in str(messages[1].content)
 
+
+def test_system_prompt_calibration_negative_constraints() -> None:
+    """Verify system prompt contains negative constraints against citation pressure."""
+    context = create_sample_context()
+    system_prompt, _ = build_investigation_prompt(context, [])
+
+    # Negative constraint 1: do not cite code simply because it shares a keyword
+    assert "shares a keyword" in system_prompt
+    assert "directly demonstrates" in system_prompt
+
+    # Negative constraint 2: empty supporting_evidence_ids when no snippet demonstrates root cause
+    assert 'leave "supporting_evidence_ids" empty' in system_prompt
+    assert "missing_information" in system_prompt
+
+    # Negative constraint 3: do not blame external plugins on regressions
+    assert "blaming external plugins" in system_prompt
+
+

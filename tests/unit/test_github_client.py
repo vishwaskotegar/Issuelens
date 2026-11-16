@@ -10,7 +10,7 @@ from issuelens.core.errors import (
     SafetyViolationError,
     UpstreamTimeoutError,
 )
-from issuelens.github.client import GitHubClient
+from issuelens.github.client import GitHubClient, extract_candidate_versions
 from issuelens.github.url_parser import IssueTarget
 
 SAMPLE_ISSUE_PAYLOAD = {
@@ -273,3 +273,115 @@ async def test_token_authorization_header() -> None:
         client = GitHubClient(token="ghp_fakeSecretToken1234567890", http_client=http)
         await client.get_issue("psf", "requests", 1234)
         assert captured_auth == "Bearer ghp_fakeSecretToken1234567890"
+
+
+@pytest.mark.asyncio
+async def test_get_issue_context_resolves_version_tag_from_title() -> None:
+    """Verify that semver version in title resolves to pinned release tag commit SHA."""
+    issue_payload = dict(SAMPLE_ISSUE_PAYLOAD)
+    issue_payload["title"] = "Bug in v8.0.0 when handling maxfail"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/repos/psf/requests/issues/1234":
+            return httpx.Response(200, json=issue_payload)
+        if path == "/repos/psf/requests/issues/1234/comments":
+            return httpx.Response(200, json=[])
+        if path == "/repos/psf/requests":
+            return httpx.Response(200, json=SAMPLE_REPO_PAYLOAD)
+        if path == "/repos/psf/requests/commits/v8.0.0":
+            return httpx.Response(200, json={"sha": "8888888888888888888888888888888888888888"})
+        if path == "/repos/psf/requests/commits/main":
+            return httpx.Response(200, json=SAMPLE_COMMIT_PAYLOAD)
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as http:
+        client = GitHubClient(http_client=http)
+        target = IssueTarget(owner="psf", repo="requests", issue_number=1234)
+        context = await client.fetch_issue_context(target)
+
+        assert context.commit_sha == "8888888888888888888888888888888888888888"
+
+
+@pytest.mark.asyncio
+async def test_get_issue_context_falls_back_to_default_branch() -> None:
+    """Verify that if version tag 404s, client falls back to repository default branch."""
+    issue_payload = dict(SAMPLE_ISSUE_PAYLOAD)
+    issue_payload["title"] = "Bug in v9.9.9 unreleased version"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/repos/psf/requests/issues/1234":
+            return httpx.Response(200, json=issue_payload)
+        if path == "/repos/psf/requests/issues/1234/comments":
+            return httpx.Response(200, json=[])
+        if path == "/repos/psf/requests":
+            return httpx.Response(200, json=SAMPLE_REPO_PAYLOAD)
+        if path in ("/repos/psf/requests/commits/v9.9.9", "/repos/psf/requests/commits/9.9.9"):
+            return httpx.Response(404, json={"message": "Not Found"})
+        if path == "/repos/psf/requests/commits/main":
+            return httpx.Response(200, json=SAMPLE_COMMIT_PAYLOAD)
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as http:
+        client = GitHubClient(http_client=http)
+        target = IssueTarget(owner="psf", repo="requests", issue_number=1234)
+        context = await client.fetch_issue_context(target)
+
+        assert context.commit_sha == "abcdef1234567890abcdef1234567890abcdef12"
+
+
+def test_extract_candidate_versions_expands_two_digit_semver() -> None:
+    """Verify that two-digit version strings (0.106) expand to three-digit candidate (0.106.0)."""
+    versions = extract_candidate_versions(
+        "Context managers in Depends are broken after 0.106",
+        ["release: 1.2"],
+    )
+    assert "0.106" in versions
+    assert "0.106.0" in versions
+    assert "1.2" in versions
+    assert "1.2.0" in versions
+
+
+@pytest.mark.asyncio
+async def test_get_issue_context_resolves_two_digit_version_tag() -> None:
+    """Verify that two-digit version in title probes and resolves tag 0.106.0 on 404 for 0.106."""
+    issue_payload = dict(SAMPLE_ISSUE_PAYLOAD)
+    issue_payload["title"] = "Context managers in `Depends` are broken after 0.106"
+
+    fastapi_repo_payload = dict(SAMPLE_REPO_PAYLOAD)
+    fastapi_repo_payload["full_name"] = "fastapi/fastapi"
+    fastapi_repo_payload["name"] = "fastapi"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/repos/fastapi/fastapi/issues/11143":
+            return httpx.Response(200, json=issue_payload)
+        if path == "/repos/fastapi/fastapi/issues/11143/comments":
+            return httpx.Response(200, json=[])
+        if path == "/repos/fastapi/fastapi":
+            return httpx.Response(200, json=fastapi_repo_payload)
+        # v0.106 and 0.106 return 404
+        if path in (
+            "/repos/fastapi/fastapi/commits/v0.106",
+            "/repos/fastapi/fastapi/commits/0.106",
+        ):
+            return httpx.Response(404, json={"message": "Not Found"})
+        # 0.106.0 exists
+        if path == "/repos/fastapi/fastapi/commits/0.106.0":
+            return httpx.Response(200, json={"sha": "a1b3be01aadc61c67edc09eed4f6cc1fcc3d3b8f"})
+        if path == "/repos/fastapi/fastapi/commits/main":
+            return httpx.Response(200, json=SAMPLE_COMMIT_PAYLOAD)
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as http:
+        client = GitHubClient(http_client=http)
+        target = IssueTarget(owner="fastapi", repo="fastapi", issue_number=11143)
+        context = await client.fetch_issue_context(target)
+
+        assert context.commit_sha == "a1b3be01aadc61c67edc09eed4f6cc1fcc3d3b8f"
+
+

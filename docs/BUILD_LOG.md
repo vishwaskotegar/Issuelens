@@ -540,3 +540,384 @@ Temporary directory utilities like `tempfile.mkdtemp()` are dangerous in statele
 
 ---
 
+
+### Entry 012: Generic Type Parameter Requirements on `CompiledStateGraph` under Strict Mypy
+- **Date**: 2026-11-04
+- **Phase**: Phase 5 (LangGraph Workflow)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+When compiling the LangGraph workflow with `create_investigation_graph() -> CompiledStateGraph`, running `uv run mypy src tests` failed with:
+```text
+src\issuelens\agent\graph.py:15: error: Missing type arguments for generic type "CompiledStateGraph"  [type-arg]
+```
+
+#### 2. Root Cause
+In LangGraph 0.2+, `CompiledStateGraph` is defined as a generic class parameterized by four type variables: `(~StateT, ~ContextT, ~InputT, ~OutputT)`. In our codebase, Mypy is configured in strict mode (`disallow_any_generics = true`), which strictly rejects using unparameterized generic types like `CompiledStateGraph`.
+
+#### 3. Fix
+Specified explicit type arguments on the return annotation in [`src/issuelens/agent/graph.py`](../src/issuelens/agent/graph.py):
+```python
+def create_investigation_graph(
+    nodes: InvestigationNodes,
+) -> CompiledStateGraph[Any, Any, Any, Any]:
+```
+
+#### 4. Verification
+Ran Mypy static type checking:
+```powershell
+uv run mypy src tests
+```
+**Output**:
+```text
+Success: no issues found in 48 source files
+```
+
+#### 5. Engineering Lesson
+When working with rapidly evolving agent frameworks like LangGraph under strict type checking, always inspect generic type parameters (`inspect` or runtime `__parameters__`). Explicitly parameterizing framework types guarantees compatibility across strict linter and type-checker configurations.
+
+#### 6. Regression Test
+Enforced by `uv run mypy src tests` and covered in [`tests/unit/test_graph.py`](../tests/unit/test_graph.py).
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Add `# type: ignore[type-arg]` on the function definition.
+- *Trade-off*: Suppressing type warnings hides potential typing bugs. Explicit generic parameterization is cleaner, conforms to strict Mypy standards, and preserves static type safety.
+
+---
+
+### Entry 013: Subtlety of Uncurated Follow-up Search Terms Matching Repository Documentation
+- **Date**: 2026-11-04
+- **Phase**: Phase 5 (LangGraph Workflow)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+In [`tests/unit/test_graph.py`](../tests/unit/test_graph.py) (`test_graph_empty_retrieval_insufficient_evidence`), the test intended to verify that when no code matches an issue, the graph emits an insufficient evidence report with zero evidence items (`len(report["evidence"]) == 0`). However, the test unexpectedly failed with `AssertionError: assert 5 == 0`.
+
+#### 2. Root Cause
+In the test fixture, `mock_payload` contained `missing_information=["Reproduction files not in repository."]`. During `evaluate_evidence`, the node formulated follow-up queries from `missing_information`. The secondary retrieval node (`retrieve_followup`) searched for the phrase *"Reproduction files not in repository."*, which tokenized to terms like `files` and `repository`. Because the sample repository's `README.md` and `database.py` contained those exact English words, the follow-up retrieval unexpectedly discovered valid repository hits, turning what was intended to be an empty retrieval test into a successful secondary match.
+
+#### 3. Fix
+In the empty retrieval test case, adjusted the mocked `missing_information` to an unmatchable token (`"xyz_unobtainable_secret_log_token"`) and ensured initial query tokens (`"zzzjklmn_404_notfound_abc"`) did not overlap with common English words in repository documentation.
+
+#### 4. Verification
+Ran test suite:
+```powershell
+uv run pytest tests/unit/test_graph.py
+```
+**Output**:
+```text
+tests/unit/test_graph.py::test_graph_empty_retrieval_insufficient_evidence PASSED [ 50%]
+============================== 6 passed in 0.93s ==============================
+```
+
+#### 5. Engineering Lesson
+In lexical code search systems, common natural language words in issue bodies or LLM missing-information strings can easily trigger false-positive documentation hits. In testing empty-retrieval edge cases, test doubles must be carefully isolated from vocabulary present in test fixture repositories.
+
+#### 6. Regression Test
+Safeguarded by [`tests/unit/test_graph.py`](../tests/unit/test_graph.py) (`test_graph_empty_retrieval_insufficient_evidence`).
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Disable follow-up retrieval query generation for natural language text.
+- *Trade-off*: Would prevent the agent from searching for valuable clues mentioned in missing information. Keeping query extraction active while ensuring hermetic test fixtures maintains the optimal balance.
+
+---
+
+### Entry 014: Irrelevant Evidence from Unranked Lexical Matches and Prose-Heavy Queries
+- **Date**: 2026-11-11
+- **Phase**: Phase 5 (LangGraph Workflow) — retrieval quality follow-up
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+An offline investigation of `psf/requests` against a realistic bug report about
+`ChunkedEncodingError` returned ten evidence items that were all matches from
+`HISTORY.md` changelog prose. The actual defining source (`src/requests/exceptions.py`)
+and the raising call site (`src/requests/models.py`,
+`iter_content.generate` → `raise ChunkedEncodingError(e)`) never appeared in the
+evidence list, so the LLM had no relevant code to reason about.
+
+#### 2. Root Cause
+Three independent defects in the retrieval path combined:
+
+1. **Query pollution** — `parse_issue` concatenated the title, error types, file
+   names, symbols and up to 800–1000 characters of issue body into one query string.
+   `extract_search_terms` then treated ordinary English words (`when`, `using`,
+   `large`, `raised`) as equal search terms.
+2. **No relevance ranking** — `search_code` grouped raw hits by file in ripgrep walk
+   order and truncated at `max_results`. A single file that matched an early term
+   could consume the entire budget before any source file was visited.
+3. **No source/documentation distinction** — changelog, docs and tests scored the
+   same as production code, and the resulting evidence was always labelled
+   `source_type="code"`.
+
+A fourth integrity issue was observed while debugging: for non-symbol hits the
+excerpt included `context_lines` outside the declared `start_line..end_line`
+window, so the cited range did not fully describe the excerpt shown to the model.
+
+#### 3. Fix
+- [`src/issuelens/repository/code_search.py`](../src/issuelens/repository/code_search.py):
+  - Added deterministic term weighting (`term_weight`, `is_high_signal_term`,
+    `select_search_terms`). When at least three identifier-like terms exist, prose
+    words are dropped entirely.
+  - Added `classify_path` and a ranking function: production code `+4`,
+    documentation `-3`, test paths `-2`, explicit file-path references `+6`, and
+    symbol-name matches `+5`.
+  - Hits are now globally sorted by score, then path, then line; a per-file budget
+    (`max_results_per_file`, default 3) prevents one file from dominating.
+  - `--fixed-strings` is passed to ripgrep so identifiers containing `.` or other
+    regex metacharacters are matched literally.
+  - Files explicitly named in the issue are anchored as evidence even if their
+    content does not match prose terms.
+- [`src/issuelens/repository/snippets.py`](../src/issuelens/repository/snippets.py):
+  added `read_snippet_with_bounds`, which returns the actual clamped/expanded
+  window. `search_code` now records those bounds, so `excerpt` always equals
+  `start_line..end_line`.
+- [`src/issuelens/agent/nodes.py`](../src/issuelens/agent/nodes.py):
+  `parse_issue` puts identifiers/paths/symbols/stack frames before prose in
+  `raw_query`; evidence items derive `source_type` from `classify_path`; follow-up
+  queries are built only from high-signal terms instead of whole missing-information
+  sentences.
+- [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py):
+  documentation evidence is now validated against snapshot bytes too; only issue
+  and commit sources skip filesystem verification.
+
+#### 4. Verification
+```powershell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest -q
+```
+**Results**:
+```text
+All checks passed!
+Success: no issues found in 48 source files
+139 passed in 5.09s
+```
+A manual replay against the cached `psf/requests` snapshot now ranks
+`src/requests/models.py` (`iter_content.generate`), `src/requests/exceptions.py`
+(`class ChunkedEncodingError`) and `src/requests/sessions.py` above changelog/docs.
+
+#### 5. Engineering Lesson
+Lexical search is only as good as its *ranking*. Returning the first N filesystem
+matches is not "retrieval"; a single noisy term can silently starve the result set.
+Separate "which terms are discriminating?" from "which file is the best evidence?"
+and make both decisions explicit, deterministic and testable.
+
+#### 6. Regression Test
+- [`tests/unit/test_code_search.py`](../tests/unit/test_code_search.py):
+  `test_search_code_ranks_source_code_above_changelog`,
+  `test_search_code_excerpt_matches_declared_range`,
+  `test_search_code_enforces_per_file_budget`,
+  `test_search_code_anchors_explicitly_named_file`,
+  `test_select_search_terms_drops_prose_when_identifiers_exist`.
+- [`tests/unit/test_graph.py`](../tests/unit/test_graph.py):
+  `test_evaluate_evidence_ignores_prose_missing_information`.
+- [`tests/unit/test_validator.py`](../tests/unit/test_validator.py):
+  `test_validate_citation_documentation_altered_excerpt`.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: BM25/TF-IDF ranking or embedding search.
+  - *Trade-off*: Better natural-language recall, but adds index infrastructure and
+    non-determinism; the spec starts with deterministic lexical search and defers
+    BM25/embeddings to Phase 8.
+- *Alternative*: Reject all documentation matches.
+  - *Trade-off*: Changelogs and docs can legitimately explain behavior; the safer
+    choice is to down-rank them rather than exclude them.
+
+---
+
+### Entry 015: Retrieval Quality, CLI Flag Preservation, and Version Drift Hardening
+- **Date**: 2026-11-17
+- **Phase**: Phase 5 (Real Bug Testing & Hardening)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During end-to-end testing against real public issues (`requests#6711` and `pytest#12021`):
+1. **Comment-Only Snippets**: Code search returned comment-only/empty excerpts (e.g. `src/_pytest/pytester.py:193-197`) that consumed evidence quotas and were stamped `verified`.
+2. **CLI Flag Loss**: CLI option flags (e.g. `--maxfail`) had leading dashes stripped, causing them to be treated as low-weight prose words.
+3. **Single-Term Flooding**: Broad terms (e.g. `pytest-xdist`) matched 8 unrelated files and pushed genuinely relevant files out of the top results.
+4. **Suppression of Reproduction Tests**: Tests reproducing regressions (e.g. `test_adapters.py` testing `#6643`) were penalized by `-2.0` test penalty despite being direct evidence.
+5. **Version Drift**: Defaulting to `repository.default_branch` (`main`) caused temporal version drift when the reported bug existed only in an earlier released version tag (e.g. `v8.0.0`).
+6. **Citation Pressure & Blame Shifting**: System prompts lacked explicit negative constraints, causing LLMs to cite irrelevant code sharing keywords or deflect blame to external plugins.
+
+#### 2. Root Cause
+- [`src/issuelens/repository/code_search.py`](../src/issuelens/repository/code_search.py):
+  - Lacked substance validation on candidate snippets; comment-only excerpts passed through as valid code.
+  - Tokenizer only captured `[a-zA-Z_]...`, discarding `--` prefixes and stripping hyphens.
+  - Snippet scoring only awarded `+0.25` for multiple term matches, which was too weak to beat broad single-term hits.
+  - Test files were penalized unconditionally by `-2.0`, even when the query was investigating regressions or referenced specific PR/issue numbers.
+- [`src/issuelens/github/client.py`](../src/issuelens/github/client.py):
+  - Always resolved `repository.default_branch` head without parsing semver versions or release tags from issue titles or labels.
+- [`src/issuelens/agent/prompts.py`](../src/issuelens/agent/prompts.py):
+  - System prompt lacked negative constraints forbidding keyword-only citations and plugin blame shifting.
+- [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py):
+  - Verified byte equality only without checking whether the code excerpt contained executable statements.
+
+#### 3. Fix
+- **Substance Filtering**: Added `has_code_substance()` to reject comment-only excerpts in `search_code()` and reject them in `validate_citation()`.
+- **CLI Flag Extraction**: Updated `extract_search_terms()` to retain `--[a-zA-Z0-9_][a-zA-Z0-9_-]*` and `-[a-zA-Z0-9]` formats and stripped identifiers, assigning weight 8 to `--` tokens in `term_weight()`.
+- **Multi-Term Co-occurrence Boost**: Added `score += 3.0 * (distinct_count - 1)` for snippets and files matching two or more distinct query terms.
+- **Context-Aware Test Scoring**: In `_file_priority()`, softened test penalty from `-2.0` to `0.0` for regression queries and awarded `+4.0` relevance bonus when test files match the specific issue/PR number.
+- **Release Tag Resolution**: Added semver parsing in `GitHubClient.fetch_issue_context()` to attempt resolving `v{version}` or `{version}` via `get_pinned_commit_sha()` before falling back to default branch.
+- **Prompt Calibration**: Added negative constraints in `SYSTEM_PROMPT` instructing the model to leave citations empty rather than citing keyword matches, and to focus on host repository changes rather than blaming external plugins.
+
+#### 4. Verification
+```powershell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest tests/unit/test_code_search.py tests/unit/test_github_client.py tests/unit/test_prompts.py tests/unit/test_validator.py
+```
+**Results**:
+All lint, type checks, and 52 unit tests passed.
+
+#### 5. Engineering Lesson
+Real-world bug reports often contain a mix of prose, CLI flags, regression references, and version numbers. Search and validation pipelines must be semantic-aware (verifying executable substance over comments), context-aware (prioritizing regression tests when investigating regressions), and temporally grounded (pinning exact release tags).
+
+#### 6. Regression Tests
+- [`tests/unit/test_code_search.py`](../tests/unit/test_code_search.py):
+  `test_has_code_substance`,
+  `test_search_code_rejects_comment_only_excerpts`,
+  `test_extract_search_terms_preserves_cli_flags`,
+  `test_term_weight_cli_flags`,
+  `test_search_code_boosts_multi_term_co_occurrence`,
+  `test_search_code_surfaces_tests_matching_issue_or_pr_number`.
+- [`tests/unit/test_github_client.py`](../tests/unit/test_github_client.py):
+  `test_get_issue_context_resolves_version_tag_from_title`,
+  `test_get_issue_context_falls_back_to_default_branch`.
+- [`tests/unit/test_prompts.py`](../tests/unit/test_prompts.py):
+  `test_system_prompt_calibration_negative_constraints`.
+- [`tests/unit/test_validator.py`](../tests/unit/test_validator.py):
+  `test_validate_evidence_rejects_comment_only_code_citation`.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Rely entirely on LLM re-ranking to filter comment snippets.
+  - *Trade-off*: More expensive in tokens and latency; deterministic pre-filtering with `has_code_substance()` is free, fast, and 100% reliable.
+- *Alternative*: Clone git repository locally to checkout release tags.
+  - *Trade-off*: Clones take seconds or minutes and hundreds of megabytes; GitHub REST API commit SHA resolution for release tags takes milliseconds and requires zero local git operations.
+
+---
+
+### Entry 016: Validator Grounding, Documentation Directory Demotion, and Interval Deduplication
+- **Date**: 2026-11-17
+- **Phase**: Phase 5 (Real Bug Testing & Hardening)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During end-to-end investigation of `fastapi/fastapi#11143` ("Context managers in `Depends` are broken after 0.106"):
+1. **Empty Evidence Hypotheses Marked "Verified"**: The LLM produced a hypothesis with `confidence: "high"` and `supporting_evidence_ids: []`. The validator passed this report with `verification_status: "verified"`.
+2. **Tutorial/Example Directory Flooding**: In repositories like FastAPI where executable tutorials are placed under `docs_src/` or `examples/`, `.py` tutorial files received the `+4.0` code priority in `classify_path()`, flooding evidence slots with tutorial snippets (`docs_src/stream_data/tutorial002.py`, `docs_src/custom_response/tutorial007.py`) and displacing core framework files (`fastapi/dependencies/utils.py`).
+3. **Overlapping Snippet Interval Fragmentation**: Multiple search hits on adjacent lines in the same file created separate entries with near-identical ranges (e.g., `(path, 1, 4)` and `(path, 3, 7)`), consuming file budgets and cluttering reports with duplicate code.
+4. **Two-Digit Semver Release Tag 404s**: The issue title mentioned `0.106`, but FastAPI tags releases as `0.106.0`. Probing only `v0.106` and `0.106` returned 404, causing fallback to the default branch (`main`) instead of the affected version tag.
+
+#### 2. Root Cause
+- [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py):
+  - In `validate_investigation_report()`, `bad_supporting_ids = [eid for eid in cited_ids if eid not in valid_ids]`. If `cited_ids` was empty (`[]`), `bad_supporting_ids` was empty, bypassing the ungrounded check. Furthermore, `verification_status` calculation only checked if all hypotheses were contradicted or unverified, without enforcing that at least one grounded hypothesis had supporting citations.
+- [`src/issuelens/repository/code_search.py`](../src/issuelens/repository/code_search.py):
+  - `classify_path()` checked file extensions (`.py`, `.ts`, etc.) before checking directory names, classifying `.py` scripts in `docs_src/` or `examples/` as `"code"` (`+4.0` priority) rather than `"documentation"` (`-3.0` priority).
+  - Merged hits used `(path, start_line, end_line)` as exact keys. Adjacent matches created overlapping windows that did not consolidate.
+- [`src/issuelens/github/client.py`](../src/issuelens/github/client.py):
+  - `extract_candidate_versions()` parsed `0.106` as a 2-part semver candidate without offering the 3-part counterpart `0.106.0`, failing tag resolution on repositories using strict semver release tags.
+
+#### 3. Fix
+- **Grounding Guardrail in Validator**:
+  - In `validate_investigation_report()`, check if `not hyp.supporting_evidence_ids`. If empty, record the hypothesis as ungrounded, force `confidence = "low"`, and demote the report status. Require at least one grounded hypothesis for `partially_verified` or `verified`; fallback to `not_run` when no hypotheses are supported by citations.
+- **Documentation Directory Classification**:
+  - In `classify_path()`, added `DOCUMENTATION_DIRECTORY_NAMES` (`docs`, `docs_src`, `doc`, `doc_src`, `examples`, `samples`, `tutorials`, `tutorial`). Paths located within these directories are classified as `"documentation"` with `-3.0` priority, regardless of file extension.
+- **Snippet Interval Deduplication**:
+  - In `search_code()`, before adding a new hit, check if an existing snippet for the same file overlaps or is adjacent (`actual_start <= eend + 1 and actual_end >= estart - 1`) within a 60-line span. If overlapping, merge into a consolidated window `(min(estart, actual_start), max(eend, actual_end))`, re-read bounds, and merge matched terms.
+- **Two-Digit Semver Expansion**:
+  - In `extract_candidate_versions()`, if a captured version has two parts (`\d+\.\d+`), automatically append `f"{ver}.0"` to candidate versions, enabling probe of `v0.106`, `0.106`, `v0.106.0`, and `0.106.0`.
+
+#### 4. Verification
+```powershell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest
+```
+**Results**:
+All lint, type checks, and 153+ unit tests passed cleanly.
+
+#### 5. Engineering Lesson
+1. Absence of bad citations is not evidence of good citations. Validation logic must check that supporting evidence is present, not merely that invalid IDs are absent.
+2. File extensions cannot be trusted in isolation to determine code importance: tutorials, documentation snippets, and sample scripts are executable code files, but functionally belong to documentation.
+3. Git tags adhere to varied conventions (`X.Y.Z`, `vX.Y.Z`, `X.Y`). Flexible tag normalization prevents silent fallbacks to default branches.
+
+#### 6. Regression Tests
+- [`tests/unit/test_validator.py`](../tests/unit/test_validator.py):
+  `test_validate_investigation_report_demotes_empty_citations_hypothesis`.
+- [`tests/unit/test_code_search.py`](../tests/unit/test_code_search.py):
+  `test_classify_path_separates_code_and_documentation`,
+  `test_search_code_merges_overlapping_snippet_windows`.
+- [`tests/unit/test_github_client.py`](../tests/unit/test_github_client.py):
+  `test_extract_candidate_versions_expands_two_digit_semver`,
+  `test_get_issue_context_resolves_two_digit_version_tag`.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Reject any report where any hypothesis has empty citations.
+  - *Trade-off*: An investigation report may include a speculative or preliminary hypothesis alongside substantiated ones; demoting confidence to "low" and forbidding ungrounded "verified" status accurately reflects partial knowledge without throwing away valid findings.
+- *Alternative*: Exclude `docs_src/` entirely from code search.
+  - *Trade-off*: Documentation snippets may be relevant if the bug is a docs error; classifying as `"documentation"` down-ranks them so production code always takes priority while keeping docs accessible if no production matches exist.
+
+---
+
+### Entry 017: Agent Summary and Guardrail State Loss, Inverted Snippet Line Bounds, and Failed Run Ingress
+- **Date**: 2026-11-17
+- **Phase**: Phase 5 (Real Bug Testing & Hardening)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During codebase audit and state-flow tracing across the LangGraph agent pipeline and API layers:
+1. **LLM Summary and Validator Guardrails Dropped**: In `InvestigationNodes`, the LLM synthesized an executive `summary`, and `validate_investigation_report()` added insufficient evidence warnings to `missing_information` and citation guardrails to `limitations`. However, `form_hypotheses()` dropped `summary`, `validate_citations()` failed to propagate `summary`, `missing_information`, and `limitations`, and `build_report()` overwrote `summary` with generic boilerplate (`f"Investigation of {repo}#{number}: {title}"`).
+2. **Inverted Line Coordinates on Out-of-Bounds Queries**: When `read_snippet_with_bounds()` was invoked with `start_line > total_lines` (e.g. `start_line=50, end_line=60` on a 5-line file), `actual_start` was 50 and `actual_end` was clamped to 5, returning `(50, 5, "")`. This violated the `start_line <= end_line` coordinate invariant.
+3. **Lost Failed Ingestions in Memory Registry**: In `create_investigation()` (`POST /v1/investigations`), if synchronous execution failed (`service.investigate` raised an exception), the exception was re-raised before inserting into `_INVESTIGATIONS`. Consequently, subsequent status queries (`GET /v1/investigations/{run_id}`) returned 404 rather than status `failed` with error details.
+
+#### 2. Root Cause
+- [`src/issuelens/agent/state.py`](../src/issuelens/agent/state.py) & [`src/issuelens/agent/nodes.py`](../src/issuelens/agent/nodes.py):
+  - `InvestigationState` lacked a `summary` key. `form_hypotheses()` extracted hypotheses and missing info but omitted `payload.summary`.
+  - `validate_citations()` called `validate_investigation_report()`, which enriched `summary`, `missing_information`, and `limitations`, but the returned state dictionary only passed `evidence`, `hypotheses`, and `verification_status`.
+  - `build_report()` constructed its own generic title-based summary rather than prioritizing `state["summary"]`.
+- [`src/issuelens/repository/snippets.py`](../src/issuelens/repository/snippets.py):
+  - `read_snippet_with_bounds()` checked `total_lines == 0` but lacked an explicit check for `start_line > total_lines`, causing `actual_start > actual_end` when clamped against file length.
+- [`src/issuelens/api/routes.py`](../src/issuelens/api/routes.py):
+  - `_INVESTIGATIONS[run_id]` assignment occurred after `if payload.execute:` block without an exception handler recording the failed state.
+
+#### 3. Fix
+- **State Pipeline Synchronization**:
+  - Added `summary: str` to `InvestigationState` and initialized it in `InvestigationService.investigate()`.
+  - Captured `summary = payload.summary` in `form_hypotheses()`.
+  - Propagated `validated_report.summary`, `validated_report.missing_information`, and `validated_report.limitations` in `validate_citations()`.
+  - Updated `build_report()` to preserve `state.get("summary")`, falling back to title-based overview only if unset.
+- **Snippet Boundary Validation**:
+  - In `read_snippet_with_bounds()`, added validation `if start_line > total_lines: raise InvalidInputError(f"Start line ({start_line}) exceeds total lines in file ({total_lines}).")`.
+- **Failed Run Ingress Record**:
+  - In `create_investigation()`, added `except Exception as exc:` block recording `_INVESTIGATIONS[run_id]` with `status="failed"` and `error=error_msg` before re-raising.
+
+#### 4. Verification
+```powershell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest
+```
+**Results**:
+All lint checks passed cleanly, Mypy found 0 issues across 48 source files, and all 156 unit tests passed.
+
+#### 5. Engineering Lesson
+1. State management in cyclic graphs must have complete data symmetry: any domain attribute produced by an inference node or enriched by a validation node must be formally represented in the state schema, returned in node output updates, and consumed by downstream assembly nodes.
+2. Clamping line numbers against physical file boundaries must validate start offsets before applying clamping to prevent inverted range windows (`actual_start > actual_end`).
+3. Asynchronous or long-running execution registries must record failure states before re-raising exceptions to enable post-mortem status inspection by client systems.
+
+#### 6. Regression Tests
+- [`tests/unit/test_graph.py`](../tests/unit/test_graph.py):
+  `test_graph_success_flow` (asserts `report["summary"] == mock_payload.summary`),
+  `test_graph_empty_retrieval_insufficient_evidence` (asserts validator warnings in `missing_information` and `limitations`).
+- [`tests/unit/test_snippets.py`](../tests/unit/test_snippets.py):
+  `test_read_snippet_start_line_exceeds_total_lines`.
+- [`tests/unit/test_investigation_api.py`](../tests/unit/test_investigation_api.py):
+  `test_create_investigation_sync_failure_records_failed_status`.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Allow `read_snippet_with_bounds` to return `(0, 0, "")` on `start_line > total_lines` instead of raising.
+  - *Trade-off*: Raising `InvalidInputError` is consistent with `start_line < 1` and `end_line < start_line` and immediately exposes caller coordinate errors.
+- *Alternative*: Always overwrite the LLM's summary with a deterministic issue title summary.
+  - *Trade-off*: Discards valuable LLM synthesis and diagnostic insights; preserving the LLM summary while allowing the validator to prefix `[INSUFFICIENT EVIDENCE]` retains analytical value while enforcing truthfulness.
+
+

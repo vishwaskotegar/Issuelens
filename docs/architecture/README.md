@@ -26,7 +26,7 @@ The architecture is documented across six core blueprints:
 | :--- | :--- | :--- |
 | [**`system-overview.md`**](system-overview.md) | System Overview | High-level component architecture, responsibilities, inputs/outputs, and integration contracts. |
 | [**`request-lifecycle.md`**](request-lifecycle.md) | Request Lifecycle & Execution Paths | End-to-end request tracing from HTTP submission to verified report, including all failure paths. |
-| [**`agent-workflow.md`**](agent-workflow.md) | Agent Workflow & State Machine | Current synchronous orchestrator and planned LangGraph multi-round cyclic state machine. |
+| [**`agent-workflow.md`**](agent-workflow.md) | Agent Workflow & State Machine | Multi-round LangGraph cyclic state machine orchestrating iterative retrieval, hypothesis formation, and deterministic citation validation. |
 | [**`codebase-map.md`**](codebase-map.md) | Codebase Map & Package Boundaries | Module dependencies, structural layering, symbol directory, and developer change navigation. |
 | [**`data-flow-and-trust-boundaries.md`**](data-flow-and-trust-boundaries.md) | Data Flow & Trust Boundaries | Threat modeling, untrusted data enclaves, prompt injection defenses, and security limits. |
 | [**`testing-and-evaluation.md`**](testing-and-evaluation.md) | Testing & Evaluation Architecture | Hermetic test suites, test doubles, leak-proof retrospective benchmarks, and evaluation metrics. |
@@ -64,8 +64,8 @@ All diagrams are rendered using standard GitHub-compatible Mermaid Markdown synt
 
 | Visual Style | Meaning | Example |
 | :--- | :--- | :--- |
-| **Solid Outline (`box`)** | **Implemented Component**: Fully built, tested, and active in the codebase (Phases 0–4). | `[FastAPI API Router]` |
-| **Dashed Outline (`box` with `stroke-dasharray`)** | **Planned Component**: Formally specified in `BUILD_SPECIFICATION.md` but not yet implemented (Phases 5–9). | `[LangGraph State Machine]` |
+| **Solid Outline (`box`)** | **Implemented Component**: Fully built, tested, and active in the codebase (Phases 0–5). | `[FastAPI API Router]` |
+| **Dashed Outline (`box` with `stroke-dasharray`)** | **Planned Component**: Formally specified in `BUILD_SPECIFICATION.md` but not yet implemented (Phases 6–9). | `[PostgreSQL Run Persistence]` |
 | **Solid Arrow (`-->`)** | **Synchronous Control Flow** or Direct Method Invocation. | `Client --> Service` |
 | **Dotted Arrow (`-.->`)** | **Data Dependency**, Injected Protocol, or Cache Query. | `Service -.-> SnapshotCache` |
 | **Thick Double Border** | **Security / Trust Boundary**: Delineates untrusted external input from validated internal state. | `{{Trust Boundary}}` |
@@ -78,33 +78,33 @@ IssueLens follows a disciplined, phase-gated engineering methodology:
 
 ```mermaid
 flowchart LR
-    subgraph Implemented["Implemented Baseline (Phases 0 - 4)"]
+    subgraph Implemented["Implemented Baseline (Phases 0 - 5)"]
         direction TB
         P0["Phase 0: Bootstrap & Health"]
         P1["Phase 1: GitHub Target Ingestion"]
         P2["Phase 2: Code Search & Snapshot Cache"]
         P3["Phase 3: LLM Report Generation"]
         P4["Phase 4: Evidence Validation Guardrails"]
-        P0 --> P1 --> P2 --> P3 --> P4
+        P5["Phase 5: LangGraph Multi-Round Workflow"]
+        P0 --> P1 --> P2 --> P3 --> P4 --> P5
     end
 
-    subgraph Planned["Planned Roadmap (Phases 5 - 9)"]
+    subgraph Planned["Planned Roadmap (Phases 6 - 9)"]
         direction TB
-        P5["Phase 5: LangGraph Multi-Round Workflow"]
         P6["Phase 6: PostgreSQL Run Persistence"]
         P7["Phase 7: Retrospective Evaluation Benchmark"]
         P8["Phase 8: Document RAG & Hybrid Retrieval"]
         P9["Phase 9: Production Container & Workers"]
-        P5 --> P6 --> P7 --> P8 --> P9
+        P6 --> P7 --> P8 --> P9
     end
 
-    P4 -.-> P5
+    P5 -.-> P6
 
     style Planned stroke-dasharray: 5 5
 ```
 
-- **Implemented (Phases 0–4)**: Complete vertical slice accepting public GitHub URLs, fetching issue metadata, extracting commit-pinned snapshot archives, executing ripgrep/Python code search, extracting AST symbols, generating structured LLM reports with prompt injection defense, validating citations against physical disk files, demoting ungrounded hypotheses, and caching snapshots with bounded LRU eviction.
-- **Planned (Phases 5–9)**: LangGraph multi-turn reflection loop, PostgreSQL run/report persistence, automated retrospective evaluation harness with pre-fix leak prevention, document chunking/BM25/vector retrieval, and asynchronous background worker queues.
+- **Implemented (Phases 0–5)**: Complete vertical slice accepting public GitHub URLs, fetching issue metadata, extracting commit-pinned snapshot archives, executing ripgrep/Python code search, extracting AST symbols, generating structured LLM reports with prompt injection defense, validating citations against physical disk files, demoting ungrounded hypotheses, caching snapshots with bounded LRU eviction, and multi-round LangGraph state machine with bounded follow-up retrieval.
+- **Planned (Phases 6–9)**: PostgreSQL run/report persistence, automated retrospective evaluation harness with pre-fix leak prevention, document chunking/BM25/vector retrieval, and asynchronous background worker queues.
 
 ---
 

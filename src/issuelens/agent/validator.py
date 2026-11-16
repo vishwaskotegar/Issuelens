@@ -15,6 +15,7 @@ from issuelens.core.errors import (
     SafetyViolationError,
 )
 from issuelens.core.logging import get_logger
+from issuelens.repository.code_search import has_code_substance
 from issuelens.repository.snapshot import RepoSnapshot
 from issuelens.repository.snippets import read_snippet
 
@@ -111,8 +112,9 @@ def validate_citation(
     snapshot: RepoSnapshot,
 ) -> CitationValidationResult:
     """Validate a single EvidenceItem against the physical repository snapshot."""
-    if evidence.source_type != "code":
-        # Non-code sources (issues, commits, docs) validated by format checks
+    if evidence.source_type in ("issue", "commit"):
+        # Issue and commit references are validated by provenance checks upstream,
+        # not against the repository snapshot filesystem.
         return CitationValidationResult(
             evidence_id=evidence.evidence_id,
             is_valid=True,
@@ -242,6 +244,20 @@ def validate_citation(
             ),
         )
 
+    # 5. Substance guardrail for code citations
+    if evidence.source_type == "code" and not has_code_substance(evidence.excerpt):
+        return CitationValidationResult(
+            evidence_id=evidence.evidence_id,
+            is_valid=False,
+            source_type=evidence.source_type,
+            path_or_url=evidence.path_or_url,
+            commit_matches=commit_matches,
+            file_exists=True,
+            lines_valid=True,
+            excerpt_matches=True,
+            error_reason="Excerpt contains no executable code statements",
+        )
+
     return CitationValidationResult(
         evidence_id=evidence.evidence_id,
         is_valid=True,
@@ -252,6 +268,10 @@ def validate_citation(
         lines_valid=True,
         excerpt_matches=True,
     )
+
+
+# Compatibility aliases
+validate_evidence_item = validate_citation
 
 
 def validate_investigation_report(
@@ -300,22 +320,27 @@ def validate_investigation_report(
         confidence = hyp.confidence
         rationale = hyp.confidence_rationale
 
-        if bad_supporting_ids:
+        if not verified_supporting_ids:
             ungrounded_titles.append(hyp.title)
-            # Demote confidence if supporting evidence was invalid or hallucinated
-            if not verified_supporting_ids:
-                confidence = "low"
+            confidence = "low"
+            if bad_supporting_ids:
                 demotion_note = (
                     f" [Citation Guardrail: Cited evidence {bad_supporting_ids} failed "
                     "physical validation against snapshot; confidence demoted to low.]"
                 )
-                rationale = (rationale + demotion_note).strip()
             else:
                 demotion_note = (
-                    f" [Citation Guardrail: Partial citations {bad_supporting_ids} "
-                    "invalid; retained verified citations only.]"
+                    " [Citation Guardrail: Hypothesis has no supporting evidence citations; "
+                    "confidence demoted to low.]"
                 )
-                rationale = (rationale + demotion_note).strip()
+            rationale = (rationale + demotion_note).strip()
+        elif bad_supporting_ids:
+            ungrounded_titles.append(hyp.title)
+            demotion_note = (
+                f" [Citation Guardrail: Partial citations {bad_supporting_ids} "
+                "invalid; retained verified citations only.]"
+            )
+            rationale = (rationale + demotion_note).strip()
 
         sanitized_hyp = Hypothesis(
             title=hyp.title,
@@ -353,7 +378,7 @@ def validate_investigation_report(
     computed_status: VerificationStatus
     if len(invalid_ids) == 0 and len(valid_ids) > 0 and not ungrounded_titles:
         computed_status = "verified"
-    elif len(valid_ids) > 0:
+    elif len(valid_ids) > 0 and any(h.supporting_evidence_ids for h in sanitized_hypotheses):
         computed_status = "partially_verified"
     else:
         computed_status = "not_run"
@@ -410,3 +435,6 @@ def validate_investigation_report(
     )
 
     return sanitized_report, validation_result
+
+
+validate_report_citations = validate_investigation_report

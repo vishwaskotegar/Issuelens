@@ -1,5 +1,6 @@
 """GitHub REST API client adapter with rate limiting, timeouts, and error mapping."""
 
+import re
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -27,6 +28,26 @@ from issuelens.github.models import (
 from issuelens.github.url_parser import IssueTarget
 
 logger = get_logger("issuelens.github.client")
+
+
+SEMVER_PATTERN = re.compile(r"\b(?:v)?(\d+\.\d+(?:\.\d+)?(?:[a-zA-Z0-9_.-]+)?)\b")
+
+
+def extract_candidate_versions(title: str, labels: list[str]) -> list[str]:
+    """Extract candidate release version strings from issue title and labels."""
+    candidates: list[str] = []
+    search_texts = [title] + labels
+    for text in search_texts:
+        for match in SEMVER_PATTERN.finditer(text):
+            ver = match.group(1).rstrip(".-")
+            if ver and ver not in candidates:
+                candidates.append(ver)
+                # If two-digit version (e.g. "0.106"), also offer three-digit ("0.106.0")
+                if re.fullmatch(r"\d+\.\d+", ver):
+                    three_part = f"{ver}.0"
+                    if three_part not in candidates:
+                        candidates.append(three_part)
+    return candidates
 
 
 class GitHubClientProtocol(Protocol):
@@ -357,10 +378,39 @@ class GitHubClient:
         # 3. Fetch Repository to discover default branch and ensure public
         repository = await self.get_repository(target.owner, target.repo)
 
-        # 4. Resolve default branch head to pinned commit SHA
-        commit_sha = await self.get_pinned_commit_sha(
-            target.owner, target.repo, repository.default_branch
-        )
+        # 4. Resolve commit SHA: try release tags matching candidate versions
+        # before falling back to default branch
+        candidate_versions = extract_candidate_versions(issue.title, issue.labels)
+        commit_sha: str | None = None
+
+        for version in candidate_versions:
+            for tag_ref in (f"v{version}", version):
+                try:
+                    commit_sha = await self.get_pinned_commit_sha(
+                        target.owner, target.repo, tag_ref
+                    )
+                    logger.info(
+                        "Resolved release tag '%s' to commit %s for %s#%d",
+                        tag_ref,
+                        commit_sha,
+                        target.repo_full_name,
+                        target.issue_number,
+                    )
+                    break
+                except (
+                    ResourceNotFoundError,
+                    SafetyViolationError,
+                    UpstreamTimeoutError,
+                    IssueLensError,
+                ):
+                    continue
+            if commit_sha is not None:
+                break
+
+        if commit_sha is None:
+            commit_sha = await self.get_pinned_commit_sha(
+                target.owner, target.repo, repository.default_branch
+            )
 
         return GitHubIssueContext(
             issue_url=target.canonical_url,
@@ -372,6 +422,9 @@ class GitHubClient:
             comments=comments,
             fetched_at=datetime.now(tz=UTC),
         )
+
+    # Alias for compatibility with get_issue_context
+    get_issue_context = fetch_issue_context
 
 
 @asynccontextmanager

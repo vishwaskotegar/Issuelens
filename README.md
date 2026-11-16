@@ -31,8 +31,9 @@ IssueLens is an evidence-backed AI debugging assistant for public GitHub bug rep
 - Bounded repository snapshots (`RepoSnapshot`) pinned to specific commit SHAs with path traversal protection, size limits (50MB repository, 500KB file), and automatic exclusions (`.git`, `.venv`, `.env`, binary files).
 - Commit-pinned, content-addressed disk cache with atomic staging and bounded LRU pruning to prevent unbounded disk accumulation.
 - Deterministic lexical code search (`search_code`) with ripgrep integration and pure-Python regex fallback.
+- Relevance-ranked evidence selection: high-signal term weighting, source-over-documentation prioritization, per-file result budgets, and explicit file-path anchoring.
 - Python AST symbol parsing (`parse_python_symbols`) without code execution, extracting classes, functions, and methods with exact 1-indexed line spans.
-- Enclosing symbol expansion and safe line-numbered snippet extraction (`read_snippet`).
+- Enclosing symbol expansion and safe line-numbered snippet extraction (`read_snippet`, `read_snippet_with_bounds`) where excerpt text always matches the declared line range.
 - Fixture test suite with mock repository (`tests/fixtures/sample_repo/`).
 
 ### Phase 3: First End-to-End Report (Complete)
@@ -45,6 +46,13 @@ IssueLens is an evidence-backed AI debugging assistant for public GitHub bug rep
 - Deterministic evidence citation validation (`validate_investigation_report`, `validate_citation`) confirming referenced paths, line numbers, commit SHAs, and excerpts against snapshot source code.
 - Grounding validation ensuring hypotheses cite verified evidence items; automatic confidence demotion for ungrounded hypotheses.
 - Insufficient-evidence guardrails detecting empty retrievals or weak support.
+
+### Phase 5: LangGraph Workflow & Cyclic State Machine (Complete)
+- Multi-turn stateful agent workflow using LangGraph (`create_investigation_graph`, `InvestigationNodes`, `InvestigationState`).
+- Discrete execution nodes: `parse_issue`, `retrieve_initial`, `form_hypotheses`, `evaluate_evidence`, `retrieve_followup`, `validate_citations`, and `build_report`.
+- Deterministic conditional routing (`decide_next_step`) enforcing a hard loop cap (maximum 3 retrieval rounds) and empty-retrieval stop conditions.
+- Structured tool execution tracing (`ToolTraceItem`) capturing duration, parameters, and status for auditability and error diagnosis.
+- Fault-resilient exception handling trapping local tool glitches without crashing the investigation workflow.
 
 ---
 
@@ -148,6 +156,8 @@ issuelens/
       ADR-002-llm-provider-adapter-and-report-generation.md
       ADR-003-deterministic-citation-validation-and-insufficient-evidence.md
       ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md
+      ADR-005-langgraph-agent-workflow-and-state-machine.md
+      ADR-006-deterministic-evidence-ranking.md
   src/
     issuelens/
       __init__.py
@@ -155,6 +165,9 @@ issuelens/
       config.py               # Pydantic Settings & environment validation
       agent/
         __init__.py
+        graph.py              # LangGraph state machine compilation
+        nodes.py              # Explicit workflow nodes and conditional routing
+        state.py              # Typed investigation state and tool traces
         llm.py                # LLM provider adapter with LangChain
         prompts.py            # Prompt engineering & prompt-injection quarantine
         report.py             # Pydantic models for reports and evidence
@@ -175,18 +188,19 @@ issuelens/
         url_parser.py         # URL and coordinate parser with SSRF validation
       repository/
         __init__.py
-        code_search.py        # Ripgrep search, Python fallback, CodeHit schema
+        code_search.py        # Relevance-ranked ripgrep/Python search and CodeHit schema
         python_symbols.py     # AST-based symbol parsing and line range extraction
-        snippets.py           # Safe line-numbered excerpt reader
+        snippets.py           # Safe line-numbered excerpt reader with exact bounds
         snapshot.py           # Bounded repository snapshot and commit-pinned cache
   tests/
     fixtures/
       sample_repo/            # Controlled mock repository for deterministic testing
     unit/
-      test_code_search.py     # Ripgrep, Python fallback, and symbol expansion tests
+      test_code_search.py     # Ripgrep, fallback, ranking, and symbol expansion tests
       test_config.py          # Configuration loading & limits tests
       test_github_client.py   # GitHub adapter tests with mocked HTTP transport
       test_github_models.py   # GitHub data model serialization tests
+      test_graph.py           # LangGraph workflow, routing, and follow-up query tests
       test_health.py          # Liveness & readiness endpoints tests
       test_investigation_api.py # Investigation REST API endpoint tests
       test_investigation_service.py # Investigation service orchestrator tests

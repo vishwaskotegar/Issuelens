@@ -17,6 +17,9 @@ flowchart TD
 
     subgraph Agent["issuelens.agent (Orchestration & Reasoning)"]
         Service["service.py"]
+        Graph["graph.py"]
+        Nodes["nodes.py"]
+        State["state.py"]
         Validator["validator.py"]
         LLM["llm.py"]
         Prompts["prompts.py"]
@@ -93,9 +96,9 @@ issuelens/
 │       ├── core/               # Shared domain errors and logging filters
 │       ├── github/             # GitHub REST API adapter and URL parser
 │       ├── repository/         # Repository snapshot manager, code search, AST
-│       └── agent/              # Investigation service, LLM client, and validator
+│       └── agent/              # LangGraph workflow, nodes, state, LLM, and validator
 └── tests/
-    ├── unit/                   # 124 hermetic unit and integration tests
+    ├── unit/                   # 156 hermetic unit and integration tests
     └── fixtures/               # Offline test repositories and broken code fixtures
 ```
 
@@ -113,10 +116,13 @@ issuelens/
 | [`src/issuelens/github/client.py`](../../src/issuelens/github/client.py) | [`GitHubClient`](../../src/issuelens/github/client.py#L64), [`GitHubClientProtocol`](../../src/issuelens/github/client.py#L32), `FakeGitHubClient` | Async HTTP client fetching issues, comments, metadata, and streaming zipballs. |
 | [`src/issuelens/github/models.py`](../../src/issuelens/github/models.py) | [`GitHubIssueContext`](../../src/issuelens/github/models.py#L79), [`GitHubIssue`](../../src/issuelens/github/models.py#L12), [`GitHubRepo`](../../src/issuelens/github/models.py#L58) | Typed Pydantic representations of GitHub entities and resolved commit SHAs. |
 | [`src/issuelens/repository/snapshot.py`](../../src/issuelens/repository/snapshot.py) | [`RepoSnapshot`](../../src/issuelens/repository/snapshot.py#L74), [`cache_and_create_snapshot_from_zip()`](../../src/issuelens/repository/snapshot.py#L305), `prune_snapshot_cache` | Path traversal defense, commit-pinned disk cache, atomic staging, and LRU pruning. |
-| [`src/issuelens/repository/code_search.py`](../../src/issuelens/repository/code_search.py) | [`search_code()`](../../src/issuelens/repository/code_search.py#L150), `find_ripgrep_executable`, `_search_with_python`, [`CodeHit`](../../src/issuelens/repository/code_search.py#L23) | Dual-engine lexical code search with automatic fallback and AST symbol enrichment. |
+| [`src/issuelens/repository/code_search.py`](../../src/issuelens/repository/code_search.py) | [`search_code()`](../../src/issuelens/repository/code_search.py), `select_search_terms`, `term_weight`, `classify_path`, `find_ripgrep_executable`, `_search_with_python_fallback`, [`CodeHit`](../../src/issuelens/repository/code_search.py) | Dual-engine lexical code search with deterministic relevance ranking, automatic fallback, AST symbol enrichment, and per-file result budgets. |
 | [`src/issuelens/repository/python_symbols.py`](../../src/issuelens/repository/python_symbols.py) | [`parse_python_symbols()`](../../src/issuelens/repository/python_symbols.py#L107), `find_enclosing_symbol` | Pure AST visitor extracting classes and functions with 1-indexed line spans without execution. |
-| [`src/issuelens/repository/snippets.py`](../../src/issuelens/repository/snippets.py) | [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7) | Safe line-numbered snippet extractor with boundary clamping and context padding. |
+| [`src/issuelens/repository/snippets.py`](../../src/issuelens/repository/snippets.py) | [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7), [`read_snippet_with_bounds()`](../../src/issuelens/repository/snippets.py) | Safe line-numbered snippet extractor with boundary clamping, context padding, and bounds verification. |
 | [`src/issuelens/agent/service.py`](../../src/issuelens/agent/service.py) | [`InvestigationService`](../../src/issuelens/agent/service.py#L70), `compile_search_query` | Orchestrator connecting GitHub context, snapshot cache, search, LLM, and validator. |
+| [`src/issuelens/agent/graph.py`](../../src/issuelens/agent/graph.py) | `create_investigation_graph` | Compiled multi-round LangGraph state machine with cyclic follow-up retrieval and loop caps. |
+| [`src/issuelens/agent/nodes.py`](../../src/issuelens/agent/nodes.py) | `InvestigationNodes`, `decide_next_step` | Discrete workflow nodes (`parse_issue`, `retrieve_initial`, `form_hypotheses`, `evaluate_evidence`, `retrieve_followup`, `validate_citations`, `build_report`). |
+| [`src/issuelens/agent/state.py`](../../src/issuelens/agent/state.py) | `InvestigationState`, `ToolTraceItem`, `IssueSummary` | Typed dictionary schemas for immutable workflow state and audit tool traces. |
 | [`src/issuelens/agent/llm.py`](../../src/issuelens/agent/llm.py) | [`LangChainLLMClient`](../../src/issuelens/agent/llm.py#L35), [`LLMClientProtocol`](../../src/issuelens/agent/llm.py#L23), [`MockLLMClient`](../../src/issuelens/agent/llm.py#L87) | LangChain chat model wrapper enforcing Pydantic structured output. |
 | [`src/issuelens/agent/prompts.py`](../../src/issuelens/agent/prompts.py) | `SYSTEM_PROMPT`, [`build_investigation_messages()`](../../src/issuelens/agent/prompts.py#L125), `format_evidence_block` | Anti-injection prompt builder wrapping untrusted external data in XML enclaves. |
 | [`src/issuelens/agent/report.py`](../../src/issuelens/agent/report.py) | [`InvestigationReport`](../../src/issuelens/agent/report.py#L126), [`Hypothesis`](../../src/issuelens/agent/report.py#L51), [`EvidenceItem`](../../src/issuelens/agent/report.py#L12), `InvestigationReportPayload` | Domain models for evidence, hypotheses, and reports with provenance binding. |
@@ -131,7 +137,7 @@ When tasked with altering or extending IssueLens behavior, consult this lookup t
 | Developer Goal | Primary File(s) to Modify | Key Classes / Functions | What to Keep in Mind |
 | :--- | :--- | :--- | :--- |
 | **Add a new REST API endpoint** | [`src/issuelens/api/routes.py`](../../src/issuelens/api/routes.py), [`src/issuelens/api/schemas.py`](../../src/issuelens/api/schemas.py) | Router decorators, `Depends(...)` | Use `typing.Annotated` for dependencies to avoid Ruff `B008`. Update [`tests/unit/test_issue_api.py`](../../tests/unit/test_issue_api.py). |
-| **Change lexical code search ranking or scoring** | [`src/issuelens/repository/code_search.py`](../../src/issuelens/repository/code_search.py) | `search_code()`, `_rank_hits()` | Changes must be applied identically to both ripgrep JSON parsing and the Python fallback engine. |
+| **Change lexical code search ranking or scoring** | [`src/issuelens/repository/code_search.py`](../../src/issuelens/repository/code_search.py) | `search_code()`, `select_search_terms()`, `_file_priority()` | Changes must be applied identically to both ripgrep JSON parsing and the Python fallback engine. Ranking policy is recorded in ADR-006. |
 | **Add new excluded file patterns (e.g., secrets, test dumps)** | [`src/issuelens/repository/snapshot.py`](../../src/issuelens/repository/snapshot.py) | `is_path_excluded()`, `DEFAULT_EXCLUDED_PATTERNS` | Ensure exclusion patterns block files from both search indexing and snapshot file listings. |
 | **Adjust snapshot cache storage limits** | [`src/issuelens/config.py`](../../src/issuelens/config.py), [`.env.example`](../../.env.example) | `Settings.max_cached_snapshots`, `Settings.max_cache_total_bytes` | Document defaults in `.env.example`. Test via [`tests/unit/test_snapshot_cache.py`](../../tests/unit/test_snapshot_cache.py). |
 | **Modify prompt engineering or injection defenses** | [`src/issuelens/agent/prompts.py`](../../src/issuelens/agent/prompts.py) | `SYSTEM_PROMPT`, `build_investigation_messages()` | Always preserve XML boundary tags `<untrusted_issue_data>`. Do not remove the strict prohibition against claiming tests passed. |

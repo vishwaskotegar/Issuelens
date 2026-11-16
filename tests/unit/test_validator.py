@@ -9,7 +9,9 @@ from issuelens.agent.report import (
 )
 from issuelens.agent.validator import (
     validate_citation,
+    validate_evidence_item,
     validate_investigation_report,
+    validate_report_citations,
 )
 from issuelens.repository.snapshot import RepoSnapshot
 from issuelens.repository.snippets import read_snippet
@@ -184,6 +186,26 @@ def test_validate_citation_altered_excerpt() -> None:
     assert "Excerpt content does not match" in str(result.error_reason)
 
 
+def test_validate_citation_documentation_altered_excerpt() -> None:
+    """Verify documentation evidence is still checked against snapshot bytes."""
+    snapshot = get_fixture_snapshot()
+    item = EvidenceItem(
+        evidence_id="ev_doc_fake",
+        source_type="documentation",
+        path_or_url="README.md",
+        start_line=1,
+        end_line=2,
+        excerpt="1: Completely fabricated documentation text",
+        commit_sha=SAMPLE_COMMIT,
+    )
+
+    result = validate_citation(item, snapshot)
+    assert result.is_valid is False
+    assert result.file_exists is True
+    assert result.excerpt_matches is False
+
+
+
 def test_validate_investigation_report_fully_verified() -> None:
     """Verify report with valid citations receives 'verified' status."""
     snapshot = get_fixture_snapshot()
@@ -319,3 +341,107 @@ def test_validate_investigation_report_insufficient_evidence_fallback() -> None:
     )
     assert any("Citation Guardrail:" in lim for lim in sanitized_report.limitations)
     assert sanitized_report.verification_status == "not_run"
+
+
+def test_validate_evidence_rejects_comment_only_code_citation(tmp_path: Path) -> None:
+    """Verify code evidence with comment-only excerpt is rejected by substance guardrail."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    code_file = pkg / "comments.py"
+    code_file.write_text(
+        "# Header line\n"
+        "# Just a comment describing logic\n"
+        "# Another comment line\n",
+        encoding="utf-8",
+    )
+
+    snapshot = RepoSnapshot(
+        root_path=tmp_path,
+        repo_full_name="sample/repo",
+        commit_sha=SAMPLE_COMMIT,
+    )
+
+    item = EvidenceItem(
+        evidence_id="ev_comment_only",
+        source_type="code",
+        path_or_url="pkg/comments.py",
+        start_line=1,
+        end_line=3,
+        excerpt=(
+            "1: # Header line\n"
+            "2: # Just a comment describing logic\n"
+            "3: # Another comment line"
+        ),
+        commit_sha=SAMPLE_COMMIT,
+    )
+
+    res = validate_evidence_item(item, snapshot)
+    assert res.is_valid is False
+    assert res.error_reason == "Excerpt contains no executable code statements"
+
+    # Verify a report citing only this comment-only evidence is demoted
+    hyp = Hypothesis(
+        title="Comment fault",
+        explanation="Mechanism based on comments",
+        confidence="high",
+        confidence_rationale="High confidence",
+        supporting_evidence_ids=["ev_comment_only"],
+        verification_steps=["Inspect file"],
+    )
+    report = InvestigationReport(
+        run_id="inv_comments",
+        issue_url="https://github.com/sample/repo/issues/1",
+        repository="sample/repo",
+        commit_sha=SAMPLE_COMMIT,
+        summary="Summary citing comment-only evidence",
+        hypotheses=[hyp],
+        evidence=[item],
+        verification_status="verified",
+    )
+    sanitized_report, val_res = validate_report_citations(report, snapshot)
+    assert val_res.is_valid is False
+    assert sanitized_report.verification_status != "verified"
+
+
+def test_validate_investigation_report_demotes_empty_citations_hypothesis() -> None:
+    """Verify hypothesis with empty supporting_evidence_ids is demoted and not verified."""
+    snapshot = get_fixture_snapshot()
+    real_snippet = read_snippet(snapshot, "sample_pkg/auth.py", 1, 5)
+
+    valid_item = EvidenceItem(
+        evidence_id="ev_1",
+        source_type="code",
+        path_or_url="sample_pkg/auth.py",
+        start_line=1,
+        end_line=5,
+        excerpt=real_snippet,
+        commit_sha=SAMPLE_COMMIT,
+    )
+
+    hyp_unsupported = Hypothesis(
+        title="Unsubstantiated guess",
+        explanation="Mechanism guessed without citing code",
+        confidence="high",
+        confidence_rationale="High confidence based on user report only",
+        supporting_evidence_ids=[],
+        verification_steps=["Check changelog"],
+    )
+
+    report = InvestigationReport(
+        run_id="inv_empty_hyp",
+        issue_url="https://github.com/sample/repo/issues/100",
+        repository="sample/repo",
+        commit_sha=SAMPLE_COMMIT,
+        summary="Investigation summary",
+        hypotheses=[hyp_unsupported],
+        evidence=[valid_item],
+        verification_status="verified",
+    )
+
+    sanitized, val_res = validate_report_citations(report, snapshot)
+    assert sanitized.hypotheses[0].confidence == "low"
+    assert "no supporting evidence citations" in sanitized.hypotheses[0].confidence_rationale
+    assert sanitized.verification_status != "verified"
+    assert "Unsubstantiated guess" in val_res.ungrounded_hypotheses
+
+
