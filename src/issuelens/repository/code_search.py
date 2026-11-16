@@ -283,6 +283,35 @@ def classify_path(path: str) -> Literal["code", "documentation"]:
     return "documentation"
 
 
+def has_code_substance(excerpt: str) -> bool:
+    """Return True if the excerpt contains executable code, not just comments or blanks.
+
+    An excerpt has substance if it has at least one line with non-whitespace
+    characters that is not a comment (e.g. starting with '#').
+    Handles both raw code lines and snippet-formatted lines prefixed with
+    line numbers ('123: ...').
+    """
+    if not excerpt or not excerpt.strip():
+        return False
+
+    for raw_line in excerpt.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        # Strip optional line number prefix (e.g. "123: ...")
+        match = re.match(r"^\s*\d+\s*:(.*)$", line)
+        code_part = match.group(1).strip() if match else line
+
+        if not code_part:
+            continue
+        if code_part.startswith("#") or code_part.startswith("//"):
+            continue
+
+        return True
+
+    return False
+
+
 def _is_test_path(path: str) -> bool:
     posix = PurePosixPath(path.replace("\\", "/"))
     parent_parts = {part.lower() for part in posix.parts[:-1]}
@@ -666,6 +695,15 @@ def search_code(
             continue
 
         if not excerpt:
+            continue
+
+        if classify_path(raw_hit.path) == "code" and not has_code_substance(excerpt):
+            logger.debug(
+                "Skipping comment-only/empty code excerpt in %s:%d-%d",
+                raw_hit.path,
+                actual_start,
+                actual_end,
+            )
             continue
 
         score = float(raw_hit.weight) + _file_priority(raw_hit.path)

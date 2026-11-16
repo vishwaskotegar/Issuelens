@@ -7,6 +7,7 @@ from issuelens.repository.code_search import (
     CodeHit,
     classify_path,
     extract_search_terms,
+    has_code_substance,
     search_code,
     search_symbols,
     select_search_terms,
@@ -282,4 +283,60 @@ def test_search_code_anchors_explicitly_named_file(tmp_path: Path) -> None:
     assert hits
     assert hits[0].path == "src/pkg/database.py"
     assert "def connect" in hits[0].excerpt
+
+
+def test_has_code_substance() -> None:
+    """Verify has_code_substance differentiates code from comments and blanks."""
+    assert not has_code_substance("")
+    assert not has_code_substance("   \n   \t\n")
+    assert not has_code_substance("# Only a comment")
+    assert not has_code_substance("193: # A line-numbered comment")
+    assert not has_code_substance("193: # First comment\n194: # Second comment\n195: ")
+    assert not has_code_substance("193: // JS/C style comment")
+
+    assert has_code_substance("x = 1")
+    assert has_code_substance("193: def calculate():")
+    assert has_code_substance("193: # Comment\n194: x = 1\n195: # End")
+    assert has_code_substance("10: value = True  # with trailing comment")
+
+
+def test_search_code_rejects_comment_only_excerpts(tmp_path: Path) -> None:
+    """Verify that comment-only excerpts in code files are rejected from code search results."""
+    package = tmp_path / "src" / "pkg"
+    package.mkdir(parents=True)
+
+    # File with target identifier only inside comments
+    (package / "comment_only.py").write_text(
+        "# Header\n"
+        "# Note: target_substance_token is documented here\n"
+        "# End of commentary\n",
+        encoding="utf-8",
+    )
+
+    # File with target identifier in executable code
+    (package / "real_code.py").write_text(
+        "def perform_work():\n"
+        "    target_substance_token = 42\n"
+        "    return target_substance_token\n",
+        encoding="utf-8",
+    )
+
+    snapshot = RepoSnapshot(
+        root_path=tmp_path,
+        repo_full_name="sample/substance",
+        commit_sha="substance123",
+    )
+
+    with patch("issuelens.repository.code_search.find_ripgrep_executable", return_value=None):
+        hits = search_code(
+            query="target_substance_token",
+            repo_snapshot=snapshot,
+            max_results=5,
+        )
+
+    assert len(hits) == 1
+    assert hits[0].path == "src/pkg/real_code.py"
+    assert "target_substance_token = 42" in hits[0].excerpt
+    assert not any(hit.path == "src/pkg/comment_only.py" for hit in hits)
+
 

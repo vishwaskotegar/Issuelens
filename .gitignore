@@ -45,3 +45,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 ~$*
+
+# Temporary scratch and plan files
+.tmp*
+*.tmp
+
