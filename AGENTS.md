@@ -47,17 +47,24 @@ You are the senior engineer implementing **IssueLens**, an evidence-backed AI de
     7. Briefly document alternatives and trade-offs when relevant.
     Update the log after resolving the issue, not before verification. Do not invent failures or claim tests passed unless they were run. Label unresolved causes as hypotheses. Do not log every trivial typo or routine edit; prioritize meaningful learning opportunities.
     At the end of each phase, summarize important issues fixed and point to the corresponding `docs/BUILD_LOG.md` entries.
+15. **Git Branch & Commit Conventions**: Strictly adhere to the project git conventions defined in `.agents/skills/git-conventions/SKILL.md`:
+    - Feature/phase branches must follow `feature/phase-<N>-<kebab-case-description>`.
+    - Commits must use Conventional Commits format: `<type>(<scope>): <imperative summary>` or `<type>: <imperative summary>`.
+    - Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
+    - Phase milestone commits must clearly reference the phase (e.g., `feat(persistence): ... (Phase 6)`).
 
 ---
 
 ## 3. Starting a New Phase Protocol
 
 When starting Phase *N*:
-1. **Restate Goal & Criteria**: Review Section 13 in `docs/BUILD_SPECIFICATION.md` for Phase *N*.
-2. **Inspect**: Check existing code and identify impacted modules.
-3. **Plan**: Explain the implementation approach and architectural design before coding. List files to create/modify, dependencies to add, and security/reliability edge cases.
-4. **Implement Smallest Slice**: Write the implementation, unit tests with mocks, and verify with:
+1. **Branch Isolation**: Create and checkout a branch conforming to `feature/phase-<N>-<kebab-case-description>` (e.g. `feature/phase-5-investigation-agent`, `feature/phase-6-persistence`).
+2. **Restate Goal & Criteria**: Review Section 13 in `docs/BUILD_SPECIFICATION.md` for Phase *N*.
+3. **Inspect**: Check existing code and identify impacted modules.
+4. **Plan**: Explain the implementation approach and architectural design before coding. List files to create/modify, dependencies to add, and security/reliability edge cases.
+5. **Implement Smallest Slice & Commit**: Write the implementation, unit tests with mocks, verify quality checks:
    - `uv run ruff check .`
    - `uv run mypy src tests`
    - `uv run pytest`
-5. **Report & Log**: Update affected diagrams in `docs/architecture/`, update `docs/LEARNING_GUIDE.md`, record any ADR in `docs/decisions/`, update `docs/BUILD_LOG.md` with any meaningful resolved issues, and conclude with the beginner-friendly mentor review and proposed next phase.
+   Commit changes using the Conventional Commits format: `feat(<scope>): <description> (Phase <N>)`.
+6. **Report & Log**: Update affected diagrams in `docs/architecture/`, update `docs/LEARNING_GUIDE.md`, record any ADR in `docs/decisions/`, update `docs/BUILD_LOG.md` with any meaningful resolved issues, and conclude with the beginner-friendly mentor review and proposed next phase.

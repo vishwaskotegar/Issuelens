@@ -54,6 +54,15 @@ IssueLens is an evidence-backed AI debugging assistant for public GitHub bug rep
 - Structured tool execution tracing (`ToolTraceItem`) capturing duration, parameters, and status for auditability and error diagnosis.
 - Fault-resilient exception handling trapping local tool glitches without crashing the investigation workflow.
 
+### Phase 6: Persistence & Run History (Complete)
+- Relational schema using SQLAlchemy 2.0 async ORM (`InvestigationRun`, `EvidenceItem`, `Hypothesis`, `InvestigationReportRecord`, `EvaluationCase`, `EvaluationResult`).
+- Decoupled repository layer (`InvestigationRepositoryProtocol`, `SQLAlchemyInvestigationRepository`) isolating persistence from API routes and services.
+- Permanent data survivability: investigation runs, cited evidence items, hypotheses, and validated reports survive process restarts.
+- Alembic database migration environment with reversible initial schema revision (`001_initial_schema.py`).
+- Cross-platform async engine supporting PostgreSQL (`psycopg`) and SQLite (`aiosqlite`), with automated Windows event-loop configuration.
+- Operational readiness probe (`GET /readyz`) with automated database connectivity check (`SELECT 1`) and credential redaction.
+- Hermetic test suite running offline against in-memory SQLite with zero external network dependencies.
+
 ---
 
 ## Getting Started
@@ -86,6 +95,12 @@ IssueLens is an evidence-backed AI debugging assistant for public GitHub bug rep
 4. **Environment Configuration**:
    ```bash
    cp .env.example .env
+   ```
+
+5. **Database Migrations** (Optional for local dev; SQLite fallback is automatic):
+   ```bash
+   # Run migrations against configured DATABASE_URL
+   uv run alembic upgrade head
    ```
 
 ---
@@ -158,11 +173,18 @@ issuelens/
       ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md
       ADR-005-langgraph-agent-workflow-and-state-machine.md
       ADR-006-deterministic-evidence-ranking.md
+      ADR-007-postgresql-persistence-and-alembic-migrations.md
   src/
     issuelens/
       __init__.py
       main.py                 # FastAPI application factory & lifespan
       config.py               # Pydantic Settings & environment validation
+      persistence/
+        __init__.py
+        db.py                 # Async database engine, sessionmaker, and health checks
+        models.py             # SQLAlchemy 2.0 ORM models (runs, evidence, hypotheses, reports)
+        repository.py         # Transactional investigation repository
+        migrations/           # Alembic async migration environment and revisions
       agent/
         __init__.py
         graph.py              # LangGraph state machine compilation
@@ -207,6 +229,7 @@ issuelens/
       test_issue_api.py       # REST API endpoints tests
       test_llm_client.py      # LLM provider adapter tests
       test_logging.py         # Secret redaction tests
+      test_persistence.py     # Models, migrations, repository, and restart persistence tests
       test_prompts.py         # Prompt builder & injection defense tests
       test_python_symbols.py  # AST symbol extraction and error resilience tests
       test_report_schema.py   # Pydantic report serialization tests

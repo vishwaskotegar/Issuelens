@@ -21,11 +21,17 @@ sequenceDiagram
     participant Search as Code Search<br/>(code_search.py)
     participant LLM as LangChainLLMClient<br/>(llm.py)
     participant Validator as Citation Validator<br/>(validator.py)
+    participant Repo as InvestigationRepository<br/>(repository.py)
+    participant DB as Relational Database<br/>(PostgreSQL / SQLite)
 
     Client->>Router: POST /v1/investigations {"issue_url": "...", "execute": true}
     Note over Router,Parser: 1. Input Validation & Target Parsing
     Router->>Parser: parse_issue_target(issue_url)
     Parser-->>Router: IssueTarget(owner, repo, issue_number)
+    
+    Router->>Repo: create_run(run_id, issue_url, status="ingested")
+    Repo->>DB: INSERT INTO investigation_runs
+    DB-->>Repo: OK
     
     Router->>Service: investigate(target, run_id)
     
@@ -80,9 +86,12 @@ sequenceDiagram
     Validator->>Validator: Demote ungrounded hypotheses (low confidence)<br/>Prune invalid evidence items<br/>Assign verification_status="verified"
     Validator-->>Service: (validated_report, validation_result)
 
-    Note over Router: 7. Response Persistence & Return
+    Note over Router,DB: 7. Response Persistence & Return
     Service-->>Router: validated_report
-    Router->>Router: Save to in-memory _INVESTIGATIONS registry
+    Router->>Repo: save_report(run_id, validated_report)
+    Repo->>DB: INSERT INTO investigation_reports, evidence_items, hypotheses
+    Repo->>DB: UPDATE investigation_runs SET status='completed'
+    DB-->>Repo: OK
     Router-->>Client: HTTP 201 Created (InvestigationCreateResponse)
 ```
 
@@ -100,7 +109,7 @@ sequenceDiagram
 | **6. Prompt Assembly** | [`src/issuelens/agent/prompts.py`](../../src/issuelens/agent/prompts.py) | Wraps untrusted issue text and code snippets into XML boundary tags (`<untrusted_issue_data>`), attaching strict anti-injection system directives. | LangChain message list (`SystemMessage`, `HumanMessage`). |
 | **7. Structured LLM Call** | [`src/issuelens/agent/llm.py`](../../src/issuelens/agent/llm.py) | Invokes provider chat model using `.with_structured_output(InvestigationReportPayload)`, converting vendor errors into typed domain exceptions. | Structured [`InvestigationReportPayload`](../../src/issuelens/agent/report.py#L87). |
 | **8. Citation Validation** | [`src/issuelens/agent/validator.py`](../../src/issuelens/agent/validator.py) | Binds report to immutable git provenance, verifies citations line-by-line against snapshot files on disk, prunes invalid evidence, demotes ungrounded hypotheses, and computes verification status. | Fully verified [`InvestigationReport`](../../src/issuelens/agent/report.py#L126). |
-| **9. Response Delivery** | [`src/issuelens/api/routes.py`](../../src/issuelens/api/routes.py) | Records investigation run in `_INVESTIGATIONS` registry and formats HTTP response. | HTTP 201 Created JSON response. |
+| **9. Response Delivery** | [`src/issuelens/api/routes.py`](../../src/issuelens/api/routes.py) | Persists run status, evidence records, hypotheses, and validated report in database via [`SQLAlchemyInvestigationRepository`](../../src/issuelens/persistence/repository.py) and formats HTTP response. | HTTP 201 Created JSON response. |
 
 ---
 

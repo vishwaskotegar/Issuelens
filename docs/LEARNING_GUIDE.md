@@ -972,14 +972,192 @@ When an AI assistant performs multi-step retrieval and inference, tracking *what
 
 ---
 
-## Planned Implementation Roadmap (Phases 6 - 9)
+---
 
-The following phases are specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md), but are **[PLANNED]** and have not yet been implemented (Phases 0–5 are fully implemented):
+## Phase 6: Relational Persistence & Migration Lifecycle
 
-### Phase 6: Persistence & Run History [PLANNED]
-- **Goal**: Relational PostgreSQL storage via SQLAlchemy 2.0 and Alembic migrations. Persist investigation runs, evidence items, hypotheses, and final reports.
-- **Architecture**: `src/issuelens/persistence/`.
-- **Criteria**: Investigation records survive restarts; clean migrations from empty database.
+---
+
+### Feature 6.1: Relational Schema Design & Declarative ORM Models
+
+#### 1. What problem it solves
+In Phases 0–5, investigation runs and generated reports were stored in an ephemeral in-memory dictionary (`_INVESTIGATIONS`). Once the process restarted or worker instances were cycled, all historical runs, evidence citations, and diagnostic reports were lost. Furthermore, unstructured dumps make it impossible to query historical hypotheses across runs or link benchmark evaluation cases to reproducible commits.
+
+#### 2. What happens from input to output
+1. The application initializes declarative SQLAlchemy 2.0 models inheriting from [`Base`](../src/issuelens/persistence/models.py#L12).
+2. When an investigation starts, an [`InvestigationRun`](../src/issuelens/persistence/models.py#L22) row is created capturing `run_id`, `issue_url`, `repo_full_name`, `issue_number`, `commit_sha`, and `status="ingested"`.
+3. When the report completes, child entities are inserted:
+   - Each cited code or doc snippet becomes an [`EvidenceItem`](../src/issuelens/persistence/models.py#L65) row with exact line spans, commit SHA, and a SHA-256 content hash.
+   - Each ranked root cause becomes a [`Hypothesis`](../src/issuelens/persistence/models.py#L93) row with support status, rank, and evidence ID linkages.
+   - The final validated JSON payload is stored in [`InvestigationReportRecord`](../src/issuelens/persistence/models.py#L134).
+4. Foreign key relationships enforce `ondelete="CASCADE"`, ensuring child items are cleanly pruned if a run is deleted.
+
+#### 3. Which files and functions participate
+- **Source file**: [`src/issuelens/persistence/models.py`](../src/issuelens/persistence/models.py)
+- **Base class**: `Base` inheriting from `sqlalchemy.orm.DeclarativeBase`.
+- **Core models**: `InvestigationRun`, `EvidenceItem`, `Hypothesis`, `InvestigationReportRecord`, `EvaluationCase`, `EvaluationResult`.
+
+#### 4. Why the implementation is structured this way
+- **SQLAlchemy 2.0 Mapped Syntax**: Utilizes modern Python type annotations (`Mapped[str] = mapped_column(...)`) for compile-time static type checking with Mypy in strict mode.
+- **Dialect Agnostic JSON**: Uses `sa.JSON().with_variant(JSONB, "postgresql")` to store native JSONB in PostgreSQL production environments while gracefully falling back to standard JSON text in SQLite test suites.
+- **Cascade Integrity**: Explicit `ondelete="CASCADE"` at the database constraint level and `cascade="all, delete-orphan"` at the ORM level guarantees zero orphaned evidence records.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Raw MongoDB / Document Store*: Storing arbitrary JSON blobs without a schema.
+  - *Trade-off*: Flexible, but lacks referential integrity, foreign key cascades, and ACID transactions across runs and evaluation benchmarks.
+- *Alternative: Storing only a single JSON blob*: Keep everything in one text column.
+  - *Trade-off*: Easy to write, but prevents relational queries like "find all runs where `requests/models.py` was cited as evidence".
+
+#### 6. What can fail and how failures are handled
+- **Foreign Key Violation**: Database rejects invalid child references with `IntegrityError`.
+- **String Overflow**: Bounded column lengths (e.g. `String(40)` for commit SHA, `String(64)` for run ID) reject malformed IDs.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_persistence.py`](../tests/unit/test_persistence.py)
+- **Verifications**: Entity creation, relationships, and cascading delete (`test_repository_cascading_delete`).
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_persistence.py -k test_repository_cascading_delete
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- In production architectures, separating raw JSON storage (for complete document retrieval) from normalized relational columns (for querying, filtering, and indexing) gives you the best of both worlds: query speed for relations and schema flexibility for document blobs.
+
+---
+
+### Feature 6.2: Transactional Repository Layer & Data Provenance
+
+#### 1. What problem it solves
+Directly executing SQL queries in FastAPI route handlers creates tight coupling between presentation and database logic. It leads to duplicate transaction handling, makes unit testing difficult, and leaks ORM details into HTTP controllers.
+
+#### 2. What happens from input to output
+1. FastAPI injects an [`AsyncSession`](../src/issuelens/persistence/db.py#L141) into [`get_investigation_repository()`](../src/issuelens/api/routes.py#L60).
+2. The route invokes repository methods (`create_run`, `update_run_status`, `save_report`, `get_run`, `get_report`).
+3. During report saving, the repository atomically writes the report, cleans any stale child items, inserts new evidence/hypotheses, and updates the run status to `"completed"`.
+4. If an unexpected failure occurs during investigation execution, the route handler records `"failed"` status and explicitly commits the status before re-raising, ensuring the failure diagnostic is permanently recorded.
+
+#### 3. Which files and functions participate
+- **Source file**: [`src/issuelens/persistence/repository.py`](../src/issuelens/persistence/repository.py)
+- **Protocol**: [`InvestigationRepositoryProtocol`](../src/issuelens/persistence/repository.py#L27)
+- **Implementation**: [`SQLAlchemyInvestigationRepository`](../src/issuelens/persistence/repository.py#L86)
+- **Route integration**: [`src/issuelens/api/routes.py`](../src/issuelens/api/routes.py)
+
+#### 4. Why the implementation is structured this way
+- **Protocol-First Design**: By typing dependencies against `InvestigationRepositoryProtocol`, API endpoints can be tested with mock repositories without touching a database.
+- **Explicit Failure Commits**: When an investigation crashes mid-flow (e.g. LLM timeout), standard FastAPI session rollback would discard the failure update. Calling `await repo.commit()` inside the exception handler ensures the error message and failed status are preserved for diagnostics.
+- **Eager Loading**: `get_run()` uses `selectinload()` to fetch report, evidence, and hypothesis relations in a single clean batch, avoiding lazy loading traps in async Python.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Active Record Pattern*: Having models save themselves (`run.save()`).
+  - *Trade-off*: Couples data structures with database sessions and makes testing with mocks cumbersome.
+- *Alternative: Direct Session Access in Routes*: Calling `session.add()` directly in API routes.
+  - *Trade-off*: Violates Separation of Concerns and scatters database queries across route files.
+
+#### 6. What can fail and how failures are handled
+- **Non-existent Run**: `get_run()` and `update_run_status()` return `None`; API routes convert this into a 404 [`ResourceNotFoundError`](../src/issuelens/core/errors.py#L35).
+- **Execution Failure**: Caught by `try...except Exception as exc:` in `create_investigation` and `execute_investigation`, updating run status to `"failed"`, recording `error_message=str(exc)`, and committing.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_persistence.py`](../tests/unit/test_persistence.py), [`tests/unit/test_investigation_api.py`](../tests/unit/test_investigation_api.py)
+- **Verifications**: Status transitions (`test_repository_update_status`), report persistence (`test_repository_save_and_get_report`), restart persistence (`test_run_survives_restart`), failure recording (`test_create_investigation_sync_failure_records_failed_status`).
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_persistence.py
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- Be mindful of session context manager rollback semantics! If your session rolls back on unhandled exceptions, any diagnostic updates you made inside `except` blocks will be lost unless you explicitly commit them.
+
+---
+
+### Feature 6.3: Schema Migrations with Alembic & Clean Lifecycle
+
+#### 1. What problem it solves
+Database schemas evolve over time as new columns and tables are added. Manually applying SQL scripts causes synchronization drift between environments, breaks deployments, and makes rolling back impossible.
+
+#### 2. What happens from input to output
+1. Alembic is configured via [`alembic.ini`](../alembic.ini) and an asynchronous runner in [`src/issuelens/persistence/migrations/env.py`](../src/issuelens/persistence/migrations/env.py).
+2. During deployment or testing, `alembic upgrade head` is invoked.
+3. Revision [`001_initial_schema.py`](../src/issuelens/persistence/migrations/versions/001_initial_schema.py) executes, applying all table structures, indexes, foreign keys, and defaults.
+4. If a deployment needs to be reverted, `alembic downgrade base` cleanly drops tables in foreign-key dependency order.
+
+#### 3. Which files and functions participate
+- **Config**: [`alembic.ini`](../alembic.ini)
+- **Environment**: [`src/issuelens/persistence/migrations/env.py`](../src/issuelens/persistence/migrations/env.py)
+- **Initial Revision**: [`src/issuelens/persistence/migrations/versions/001_initial_schema.py`](../src/issuelens/persistence/migrations/versions/001_initial_schema.py)
+
+#### 4. Why the implementation is structured this way
+- **Async Engine Support**: Standard Alembic templates use synchronous DBAPIs. Our `env.py` uses `async_engine_from_config` and `connection.run_sync()`, allowing Alembic to run with async PostgreSQL drivers (`psycopg`).
+- **Dynamic URL Resolution**: `get_url()` in `env.py` dynamically resolves the database URL from application settings, allowing configuration via environment variables without hardcoding passwords in `alembic.ini`.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: `Base.metadata.create_all()`*: Create tables automatically at application startup.
+  - *Trade-off*: Works for initial local testing, but cannot modify existing tables, rename columns, or manage data migrations in production.
+- *Alternative: Third-party GUI tools*: Apply changes manually via pgAdmin or DBeaver.
+  - *Trade-off*: Error-prone, non-repeatable, and violates Infrastructure-as-Code standards.
+
+#### 6. What can fail and how failures are handled
+- **Duplicate Revision or Broken State**: Alembic tracks applied revisions in the `alembic_version` table, halting and rolling back if a migration script fails.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_persistence.py`](../tests/unit/test_persistence.py)
+- **Verifications**: `test_alembic_migrations_from_clean_database` verifies that `upgrade head`, `downgrade base`, and re-applying `upgrade head` all succeed against a clean database.
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_persistence.py -k test_alembic_migrations
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- Always write reversible migrations! Every `upgrade()` function must have an exact corresponding `downgrade()` function that leaves the database in the exact state it was before the migration ran.
+
+---
+
+### Feature 6.4: Cross-Platform Async Engine & Health Probe Diagnostics
+
+#### 1. What problem it solves
+Connecting to PostgreSQL in modern async Python on Windows encounters OS-level event loop incompatibilities (Psycopg async requires `WindowsSelectorEventLoopPolicy` rather than the Windows default `ProactorEventLoop`). Additionally, production orchestrators require an automated readiness probe (`/readyz`) to verify database connectivity without leaking database credentials.
+
+#### 2. What happens from input to output
+1. At application launch, [`db.py`](../src/issuelens/persistence/db.py) checks `sys.platform == "win32"` and activates `WindowsSelectorEventLoopPolicy` if running on Windows.
+2. Connection URLs are normalized via [`normalize_database_url()`](../src/issuelens/persistence/db.py#L36), converting legacy `postgresql://` strings to async `postgresql+psycopg://`.
+3. If no database URL is configured or when running in test mode (`APP_ENV=test`), it automatically defaults to an in-memory SQLite database (`sqlite+aiosqlite:///:memory:`) with `StaticPool`.
+4. When orchestrators probe `GET /readyz`, [`check_database_health()`](../src/issuelens/persistence/db.py#L168) executes a lightweight `SELECT 1` query and returns `{"checks": {"database": "ok"}}` without exposing database host, username, or credentials.
+
+#### 3. Which files and functions participate
+- **Source file**: [`src/issuelens/persistence/db.py`](../src/issuelens/persistence/db.py)
+- **Key functions**: `normalize_database_url()`, `redact_database_url()`, `check_database_health()`, `init_engine()`.
+- **API probe**: [`get_readiness()`](../src/issuelens/api/routes.py#L79) in `src/issuelens/api/routes.py`.
+
+#### 4. Why the implementation is structured this way
+- **Cross-Platform Portability**: Developers on Windows, macOS, and Linux can develop and run tests seamlessly without platform-specific crashes.
+- **Credential Protection**: [`redact_database_url()`](../src/issuelens/persistence/db.py#L48) regex-masks passwords before emitting log messages or failure diagnostics.
+- **Hermetic Testing**: Using SQLite with `StaticPool` during tests ensures fast, zero-network, zero-credential hermetic unit testing.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Require live PostgreSQL for all unit tests*: Run tests against a Dockerized database.
+  - *Trade-off*: Slower test runs, requires external infrastructure, and breaks in air-gapped CI environments.
+- *Alternative: Mock all database sessions*: Use `unittest.mock.MagicMock` for queries.
+  - *Trade-off*: Masks real SQL syntax errors, type mismatches, and transaction rollback bugs.
+
+#### 6. What can fail and how failures are handled
+- **Database Offline / Network Failure**: `check_database_health()` catches all connection exceptions, logs the error with credentials redacted, and returns `(False, safe_error_message)`. The `/readyz` probe emits `status="not_ready"` with HTTP 200.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_persistence.py`](../tests/unit/test_persistence.py), [`tests/unit/test_health.py`](../tests/unit/test_health.py)
+- **Verifications**: URL normalization, credential masking (`test_redact_database_url`), healthy probe vs failing probe (`test_database_health_probe`), and API probe response (`test_readyz_readiness`).
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_health.py tests/unit/test_persistence.py
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- Never leak connection strings in logs or readiness responses! Database URLs often contain plaintext passwords (`postgres://user:secret@host/db`). Always redact secrets with regex before passing strings to loggers or APIs.
+
+---
+
+## Planned Implementation Roadmap (Phases 7 - 9)
+
+The following phases are specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md), but are **[PLANNED]** and have not yet been implemented (Phases 0–6 are fully implemented):
 
 ### Phase 7: Evaluation Dataset & Benchmark Harness [PLANNED]
 - **Goal**: Curated dataset of 20-30 resolved public GitHub issues. Measure citation validity, recall@k, and unsupported claims across prompt/model versions while enforcing retrospective leakage protection (withholding fix PR/commits).

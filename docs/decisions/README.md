@@ -82,6 +82,7 @@ Create an ADR when a decision **materially affects**:
 | [**ADR-004**](ADR-004-commit-pinned-snapshot-cache-and-disk-bounds.md) | Commit-Pinned Repository Snapshot Disk Cache with Bounded LRU Eviction | Accepted | 2026-10-29 | Phase 4 | Original |
 | [**ADR-005**](ADR-005-langgraph-agent-workflow-and-state-machine.md) | LangGraph Agent Workflow and Cyclic State Machine | Accepted | 2026-11-04 | Phase 5 | Original |
 | [**ADR-006**](ADR-006-deterministic-evidence-ranking.md) | Deterministic Relevance Ranking for Lexical Code Evidence | Accepted | 2026-11-11 | Phase 5 | Original |
+| [**ADR-007**](ADR-007-postgresql-persistence-and-alembic-migrations.md) | Relational PostgreSQL Persistence with SQLAlchemy 2.0 and Alembic Migrations | Accepted | 2026-11-17 | Phase 6 | Original |
 
 ---
 

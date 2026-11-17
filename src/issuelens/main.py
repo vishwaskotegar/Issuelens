@@ -12,6 +12,7 @@ from issuelens.api.routes import router as operational_router
 from issuelens.config import get_settings
 from issuelens.core.errors import IssueLensError
 from issuelens.core.logging import get_logger, setup_logging
+from issuelens.persistence.db import close_engine
 
 logger = get_logger("issuelens.main")
 
@@ -28,6 +29,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     )
     yield
     logger.info("IssueLens application shutting down")
+    await close_engine()
 
 
 def create_app() -> FastAPI:
