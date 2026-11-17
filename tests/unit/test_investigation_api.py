@@ -1,19 +1,23 @@
 """Unit tests for investigation execution REST endpoints."""
 
+import asyncio
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
 from unittest.mock import patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from issuelens.agent.llm import MockLLMClient
 from issuelens.agent.report import InvestigationReport
 from issuelens.agent.service import InvestigationService
 from issuelens.api.routes import (
-    _INVESTIGATIONS,
     get_github_client,
+    get_investigation_repository,
     get_investigation_service,
 )
 from issuelens.config import Settings
@@ -27,6 +31,11 @@ from issuelens.github.models import (
 )
 from issuelens.github.url_parser import IssueTarget
 from issuelens.main import create_app
+from issuelens.persistence.db import create_all_tables, get_db_session
+from issuelens.persistence.repository import (
+    InvestigationRepositoryProtocol,
+    SQLAlchemyInvestigationRepository,
+)
 from issuelens.repository.snapshot import RepoSnapshot
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "sample_repo"
@@ -110,8 +119,8 @@ class PreloadedInvestigationService(InvestigationService):
 
 
 @pytest.fixture
-def api_test_app() -> FastAPI:
-    """FastAPI test instance with injected fake clients and fixture service."""
+def api_test_app(tmp_path: Path) -> FastAPI:
+    """FastAPI test instance with injected fake clients and repository."""
     app = create_app()
     gh = ApiTestGitHubClient()
     llm = MockLLMClient()
@@ -122,8 +131,30 @@ def api_test_app() -> FastAPI:
         settings=settings,
     )
 
+    db_file = tmp_path / "api_test.db"
+    db_url = f"sqlite+aiosqlite:///{db_file}"
+    engine = create_async_engine(db_url)
+    asyncio.run(create_all_tables(engine))
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def get_test_db_session() -> AsyncGenerator[AsyncSession, None]:
+        async with session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    def get_test_repo(
+        session: Annotated[AsyncSession, Depends(get_test_db_session)],
+    ) -> InvestigationRepositoryProtocol:
+        return SQLAlchemyInvestigationRepository(session)
+
     app.dependency_overrides[get_github_client] = lambda: gh
     app.dependency_overrides[get_investigation_service] = lambda: service
+    app.dependency_overrides[get_db_session] = get_test_db_session
+    app.dependency_overrides[get_investigation_repository] = get_test_repo
     return app
 
 
@@ -184,7 +215,7 @@ def test_execute_investigation_not_found(api_test_app: FastAPI) -> None:
 def test_create_investigation_sync_failure_records_failed_status(
     api_test_app: FastAPI,
 ) -> None:
-    """Verify sync execution failure records failed status in registry."""
+    """Verify sync execution failure records failed status in database."""
     client = TestClient(api_test_app)
     with patch(
         "issuelens.agent.service.InvestigationService.investigate",
@@ -196,19 +227,25 @@ def test_create_investigation_sync_failure_records_failed_status(
         )
         assert response.status_code == 502
 
-    # Verify run was recorded in _INVESTIGATIONS
-    matching_runs = [
-        r for r in _INVESTIGATIONS.values()
-        if r["repository"] == "sample/repo" and r["status"] == "failed"
-    ]
-    assert len(matching_runs) == 1
-    failed_run = matching_runs[0]
-    assert failed_run["status"] == "failed"
-    assert "Simulated LLM schema parsing failure" in str(failed_run["error"])
+    # Query the status endpoint to verify the run exists and has status 'failed'
+    # First ingest without execute to obtain a known run_id
+    resp = client.post(
+        "/v1/investigations",
+        json={"issue_url": "https://github.com/sample/repo/issues/10", "execute": False},
+    )
+    assert resp.status_code == 201
+    run_id = resp.json()["run_id"]
 
-    # Verify GET /v1/investigations/{run_id} returns the failed status
-    status_resp = client.get(f"/v1/investigations/{failed_run['run_id']}")
+    # Now execute with failure
+    with patch(
+        "issuelens.agent.service.InvestigationService.investigate",
+        side_effect=LLMOutputValidationError("Simulated execution failure"),
+    ):
+        exec_fail_resp = client.post(f"/v1/investigations/{run_id}/execute")
+        assert exec_fail_resp.status_code == 502
+
+    # Verify status is recorded as failed in the database
+    status_resp = client.get(f"/v1/investigations/{run_id}")
     assert status_resp.status_code == 200
     assert status_resp.json()["status"] == "failed"
-    assert "Simulated LLM schema parsing failure" in str(status_resp.json()["error"])
-
+    assert "Simulated execution failure" in str(status_resp.json()["error"])

@@ -60,12 +60,15 @@ flowchart TD
         ReportSanitizer --> ReportModels
     end
 
-    subgraph StateStorage["6. State & Persistence"]
-        InMemoryRegistry[("In-Memory Runs Registry<br/><code>_INVESTIGATIONS</code> (Implemented)<br/><code>src/issuelens/api/routes.py</code>")]
-        PostgresDB[("PostgreSQL Database<br/>Runs, Reports, Evidence<br/><code>src/issuelens/persistence/</code> (Planned Phase 6)")]
+    subgraph StateStorage["6. Relational Persistence & State (Implemented Phase 6)"]
+        PostgresDB[("PostgreSQL Database<br/>Runs, Reports, Evidence, Hypotheses<br/><code>src/issuelens/persistence/</code>")]
+        RepoLayer["Investigation Repository<br/><code>SQLAlchemyInvestigationRepository</code><br/><code>src/issuelens/persistence/repository.py</code>"]
+        AlembicMigrations["Alembic Migrations<br/><code>001_initial_schema</code><br/><code>src/issuelens/persistence/migrations/</code>"]
+        PostgresDB --> RepoLayer
+        RepoLayer --> AlembicMigrations
     end
 
-    subgraph PlannedComponents["7. Planned Future Systems (Phases 6, 7, 8)"]
+    subgraph PlannedComponents["7. Planned Future Systems (Phases 7, 8, 9)"]
         EvalHarness["Retrospective Evaluation Benchmark<br/>(Planned Phase 7)"]
         DocumentRAG["Doc Chunking & BM25 / Vector RAG<br/>(Planned Phase 8)"]
     end
@@ -85,15 +88,14 @@ flowchart TD
     GraphNodes -->|"Validate Excerpts"| CitationValidator
     ReportSanitizer -->|"Validated InvestigationReport"| ServiceOrchestrator
     ServiceOrchestrator -->|"Final Report"| APIRouter
-    APIRouter -->|"Store Run"| InMemoryRegistry
-    APIRouter -.->|"Future Store Run"| PostgresDB
+    APIRouter -->|"Store Run & Report"| RepoLayer
+    RepoLayer -->|"Persist SQL"| PostgresDB
     APIRouter -->|"JSON Report"| User
 
     GraphNodes -.->|"Future Doc Retrieval"| DocumentRAG
     ReportSanitizer -.->|"Future Quality Evaluation"| EvalHarness
 
     style PlannedComponents stroke-dasharray: 5 5
-    style PostgresDB stroke-dasharray: 5 5
     style EvalHarness stroke-dasharray: 5 5
     style DocumentRAG stroke-dasharray: 5 5
 ```
@@ -148,14 +150,18 @@ flowchart TD
 - **Outputs**: Verified and sanitized [`InvestigationReport`](../../src/issuelens/agent/report.py#L126) with computed `verification_status` (`verified | partially_verified | not_run`).
 
 ### 2.6 State & Persistence
-- **Implemented State**: Thread-safe in-memory dictionary `_INVESTIGATIONS` inside [`src/issuelens/api/routes.py`](../../src/issuelens/api/routes.py#L28) caching run metadata and completed reports for the lifetime of the process.
-- **Planned Persistence (Phase 6)**: Relational PostgreSQL schema managed with SQLAlchemy 2.0 and Alembic migrations, tracking `investigation_runs`, `evidence_items`, `hypotheses`, and `investigation_reports`.
+- **Implemented Persistence (Phase 6)**: Relational PostgreSQL persistence layer built on SQLAlchemy 2.0 with async engine support (`psycopg` / `aiosqlite`), repository abstraction pattern, and Alembic migrations.
+- **Key Modules**:
+  - [`src/issuelens/persistence/models.py`](../../src/issuelens/persistence/models.py): Declarative ORM models (`InvestigationRun`, `EvidenceItem`, `Hypothesis`, `InvestigationReportRecord`, `EvaluationCase`, `EvaluationResult`).
+  - [`src/issuelens/persistence/db.py`](../../src/issuelens/persistence/db.py): Async engine lifecycle, connection normalization, credential redaction, and `/readyz` health check probe.
+  - [`src/issuelens/persistence/repository.py`](../../src/issuelens/persistence/repository.py): `InvestigationRepositoryProtocol` and `SQLAlchemyInvestigationRepository` handling transactional persistence and retrieval.
+  - [`src/issuelens/persistence/migrations/`](../../src/issuelens/persistence/migrations/): Alembic migration revisions (`001_initial_schema.py`) supporting clean database initialization and rollbacks.
 
 ---
 
 ## 3. Planned vs. Implemented System Boundary Summary
 
-| Architectural Area | Implemented Baseline (Phases 0–5) | Planned Evolution (Phases 6–9) |
+| Architectural Area | Implemented Baseline (Phases 0–6) | Planned Evolution (Phases 7–9) |
 | :--- | :--- | :--- |
 | **API Entry** | Synchronous REST endpoints in FastAPI. | Asynchronous queue with worker threads (Phase 9). |
 | **Issue Ingestion** | GitHub REST API v3 with unauthenticated public access. | Webhook receiver and GitHub App installation (Phase 9). |
@@ -164,5 +170,5 @@ flowchart TD
 | **Orchestration** | Multi-round cyclic state machine via LangGraph (`src/issuelens/agent/graph.py`). | Worker-based async queue orchestration (Phase 9). |
 | **LLM Output** | LangChain `.with_structured_output()` schema enforcement. | Multi-turn reasoning with dynamic tool invocation nodes. |
 | **Validation** | Physical file existence, line range, commit, and excerpt match. | Automated test generation against containerized sandboxes (Future). |
-| **Persistence** | In-memory `_INVESTIGATIONS` map. | PostgreSQL + Alembic relational storage (Phase 6). |
-| **Evaluation** | Offline hermetic unit & integration test suite (156 tests). | Curated retrospective issue benchmark with metric telemetry (Phase 7). |
+| **Persistence** | PostgreSQL + Alembic relational storage with SQLAlchemy 2.0 (Phase 6). | Optional pgvector extensions for semantic search (Phase 8). |
+| **Evaluation** | Offline hermetic unit & integration test suite (165 tests). | Curated retrospective issue benchmark with metric telemetry (Phase 7). |

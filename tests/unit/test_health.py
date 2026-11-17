@@ -42,3 +42,4 @@ def test_readyz_readiness() -> None:
     assert data["status"] == "ready"
     assert "checks" in data
     assert data["checks"].get("config") == "ok"
+    assert data["checks"].get("database") == "ok"

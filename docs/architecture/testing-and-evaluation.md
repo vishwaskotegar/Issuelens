@@ -10,11 +10,11 @@ IssueLens enforces a rigorous hermetic testing discipline. Automated tests never
 
 ```mermaid
 flowchart TD
-    subgraph ImplementedPyramid["Implemented Automated Testing (Phases 0 - 4)"]
+    subgraph ImplementedPyramid["Implemented Automated Testing (Phases 0 - 6)"]
         direction TB
-        UnitTests["Unit Tests (105 tests)<br/>Isolated functions, parsers, models, filters<br/><code>test_url_parser.py</code>, <code>test_python_symbols.py</code>, <code>test_validator.py</code>"]
-        IntegrationTests["Service Integration Tests (11 tests)<br/>Pipeline integration with hermetic mocks<br/><code>test_investigation_service.py</code>, <code>test_snapshot_cache.py</code>"]
-        APITests["REST API Tests (8 tests)<br/>FastAPI HTTP endpoints via TestClient<br/><code>test_issue_api.py</code>, <code>test_investigation_api.py</code>, <code>test_health.py</code>"]
+        UnitTests["Unit Tests (132 tests)<br/>Isolated functions, parsers, models, filters, persistence<br/><code>test_url_parser.py</code>, <code>test_python_symbols.py</code>, <code>test_validator.py</code>, <code>test_persistence.py</code>"]
+        IntegrationTests["Service Integration Tests (21 tests)<br/>Pipeline integration with hermetic mocks<br/><code>test_investigation_service.py</code>, <code>test_snapshot_cache.py</code>, <code>test_graph.py</code>"]
+        APITests["REST API Tests (12 tests)<br/>FastAPI HTTP endpoints via TestClient<br/><code>test_issue_api.py</code>, <code>test_investigation_api.py</code>, <code>test_health.py</code>"]
         APITests --> IntegrationTests
         IntegrationTests --> UnitTests
     end
@@ -37,11 +37,12 @@ flowchart TD
 
 ## 2. Implemented Test Organization & Boundaries
 
-The automated test suite resides in `tests/` and contains **124 automated tests** executing completely offline in under 5 seconds:
+The automated test suite resides in `tests/` and contains **165 automated tests** executing completely offline in under 8 seconds:
 
 ```text
 tests/
 ├── __init__.py
+├── conftest.py                              # Global hermetic test database setup and loop policy
 ├── fixtures/                                # Hermetic test fixtures
 │   └── sample_repo/                         # Sample repository snapshot fixture
 │       ├── .env                             # Secret exclusion test fixture
@@ -57,19 +58,21 @@ tests/
     ├── test_health.py                       # Health & readiness probes (3 tests)
     ├── test_url_parser.py                   # URL validation & SSRF defense (14 tests)
     ├── test_github_models.py                # GitHub DTO parsing (3 tests)
-    ├── test_github_client.py                # GitHub REST API client adapter (12 tests)
+    ├── test_github_client.py                # GitHub REST API client adapter (16 tests)
     ├── test_snapshot.py                     # Safe snapshot path containment (11 tests)
     ├── test_snapshot_cache.py               # Atomic caching & LRU pruning (8 tests)
-    ├── test_code_search.py                  # Ripgrep & Python search engines (6 tests)
+    ├── test_code_search.py                  # Ripgrep & Python search engines (21 tests)
     ├── test_python_symbols.py               # AST symbol parsing & enclosing logic (5 tests)
-    ├── test_snippets.py                     # Line-numbered snippet reader (5 tests)
+    ├── test_snippets.py                     # Line-numbered snippet reader (6 tests)
     ├── test_report_schema.py                # Pydantic report schemas & provenance (7 tests)
     ├── test_llm_client.py                   # LangChain LLM client & error translation (11 tests)
-    ├── test_prompts.py                      # Prompt templates & XML enclaves (4 tests)
-    ├── test_validator.py                    # Citation validation & demotion (11 tests)
+    ├── test_prompts.py                      # Prompt templates & XML enclaves (5 tests)
+    ├── test_validator.py                    # Citation validation & demotion (14 tests)
+    ├── test_graph.py                        # LangGraph workflow, nodes, and tool traces (7 tests)
+    ├── test_persistence.py                  # Models, migrations, repository, and restart (9 tests)
     ├── test_issue_api.py                    # REST API issue endpoints (8 tests)
     ├── test_investigation_service.py        # End-to-end investigation pipeline (6 tests)
-    └── test_investigation_api.py            # End-to-end REST API investigation flow (3 tests)
+    └── test_investigation_api.py            # End-to-end REST API investigation flow (4 tests)
 ```
 
 ### Key Test Boundaries & Test Doubles
@@ -83,6 +86,9 @@ tests/
 3. **Repository Filesystem Boundary**:
    - Tests execute against a committed fixture repository at [`tests/fixtures/sample_repo/`](../../tests/fixtures/sample_repo).
    - Includes edge case files: [`broken_syntax.py`](../../tests/fixtures/sample_repo/sample_pkg/broken_syntax.py) (verifies that `ast.parse` handles `SyntaxError` without crashing) and a fixture `.env` (verifies that secret files are excluded from searches and file listings).
+4. **Database & Persistence Boundary**:
+   - In [`tests/unit/test_persistence.py`](../../tests/unit/test_persistence.py) and across the API test suite via [`tests/conftest.py`](../../tests/conftest.py), persistence operations run against in-memory SQLite (`sqlite+aiosqlite:///:memory:`) using `StaticPool` and `check_same_thread=False`.
+   - Tables are created and dropped per test suite, ensuring zero network calls and complete isolation from live PostgreSQL databases. Restart survivability is verified using temporary file-backed SQLite instances (`test_run_survives_restart`).
 
 ---
 

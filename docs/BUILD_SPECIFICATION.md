@@ -445,10 +445,29 @@ Configuration names are suggestions, not a promise that every setting will be us
 
 ## 13. Phased build plan and definition of done
 
+### Git Branching & Naming Convention
+
+Every implementation phase and tactical fix must be developed on a dedicated git branch conforming to the project's branch naming standards:
+- **Phase Feature Branches**: `feature/phase-<N>-<kebab-case-description>`
+  - Phase 1: `feature/phase-1-github-ingestion`
+  - Phase 2: `feature/phase-2-code-search-baseline`
+  - Phase 3: `feature/phase-3-report-generation`
+  - Phase 4: `feature/phase-4-evidence-validation`
+  - Phase 5: `feature/phase-5-investigation-agent`
+  - Phase 6: `feature/phase-6-persistence`
+  - Phase 7: `feature/phase-7-evaluation-harness`
+  - Phase 8: `feature/phase-8-document-rag`
+  - Phase 9: `feature/phase-9-deployment-pilot`
+- **Bug Fix & Hardening Branches**: `fix/<kebab-case-description>` (e.g., `fix/retrieval-relevance`)
+- **Documentation Branches**: `docs/<kebab-case-description>`
+
+Before beginning Phase *N*, the agent or engineer must create and checkout the corresponding `feature/phase-<N>-<description>` branch from `master`.
+
 ### Phase Execution Protocol & Definition of Done Gates
 
-Every implementation phase must strictly follow a 9-step engineering and documentation protocol before it can be considered complete. The coding agent must never skip steps or leave documentation for a later pass:
+Every implementation phase must strictly follow a 10-step engineering and documentation protocol before it can be considered complete. The coding agent must never skip steps or leave documentation for a later pass:
 
+0. **Branch Creation**: Create and checkout a dedicated feature branch conforming to `feature/phase-<N>-<description>` before writing any code or configuration.
 1. **Inspect Existing Implementation**: Inspect relevant existing code, configuration, tests, and documentation before proposing or making changes. Identify all impacted modules and potential conflicts.
 2. **Explain Approach Before Coding**: Explain the intended implementation approach, architectural design, and significant trade-offs before writing code. List files to add/edit, dependencies to add, and security/reliability edge cases. Wait for approval if a major architecture decision, paid service, destructive action, or scope expansion is required.
 3. **Implement and Test**: Implement the smallest functional slice and write unit tests with hermetic mocks according to the existing acceptance criteria. Never execute repository code or depend on live external networks.
@@ -579,11 +598,12 @@ without reporting the result and proposed next step.
 Implement Phase N from docs/BUILD_SPECIFICATION.md only.
 
 Before coding:
-1. Inspect relevant existing code, configuration, tests, and documentation.
-2. Explain the implementation approach and architectural design before writing code, including significant trade-offs.
-3. Restate the phase goal and acceptance criteria.
-4. List files you intend to change and dependencies you intend to add (with explicit justification).
-5. Identify security/reliability edge cases.
+1. Create and checkout a dedicated branch conforming to `feature/phase-<N>-<description>`.
+2. Inspect relevant existing code, configuration, tests, and documentation.
+3. Explain the implementation approach and architectural design before writing code, including significant trade-offs.
+4. Restate the phase goal and acceptance criteria.
+5. List files you intend to change and dependencies you intend to add (with explicit justification).
+6. Identify security/reliability edge cases.
 
 Then implement the smallest complete slice. Add or update unit tests with mocks, run them,
 run lint/type checks (`ruff`, `mypy`, `pytest`). Do not silently skip failing checks.

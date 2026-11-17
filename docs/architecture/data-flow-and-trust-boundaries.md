@@ -115,11 +115,19 @@ flowchart TD
   - **Centralized Redaction Filter**: [`SecretRedactionFilter`](../../src/issuelens/core/logging.py#L18) attaches to the root logging handler, compiling regex patterns for GitHub PATs, OpenAI/Anthropic API keys, and Bearer tokens, automatically replacing them with `[REDACTED]`.
   - **Health Probe Isolation**: `/healthz` and `/readyz` endpoints return sanitized operational status without printing environment variables, URLs, or token metadata.
 
+### Boundary 7: Relational Database Persistence & SQL Injection Defenses (Implemented Phase 6)
+- **Threat**: Untrusted user inputs (issue URLs, repository names, issue bodies, or LLM-generated summaries) could be exploited for SQL injection or credentials could leak via database connection URLs.
+- **Implemented Defenses**:
+  - **Zero Raw String Interpolation**: All queries, insertions, and updates are executed via SQLAlchemy 2.0 ORM expressions and parameterized statements.
+  - **URL Credential Masking**: [`redact_database_url()`](../../src/issuelens/persistence/db.py#L44) strips passwords from connection strings before logging or emitting diagnostic traces.
+  - **Foreign Key Cascading**: Foreign keys (`ON DELETE CASCADE`) and transactional session management prevent orphaned child records and partial state corruption.
+  - **Hermetic Test Isolation**: Tests run in-memory (`sqlite+aiosqlite:///:memory:`) with zero network access and automatic table cleanup, isolating production and local databases from test corruption.
+
 ---
 
 ## 3. Implemented vs. Planned Protections Matrix
 
-| Threat Category | Implemented Protection (Phases 0–4) | Planned Protection (Phases 5–9) |
+| Threat Category | Implemented Protection (Phases 0–6) | Planned Protection (Phases 7–9) |
 | :--- | :--- | :--- |
 | **SSRF / Host Spoofing** | Strict `https://github.com` allowlist and PR path rejection in `url_parser.py`. | Configurable host allowlists for GitHub Enterprise (Phase 9). |
 | **Private Repository Leak** | Explicit `repo.is_private` check in `client.py` raising `SafetyViolationError`. | OAuth2 fine-grained permissions if private access is added (Future). |
@@ -128,5 +136,6 @@ flowchart TD
 | **Code Execution Attacks** | Zero code execution; static AST parsing with standard library `ast`. | Ephemeral isolated firecracker microVMs if test execution is ever permitted (Future). |
 | **Prompt Injection** | XML boundary enclaves and system directives in `prompts.py`. | Automated prompt-injection evaluation probes in benchmark harness (Phase 7). |
 | **Citation Hallucination** | Deterministic physical excerpt matching and hypothesis demotion in `validator.py`. | Automated test case generation to verify reproducible behavior (Future). |
-| **Credential Leakage** | `SecretStr` configuration and `SecretRedactionFilter` regex scrubbing in `logging.py`. | External secret manager (AWS Secrets Manager / Vault) integration (Phase 9). |
+| **Credential Leakage** | `SecretStr` configuration, `SecretRedactionFilter` regex scrubbing, and DB URL masking. | External secret manager (AWS Secrets Manager / Vault) integration (Phase 9). |
+| **SQL Injection & Data Corruption** | SQLAlchemy 2.0 ORM parameterized statements and transactional sessions (Phase 6). | Row-level tenant partitioning if multi-tenant SaaS is added (Future). |
 

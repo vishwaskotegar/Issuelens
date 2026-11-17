@@ -1,12 +1,12 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from issuelens import __version__
 from issuelens.agent.llm import LLMClientProtocol, get_llm_client
-from issuelens.agent.report import InvestigationReport
 from issuelens.agent.service import InvestigationService
 from issuelens.api.schemas import (
     HealthResponse,
@@ -21,11 +21,13 @@ from issuelens.config import Settings, get_settings
 from issuelens.core.errors import ResourceNotFoundError
 from issuelens.github.client import GitHubClient, GitHubClientProtocol
 from issuelens.github.url_parser import parse_issue_target
+from issuelens.persistence.db import check_database_health, get_db_session
+from issuelens.persistence.repository import (
+    InvestigationRepositoryProtocol,
+    SQLAlchemyInvestigationRepository,
+)
 
 router = APIRouter()
-
-# In-memory investigation registry until Phase 6 PostgreSQL persistence
-_INVESTIGATIONS: dict[str, dict[str, Any]] = {}
 
 
 def get_github_client(
@@ -58,6 +60,13 @@ def get_investigation_service(
     )
 
 
+def get_investigation_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> InvestigationRepositoryProtocol:
+    """Dependency provider for InvestigationRepository."""
+    return SQLAlchemyInvestigationRepository(session)
+
+
 @router.get(
     "/healthz",
     response_model=HealthResponse,
@@ -82,12 +91,14 @@ def get_health(settings: Annotated[Settings, Depends(get_settings)]) -> HealthRe
     summary="Readiness probe",
     description="Validates that system configuration and dependencies are ready.",
 )
-def get_readiness(
+async def get_readiness(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ReadinessResponse:
     """Readiness probe: checks required sub-systems without exposing credentials."""
+    db_healthy, _ = await check_database_health()
     checks = {
         "config": "ok" if settings.request_timeout_seconds > 0 else "error",
+        "database": "ok" if db_healthy else "error",
     }
     all_ready = all(v == "ok" for v in checks.values())
     return ReadinessResponse(
@@ -139,54 +150,40 @@ async def create_investigation(
     payload: InvestigationCreateRequest,
     client: Annotated[GitHubClientProtocol, Depends(get_github_client)],
     service: Annotated[InvestigationService, Depends(get_investigation_service)],
+    repo: Annotated[InvestigationRepositoryProtocol, Depends(get_investigation_repository)],
 ) -> InvestigationCreateResponse:
     """Create a new investigation run from a public issue."""
     target = parse_issue_target(payload.issue_url)
     context = await client.fetch_issue_context(target)
 
     run_id = f"inv_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(tz=UTC).isoformat()
+    now = datetime.now(tz=UTC)
     current_status = "ingested"
-    report_data = None
-    error_msg = None
+
+    await repo.create_run(
+        run_id=run_id,
+        issue_url=context.issue_url,
+        repo_full_name=context.repository,
+        issue_number=context.issue_number,
+        commit_sha=context.commit_sha,
+        status="ingested",
+        issue_title=context.issue.title,
+    )
 
     if payload.execute:
         try:
+            await repo.update_run_status(run_id=run_id, status="running")
             report = await service.investigate(target_or_url=target, run_id=run_id)
+            await repo.save_report(run_id=run_id, report=report)
             current_status = "completed"
-            report_data = report.model_dump()
         except Exception as exc:
-            current_status = "failed"
-            error_msg = str(exc)
-            _INVESTIGATIONS[run_id] = {
-                "run_id": run_id,
-                "status": "failed",
-                "issue_url": context.issue_url,
-                "repository": context.repository,
-                "issue_number": context.issue_number,
-                "commit_sha": context.commit_sha,
-                "issue_title": context.issue.title,
-                "created_at": now,
-                "context": context.model_dump(),
-                "report": None,
-                "error": error_msg,
-            }
+            await repo.update_run_status(
+                run_id=run_id,
+                status="failed",
+                error_message=str(exc),
+            )
+            await repo.commit()
             raise
-
-    investigation_record = {
-        "run_id": run_id,
-        "status": current_status,
-        "issue_url": context.issue_url,
-        "repository": context.repository,
-        "issue_number": context.issue_number,
-        "commit_sha": context.commit_sha,
-        "issue_title": context.issue.title,
-        "created_at": now,
-        "context": context.model_dump(),
-        "report": report_data,
-        "error": error_msg,
-    }
-    _INVESTIGATIONS[run_id] = investigation_record
 
     return InvestigationCreateResponse(
         run_id=run_id,
@@ -195,7 +192,7 @@ async def create_investigation(
         repository=context.repository,
         issue_number=context.issue_number,
         commit_sha=context.commit_sha,
-        created_at=now,
+        created_at=now.isoformat(),
     )
 
 
@@ -209,34 +206,40 @@ async def create_investigation(
 async def execute_investigation(
     run_id: str,
     service: Annotated[InvestigationService, Depends(get_investigation_service)],
+    repo: Annotated[InvestigationRepositoryProtocol, Depends(get_investigation_repository)],
 ) -> InvestigationStatusResponse:
     """Execute investigation for an already ingested run."""
-    record = _INVESTIGATIONS.get(run_id)
-    if not record:
+    run = await repo.get_run(run_id)
+    if not run:
         raise ResourceNotFoundError(f"Investigation run '{run_id}' not found.")
 
-    target = parse_issue_target(record["issue_url"])
+    target = parse_issue_target(run.issue_url)
     try:
+        await repo.update_run_status(run_id=run_id, status="running")
         report = await service.investigate(target_or_url=target, run_id=run_id)
-        record["status"] = "completed"
-        record["report"] = report.model_dump()
-        record["error"] = None
+        await repo.save_report(run_id=run_id, report=report)
+        status_str = "completed"
+        error_msg = None
     except Exception as exc:
-        record["status"] = "failed"
-        record["error"] = str(exc)
+        await repo.update_run_status(
+            run_id=run_id,
+            status="failed",
+            error_message=str(exc),
+        )
+        await repo.commit()
         raise
 
     return InvestigationStatusResponse(
-        run_id=record["run_id"],
-        status=record["status"],
-        issue_url=record["issue_url"],
-        repository=record["repository"],
-        issue_number=record["issue_number"],
-        commit_sha=record["commit_sha"],
-        created_at=record["created_at"],
-        issue_title=record.get("issue_title"),
+        run_id=run.id,
+        status=status_str,
+        issue_url=run.issue_url,
+        repository=run.repo_full_name,
+        issue_number=run.issue_number,
+        commit_sha=run.commit_sha,
+        created_at=run.created_at.isoformat(),
+        issue_title=run.issue_title,
         report=report,
-        error=None,
+        error=error_msg,
     )
 
 
@@ -247,28 +250,26 @@ async def execute_investigation(
     summary="Fetch investigation run status",
     description="Retrieves the status, coordinates, report, and metadata of an investigation run.",
 )
-def get_investigation_status(run_id: str) -> InvestigationStatusResponse:
+async def get_investigation_status(
+    run_id: str,
+    repo: Annotated[InvestigationRepositoryProtocol, Depends(get_investigation_repository)],
+) -> InvestigationStatusResponse:
     """Retrieve investigation run by run_id."""
-    record = _INVESTIGATIONS.get(run_id)
-    if not record:
+    run = await repo.get_run(run_id)
+    if not run:
         raise ResourceNotFoundError(f"Investigation run '{run_id}' not found.")
 
-    report_payload = record.get("report")
-    report = (
-        InvestigationReport.model_validate(report_payload)
-        if report_payload is not None
-        else None
-    )
+    report = await repo.get_report(run_id)
 
     return InvestigationStatusResponse(
-        run_id=record["run_id"],
-        status=record["status"],
-        issue_url=record["issue_url"],
-        repository=record["repository"],
-        issue_number=record["issue_number"],
-        commit_sha=record["commit_sha"],
-        created_at=record["created_at"],
-        issue_title=record.get("issue_title"),
+        run_id=run.id,
+        status=run.status,
+        issue_url=run.issue_url,
+        repository=run.repo_full_name,
+        issue_number=run.issue_number,
+        commit_sha=run.commit_sha,
+        created_at=run.created_at.isoformat(),
+        issue_title=run.issue_title,
         report=report,
-        error=record.get("error"),
+        error=run.error_message,
     )

@@ -64,8 +64,8 @@ All diagrams are rendered using standard GitHub-compatible Mermaid Markdown synt
 
 | Visual Style | Meaning | Example |
 | :--- | :--- | :--- |
-| **Solid Outline (`box`)** | **Implemented Component**: Fully built, tested, and active in the codebase (Phases 0–5). | `[FastAPI API Router]` |
-| **Dashed Outline (`box` with `stroke-dasharray`)** | **Planned Component**: Formally specified in `BUILD_SPECIFICATION.md` but not yet implemented (Phases 6–9). | `[PostgreSQL Run Persistence]` |
+| **Solid Outline (`box`)** | **Implemented Component**: Fully built, tested, and active in the codebase (Phases 0–6). | `[FastAPI API Router]` |
+| **Dashed Outline (`box` with `stroke-dasharray`)** | **Planned Component**: Formally specified in `BUILD_SPECIFICATION.md` but not yet implemented (Phases 7–9). | `[Retrospective Evaluation Benchmark]` |
 | **Solid Arrow (`-->`)** | **Synchronous Control Flow** or Direct Method Invocation. | `Client --> Service` |
 | **Dotted Arrow (`-.->`)** | **Data Dependency**, Injected Protocol, or Cache Query. | `Service -.-> SnapshotCache` |
 | **Thick Double Border** | **Security / Trust Boundary**: Delineates untrusted external input from validated internal state. | `{{Trust Boundary}}` |
@@ -78,7 +78,7 @@ IssueLens follows a disciplined, phase-gated engineering methodology:
 
 ```mermaid
 flowchart LR
-    subgraph Implemented["Implemented Baseline (Phases 0 - 5)"]
+    subgraph Implemented["Implemented Baseline (Phases 0 - 6)"]
         direction TB
         P0["Phase 0: Bootstrap & Health"]
         P1["Phase 1: GitHub Target Ingestion"]
@@ -86,16 +86,16 @@ flowchart LR
         P3["Phase 3: LLM Report Generation"]
         P4["Phase 4: Evidence Validation Guardrails"]
         P5["Phase 5: LangGraph Multi-Round Workflow"]
-        P0 --> P1 --> P2 --> P3 --> P4 --> P5
+        P6["Phase 6: Relational Persistence & Migrations"]
+        P0 --> P1 --> P2 --> P3 --> P4 --> P5 --> P6
     end
 
-    subgraph Planned["Planned Roadmap (Phases 6 - 9)"]
+    subgraph Planned["Planned Roadmap (Phases 7 - 9)"]
         direction TB
-        P6["Phase 6: PostgreSQL Run Persistence"]
         P7["Phase 7: Retrospective Evaluation Benchmark"]
         P8["Phase 8: Document RAG & Hybrid Retrieval"]
         P9["Phase 9: Production Container & Workers"]
-        P6 --> P7 --> P8 --> P9
+        P7 --> P8 --> P9
     end
 
     P5 -.-> P6

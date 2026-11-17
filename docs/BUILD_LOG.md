@@ -920,4 +920,68 @@ All lint checks passed cleanly, Mypy found 0 issues across 48 source files, and 
 - *Alternative*: Always overwrite the LLM's summary with a deterministic issue title summary.
   - *Trade-off*: Discards valuable LLM synthesis and diagnostic insights; preserving the LLM summary while allowing the validator to prefix `[INSUFFICIENT EVIDENCE]` retains analytical value while enforcing truthfulness.
 
+---
+
+### Entry 018: SQLAlchemy Async Greenlet Requirement, Windows Psycopg Event Loop Incompatibility, and Session Rollback Masking Failure States
+- **Date**: 2026-11-17
+- **Phase**: Phase 6 (Persistence)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During the Phase 6 implementation of PostgreSQL persistence, Alembic migrations, and repository integration:
+1. **Missing Greenlet on Test Collection**: Running `pytest` failed with `ModuleNotFoundError: No module named 'greenlet'` triggered by `sqlalchemy.ext.asyncio`.
+2. **Psycopg Async Windows Event Loop Incompatibility**: When running tests or health checks on Windows, async connections to PostgreSQL failed with:
+   `sqlalchemy.exc.InterfaceError: (psycopg.InterfaceError) Psycopg cannot use the 'ProactorEventLoop' to run in async mode. Please use a compatible event loop, for instance by running 'asyncio.run(..., loop_factory=asyncio.SelectorEventLoop(selectors.SelectSelector()))'`.
+3. **Rolled-Back Failure Diagnostics in Database**: In `test_create_investigation_sync_failure_records_failed_status`, an investigation execution failure was expected to persist status `"failed"` and error details to the database. However, the database retained status `"ingested"`, causing subsequent queries to report that the run was never marked as failed.
+
+#### 2. Root Cause
+1. **SQLAlchemy Asyncio Architecture**: SQLAlchemy's async engine uses the Greenlet coroutine context library to bridge synchronous ORM code with async DBAPI drivers. While `sqlalchemy` was installed, `greenlet` was missing because it is an optional extra unless installing `sqlalchemy[asyncio]`.
+2. **Windows ProactorEventLoop vs. Psycopg 3**: Python 3.8+ on Windows defaults to `ProactorEventLoop` (I/O completion ports). Psycopg 3's async socket engine relies on Unix/Winsock `select()`, which is incompatible with the Proactor loop unless `WindowsSelectorEventLoopPolicy` is explicitly configured.
+3. **Transaction Rollback Semantics in FastAPI Dependencies**: In [`src/issuelens/api/routes.py`](../src/issuelens/api/routes.py), the `get_db_session` dependency context manager wrapped requests in `try... yield ... commit ... except: rollback`. When an investigation failed and re-raised an exception to return HTTP 502, the context manager intercepted the exception and rolled back the transaction. This discarded the `update_run_status(status="failed")` call that had occurred in the route handler.
+
+#### 3. Fix
+1. **Dependency Addition**: Added `greenlet>=3.0.0` to [`pyproject.toml`](../pyproject.toml).
+2. **Windows Event Loop Policy & In-Memory SQLite Test Pool**:
+   - In [`src/issuelens/persistence/db.py`](../src/issuelens/persistence/db.py) and [`tests/conftest.py`](../tests/conftest.py), added conditional event loop configuration on Windows: `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())`.
+   - In `db.py`, enabled `StaticPool` for in-memory SQLite URLs (`sqlite+aiosqlite:///:memory:`) so connections share schema and state across sessions during hermetic testing.
+   - Configured `get_default_database_url()` to automatically default to `sqlite+aiosqlite:///:memory:` when `APP_ENV=test`, preventing tests from attempting live network connections to external databases.
+3. **Explicit Failure Status Commits**:
+   - Added `commit()` to [`InvestigationRepositoryProtocol`](../src/issuelens/persistence/repository.py) and [`SQLAlchemyInvestigationRepository`](../src/issuelens/persistence/repository.py).
+   - In [`src/issuelens/api/routes.py`](../src/issuelens/api/routes.py), added `await repo.commit()` inside the `except Exception as exc:` blocks in both `create_investigation` and `execute_investigation` before re-raising. This ensures the failure diagnostic is permanently persisted even when the route error causes the session context manager to exit.
+
+#### 4. Verification
+Ran full static typing, linting, and automated test suite:
+```powershell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest
+```
+**Results**:
+- Ruff: All checks passed cleanly.
+- Mypy: Success: no issues found in 56 source files in strict mode.
+- Pytest: 165 passed in 7.69s.
+
+#### 5. Engineering Lesson
+1. When using framework dependency injection for database transactions with automatic rollback on unhandled exceptions, any diagnostic updates made in route exception handlers (such as marking an entity as `"failed"`) will be rolled back unless explicitly committed before the exception propagates out of the handler.
+2. Async database drivers have platform-specific event loop constraints. Cross-platform backend applications on Windows must detect the OS platform and configure compatible event loop policies.
+3. In-memory SQLite (`:memory:`) creates a separate database per connection unless using `StaticPool`. When testing multi-session workflows in SQLite, always configure `poolclass=StaticPool` with `check_same_thread=False`.
+
+#### 6. Regression Tests
+- [`tests/unit/test_persistence.py`](../tests/unit/test_persistence.py):
+  `test_repository_update_status`,
+  `test_run_survives_restart`,
+  `test_alembic_migrations_from_clean_database`,
+  `test_database_health_probe`.
+- [`tests/unit/test_investigation_api.py`](../tests/unit/test_investigation_api.py):
+  `test_create_investigation_sync_failure_records_failed_status`.
+- [`tests/unit/test_health.py`](../tests/unit/test_health.py):
+  `test_readyz_readiness`.
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Catch exceptions inside `create_investigation` and return 200 with `status="failed"` rather than re-raising.
+  - *Trade-off*: Violates REST conventions; synchronous execution failures should emit appropriate 5xx HTTP status codes while still updating the persistent entity state.
+- *Alternative*: Disable session rollback on exceptions in `get_db_session`.
+  - *Trade-off*: Dangerous; would commit partial or corrupted state on unexpected application crashes. Explicitly committing only the verified status change before re-raising is strictly superior.
+
+
 
