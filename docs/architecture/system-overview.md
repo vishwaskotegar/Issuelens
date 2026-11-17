@@ -68,8 +68,15 @@ flowchart TD
         RepoLayer --> AlembicMigrations
     end
 
-    subgraph PlannedComponents["7. Planned Future Systems (Phases 7, 8, 9)"]
-        EvalHarness["Retrospective Evaluation Benchmark<br/>(Planned Phase 7)"]
+    subgraph EvaluationHarness["7. Evaluation Harness & Retrospective Benchmark (Phase 7)"]
+        EvalRunner["Evaluation Runner CLI<br/><code>run_eval.py</code><br/><code>src/issuelens/evaluation/run_eval.py</code>"]
+        BenchmarkDataset["Curated Benchmark Cases<br/><code>cases.jsonl</code> (20 cases)<br/><code>evals/cases.jsonl</code>"]
+        MetricsEngine["Deterministic Evaluator<br/><code>metrics.py</code><br/><code>src/issuelens/evaluation/metrics.py</code>"]
+        BenchmarkDataset --> EvalRunner
+        EvalRunner --> MetricsEngine
+    end
+
+    subgraph PlannedComponents["8. Planned Future Systems (Phases 8, 9)"]
         DocumentRAG["Doc Chunking & BM25 / Vector RAG<br/>(Planned Phase 8)"]
     end
 
@@ -93,10 +100,11 @@ flowchart TD
     APIRouter -->|"JSON Report"| User
 
     GraphNodes -.->|"Future Doc Retrieval"| DocumentRAG
-    ReportSanitizer -.->|"Future Quality Evaluation"| EvalHarness
+    EvalRunner -->|"Pin Pre-Fix Snapshot"| SnapshotManager
+    EvalRunner -->|"Investigate Target"| ServiceOrchestrator
+    EvalRunner -.->|"Persist Case & Result"| RepoLayer
 
     style PlannedComponents stroke-dasharray: 5 5
-    style EvalHarness stroke-dasharray: 5 5
     style DocumentRAG stroke-dasharray: 5 5
 ```
 
@@ -171,4 +179,4 @@ flowchart TD
 | **LLM Output** | LangChain `.with_structured_output()` schema enforcement. | Multi-turn reasoning with dynamic tool invocation nodes. |
 | **Validation** | Physical file existence, line range, commit, and excerpt match. | Automated test generation against containerized sandboxes (Future). |
 | **Persistence** | PostgreSQL + Alembic relational storage with SQLAlchemy 2.0 (Phase 6). | Optional pgvector extensions for semantic search (Phase 8). |
-| **Evaluation** | Offline hermetic unit & integration test suite (165 tests). | Curated retrospective issue benchmark with metric telemetry (Phase 7). |
+| **Evaluation** | Offline hermetic unit & integration test suite (186 tests) and curated retrospective issue benchmark with leak prevention (Phase 7). | Long-term model drift tracking dashboard and regression telemetry. |
