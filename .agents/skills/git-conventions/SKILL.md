@@ -70,7 +70,25 @@ docs: add comprehensive system architecture blueprints, ADRs, build specificatio
 
 ---
 
-## 3. Windows Sandbox Execution Rules
+## 3. Commit Cadence & Granularity (Atomic Commits)
+
+Always commit the most singular, atomic task achieved under a phase as it is completed. **Never accumulate all changes into a single monolithic commit dump of everything created under that phase.**
+
+A healthy feature branch tells a progressive story of modular, well-bounded increments:
+1. **Domain Models & Schemas**: `feat(scope): add schema models and validation types`
+2. **Core Logic & Engine**: `feat(scope): implement core algorithm or service`
+3. **Unit Tests**: `test(scope): add hermetic unit tests with mocks`
+4. **Integration / CLI / Routes**: `feat(scope): wire up API endpoint or CLI runner`
+5. **Bug Fixes & Boundary Edge Cases**: `fix(scope): handle division by zero in metric calculations`
+6. **Documentation & Mentoring**: `docs(scope): update learning guide, architecture diagrams, and build log`
+
+### Benefits
+- **Reviewability**: Reviewers can inspect incremental logical steps rather than a massive 2,000+ line diff in a single commit.
+- **Bisectability & Reversibility**: If a bug is introduced, `git bisect` and `git revert` can pinpoint and isolate the exact failing commit without rolling back the entire phase.
+
+---
+
+## 4. Windows Sandbox Execution Rules
 
 On Windows environments:
 1. Git operations touching `.git/refs/` or `.git/index.lock` (such as `git branch -m`, `git add`, `git commit`) encounter AppContainer permission restrictions in standard sandbox mode and must run with elevated permissions (`BypassSandbox: true`).

@@ -463,6 +463,13 @@ Every implementation phase and tactical fix must be developed on a dedicated git
 
 Before beginning Phase *N*, the agent or engineer must create and checkout the corresponding `feature/phase-<N>-<description>` branch from `master`.
 
+### Atomic Commit Cadence & Granularity
+
+Every implementation phase must be developed and committed incrementally. The agent or engineer must commit each singular task achieved under a phase as it is completed:
+- **No Monolithic Commit Dumps**: Do not accumulate all changes across models, services, migrations, tests, and documentation into a single commit dump at the end of a phase.
+- **Granular Task Cadence**: Stage and commit the most singular, atomic task achieved (e.g., adding schemas, implementing an algorithm, adding unit tests, fixing an edge case, or updating documentation) with a descriptive Conventional Commit message.
+- **Story-Driven History**: A feature branch must show a clear, progressive narrative of well-bounded commits rather than a single monolithic commit.
+
 ### Phase Execution Protocol & Definition of Done Gates
 
 Every implementation phase must strictly follow a 10-step engineering and documentation protocol before it can be considered complete. The coding agent must never skip steps or leave documentation for a later pass:
@@ -470,7 +477,7 @@ Every implementation phase must strictly follow a 10-step engineering and docume
 0. **Branch Creation**: Create and checkout a dedicated feature branch conforming to `feature/phase-<N>-<description>` before writing any code or configuration.
 1. **Inspect Existing Implementation**: Inspect relevant existing code, configuration, tests, and documentation before proposing or making changes. Identify all impacted modules and potential conflicts.
 2. **Explain Approach Before Coding**: Explain the intended implementation approach, architectural design, and significant trade-offs before writing code. List files to add/edit, dependencies to add, and security/reliability edge cases. Wait for approval if a major architecture decision, paid service, destructive action, or scope expansion is required.
-3. **Implement and Test**: Implement the smallest functional slice and write unit tests with hermetic mocks according to the existing acceptance criteria. Never execute repository code or depend on live external networks.
+3. **Implement, Test, and Commit Incrementally**: Implement the smallest functional slice and unit tests with hermetic mocks according to the existing acceptance criteria. Commit each singular task atomically using Conventional Commits. Never execute repository code or depend on live external networks.
 4. **Update Architecture Documentation**: Update affected diagrams and specifications in `docs/architecture/` (`system-overview.md`, `request-lifecycle.md`, `agent-workflow.md`, `codebase-map.md`, `data-flow-and-trust-boundaries.md`, `testing-and-evaluation.md`) in the same phase as any change that alters system boundaries, data models, or control flows.
 5. **Update Learning Guide (`docs/LEARNING_GUIDE.md`)**: Update the engineering learning guide synchronously during the phase, mentoring a junior developer. For every major feature, document: 1) What it does, 2) How it works step-by-step with real file paths/classes/functions, 3) Implementation decisions, 4) Error handling, 5) Tests and verification commands, 6) Engineering concepts, and 7) Trade-offs.
 6. **Record Architecture Decision Records (`docs/decisions/`)**: When significant architectural, technical, security, data-modeling, or infrastructure decisions are made, create or update numbered ADRs using `docs/decisions/ADR-TEMPLATE.md`. Do not create an ADR for every minor coding choice. If documenting an existing decision whose original rationale was not recorded, label the rationale as reconstructed without fabricating history.

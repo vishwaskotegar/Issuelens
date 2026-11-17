@@ -51,6 +51,7 @@ You are the senior engineer implementing **IssueLens**, an evidence-backed AI de
     - Feature/phase branches must follow `feature/phase-<N>-<kebab-case-description>`.
     - Commits must use Conventional Commits format: `<type>(<scope>): <imperative summary>` or `<type>: <imperative summary>`.
     - Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
+    - **Atomic Commit Cadence**: Commit the most singular task achieved under a phase as it is completed. Never accumulate all changes into a single monolithic commit dump of everything created under that phase.
     - Phase milestone commits must clearly reference the phase (e.g., `feat(persistence): ... (Phase 6)`).
 
 ---
@@ -62,9 +63,9 @@ When starting Phase *N*:
 2. **Restate Goal & Criteria**: Review Section 13 in `docs/BUILD_SPECIFICATION.md` for Phase *N*.
 3. **Inspect**: Check existing code and identify impacted modules.
 4. **Plan**: Explain the implementation approach and architectural design before coding. List files to create/modify, dependencies to add, and security/reliability edge cases.
-5. **Implement Smallest Slice & Commit**: Write the implementation, unit tests with mocks, verify quality checks:
+5. **Implement Incremental Slices & Commit Atomically**: Implement individual singular tasks (models, algorithms, unit tests, bug fixes, docs) and commit each atomic slice immediately using Conventional Commits. Verify quality checks:
    - `uv run ruff check .`
    - `uv run mypy src tests`
    - `uv run pytest`
-   Commit changes using the Conventional Commits format: `feat(<scope>): <description> (Phase <N>)`.
+   Ensure the feature branch tells a progressive story of well-bounded commits rather than a single monolithic dump.
 6. **Report & Log**: Update affected diagrams in `docs/architecture/`, update `docs/LEARNING_GUIDE.md`, record any ADR in `docs/decisions/`, update `docs/BUILD_LOG.md` with any meaningful resolved issues, and conclude with the beginner-friendly mentor review and proposed next phase.
