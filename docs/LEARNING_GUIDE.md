@@ -1155,14 +1155,161 @@ Connecting to PostgreSQL in modern async Python on Windows encounters OS-level e
 
 ---
 
-## Planned Implementation Roadmap (Phases 7 - 9)
+### Feature 7.1: Curated Benchmark Dataset & Retrospective Leak Prevention
 
-The following phases are specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md), but are **[PLANNED]** and have not yet been implemented (Phases 0–6 are fully implemented):
+#### 1. What problem it solves
+When evaluating an AI debugging assistant against historical bug reports, **data contamination (leakage)** is the most critical threat to validity. If the agent is provided the pull request that resolved the bug, the eventual fix commit, or comments discussing the solution, the evaluation is contaminated—the assistant merely copies the known answer. Furthermore, inspecting the codebase at `HEAD` tests a snapshot where the bug no longer exists!
 
-### Phase 7: Evaluation Dataset & Benchmark Harness [PLANNED]
-- **Goal**: Curated dataset of 20-30 resolved public GitHub issues. Measure citation validity, recall@k, and unsupported claims across prompt/model versions while enforcing retrospective leakage protection (withholding fix PR/commits).
-- **Architecture**: `evals/cases.jsonl`, `src/issuelens/evaluation/`.
-- **Criteria**: Automated script emits machine-readable evaluation metrics. See [`docs/architecture/testing-and-evaluation.md`](architecture/testing-and-evaluation.md).
+#### 2. What happens from input to output
+1. The harness loads [`evals/cases.jsonl`](../evals/cases.jsonl) containing 20 curated public Python bugs across Flask, Requests, HTTPX, Pytest, Pydantic, FastAPI, Werkzeug, Urllib3, Rich, etc.
+2. Each case is parsed into a strongly-typed [`EvaluationCaseModel`](../src/issuelens/evaluation/dataset.py#L22).
+3. The model strictly validates:
+   - `target_commit_sha`: A 40-character hexadecimal commit SHA pinned strictly *before* the fix was merged.
+   - `issue_url`: A canonical public GitHub issue URL.
+   - `expected_files`: Repository-relative paths to the buggy source files without directory traversal.
+4. Ground truth answers (`known_resolution`, `expected_files`) remain isolated inside the evaluation harness. The agent is provided only the issue description and the pre-fix snapshot.
+
+#### 3. Which files and functions participate
+- **Source file**: [`src/issuelens/evaluation/dataset.py`](../src/issuelens/evaluation/dataset.py)
+- **Dataset file**: [`evals/cases.jsonl`](../evals/cases.jsonl)
+- **Documentation**: [`evals/README.md`](../evals/README.md)
+- **Core classes & functions**: `EvaluationCaseModel`, `EvaluationDataset`, `load_evaluation_cases()`, `save_evaluation_cases()`.
+
+#### 4. Why the implementation is structured this way
+- **JSON Lines (`.jsonl`) Format**: Each benchmark case is a single JSON line. This allows stream loading, clean line-by-line git diffs, and precise line-number error reporting if a record is corrupted.
+- **Strict Pydantic Validators**: Enforces 40-character hex commit SHAs and relative path sanitization at model creation, rejecting path traversal (`..` or `/`) before snapshots are accessed.
+- **Offline Hermetic Fixture**: Case `CASE-020` maps directly to [`tests/fixtures/sample_repo`](../tests/fixtures/sample_repo), enabling full local verification without requiring live GitHub network connectivity.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Comma-Separated Values (CSV)*:
+  - *Trade-off*: CSV struggles with multiline issue bodies, nested JSON arrays for expected files, and complex quotes.
+- *Alternative: A single giant JSON array*:
+  - *Trade-off*: A syntax error anywhere invalidates the entire file. JSON Lines allows skipping comment lines and pinpointing corrupt lines individually.
+
+#### 6. What can fail and how failures are handled
+- **Non-existent file**: Raises `FileNotFoundError` with clear path diagnostics.
+- **Malformed JSON**: Raises `ValueError` reporting the exact line number.
+- **Duplicate Case IDs**: Rejects duplicate IDs with `ValueError` and line number.
+- **Path Traversal in Expected Files**: Pydantic `field_validator` rejects absolute paths or `..` traversals with `ValidationError`.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_eval_dataset.py`](../tests/unit/test_eval_dataset.py)
+- **Verifications**: Valid model creation, SHA/URL validation errors, path traversal rejection, comments/whitespace handling, and duplicate ID detection.
+- **Run command**:
+  ```powershell
+  uv run --offline pytest tests/unit/test_eval_dataset.py
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- In retrospective evaluations, **the prompt must never contain information that was not available at the moment the bug was reported**. Always pin repository snapshots to the pre-fix commit and double-blind ground truth labels.
+
+---
+
+### Feature 7.2: Deterministic Metrics Engine (Citation Validity, Recall@k, Unsupported Claims)
+
+#### 1. What problem it solves
+Evaluating LLM output using "LLM-as-a-judge" self-ratings is noisy, expensive, and susceptible to sycophancy. More critically, an LLM judge cannot verify whether a cited line range actually exists in a physical repository snapshot. We need deterministic, reproducible mathematical metrics to measure performance.
+
+#### 2. What happens from input to output
+1. Given an [`InvestigationReport`](../src/issuelens/agent/report.py#L126) and ground-truth [`EvaluationCaseModel`](../src/issuelens/evaluation/dataset.py#L22):
+2. **Citation Validity Rate** is computed via [`compute_citation_validity()`](../src/issuelens/evaluation/metrics.py#L23):
+   - Every code citation is verified against physical file bytes in the pinned [`RepoSnapshot`](../src/issuelens/repository/snapshot.py#L79) using [`validate_investigation_report()`](../src/issuelens/agent/validator.py#L257).
+   - Rate = $\frac{\text{valid code citations}}{\text{total code citations}}$ (Benchmark gate: $\ge 95\%$).
+3. **Retrieval Recall@k and Hit@k** are computed via [`compute_recall_at_k()`](../src/issuelens/evaluation/metrics.py#L76):
+   - Compares unique ordered retrieved files against `expected_files` across ranks $k \in \{1, 3, 5, 10\}$.
+   - Recall@k = $\frac{|\text{retrieved files} \cap \text{expected files}|}{|\text{expected files}|}$ (Benchmark gate: $\ge 80\%$ at $k=5$).
+   - Hit@k = $1.0$ if at least one expected buggy file appears in top $k$, else $0.0$.
+4. **Unsupported Claims Count** is computed via [`compute_unsupported_claims()`](../src/issuelens/evaluation/metrics.py#L123):
+   - Counts hypotheses with empty supporting evidence IDs, references to nonexistent evidence IDs, or unverified citations (Benchmark gate: $< 0.5$ per report).
+5. **Root-Cause Alignment** is scored via [`score_root_cause_alignment()`](../src/issuelens/evaluation/metrics.py#L164):
+   - Computes weighted token overlap against `known_resolution` to classify diagnosis into `correct`, `partially_useful`, or `incorrect`.
+6. [`aggregate_evaluation_metrics()`](../src/issuelens/evaluation/metrics.py#L351) aggregates results across all cases, calculates dataset means, evaluates benchmark gates, and compiles failure notes.
+
+#### 3. Which files and functions participate
+- **Source file**: [`src/issuelens/evaluation/metrics.py`](../src/issuelens/evaluation/metrics.py)
+- **Core classes & functions**: `CaseEvaluationMetrics`, `AggregatedEvaluationReport`, `compute_citation_validity()`, `compute_recall_at_k()`, `compute_unsupported_claims()`, `score_root_cause_alignment()`, `aggregate_evaluation_metrics()`.
+
+#### 4. Why the implementation is structured this way
+- **Pure Functional Design**: Metric calculations are deterministic pure functions taking inputs and returning immutable results without side effects or network calls.
+- **Snapshot Byte Verification**: Rather than assuming valid citations, `compute_citation_validity` executes physical byte comparisons against repository snapshots via `read_snippet()`.
+- **Rank-Discounted Alignment**: Evaluates top-ranked hypotheses with higher weight than lower-ranked alternatives.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: LLM-as-a-judge scoring*:
+  - *Trade-off*: Requires paid API tokens, fluctuates between runs, and cannot verify file existence or line spans.
+- *Alternative: Execution-based test suites (SWE-bench)*:
+  - *Trade-off*: Running untrusted repo code in dev environments violates safety boundaries. Deterministic retrieval recall provides safe, zero-execution ground truth.
+
+#### 6. What can fail and how failures are handled
+- **Zero code citations**: Defaults citation validity to `1.0` while recording `total_code_citations=0`.
+- **Empty expected files list**: Defaults Recall@k and Hit@k to `1.0`.
+- **Failed investigation reports**: `compute_evaluation_metrics` emits a failed `CaseEvaluationMetrics` record with zero recall, preserving the failure reason without throwing unhandled exceptions.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_eval_metrics.py`](../tests/unit/test_eval_metrics.py)
+- **Verifications**: Citation validity with/without snapshot, Recall@k and Hit@k across ranks, unsupported claim detection, root-cause scoring, and aggregate metrics.
+- **Run command**:
+  ```powershell
+  uv run --offline pytest tests/unit/test_eval_metrics.py
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- Always decouple the *scoring engine* from the *agent runtime*. By designing metric functions as pure, deterministic transformers, you can unit-test your evaluation harness thoroughly without running slow LLM workflows.
+
+---
+
+### Feature 7.3: Benchmark Runner CLI, Summary Diagnostics, and Result Persistence
+
+#### 1. What problem it solves
+Engineers need a single, reliable command to run evaluation benchmarks, inspect high-level pass/fail gate summaries in their terminal, emit machine-readable JSON artifacts for CI pipelines, and optionally persist run histories into relational databases.
+
+#### 2. What happens from input to output
+1. The developer executes the CLI runner:
+   ```powershell
+   uv run --offline python -m issuelens.evaluation.run_eval --max-cases 5
+   ```
+2. The CLI loads cases from `evals/cases.jsonl` using [`EvaluationDataset`](../src/issuelens/evaluation/dataset.py#L91).
+3. [`EvaluationRunner`](../src/issuelens/evaluation/run_eval.py#L33) executes investigations sequentially, measuring latency and catching unexpected per-case exceptions.
+4. When `--save-db` is specified, each case and its outcome are persisted to the `evaluation_cases` and `evaluation_results` tables via SQLAlchemy.
+5. All results are aggregated into an [`AggregatedEvaluationReport`](../src/issuelens/evaluation/metrics.py#L236).
+6. The runner writes machine-readable results to `evals/results.json` and prints a structured ASCII summary table to stdout showing benchmark gate outcomes.
+
+#### 3. Which files and functions participate
+- **Source file**: [`src/issuelens/evaluation/run_eval.py`](../src/issuelens/evaluation/run_eval.py)
+- **Core classes & functions**: `EvaluationRunner`, `run_evaluation()`, `format_evaluation_summary()`, `main()`.
+- **Persistence models**: `EvaluationCaseRecord`, `EvaluationResultRecord` in [`src/issuelens/persistence/models.py`](../src/issuelens/persistence/models.py).
+
+#### 4. Why the implementation is structured this way
+- **Dependency Injection**: `EvaluationRunner` accepts `service` and `snapshot_resolver` protocols, enabling hermetic unit tests to mock investigation behavior and run in milliseconds.
+- **Cross-Platform Event Loop Policy**: Explicitly activates `WindowsSelectorEventLoopPolicy` on Windows environments to prevent `ProactorEventLoop` socket hangs in restricted environments.
+- **Dual Output Channels**: Provides human-friendly terminal tables for interactive development and structured JSON files for automated regression checks.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Bash/PowerShell driver script*:
+  - *Trade-off*: Brittle argument parsing, hard to integrate with Python ORM models, and poor cross-platform compatibility.
+- *Alternative: Embedding evaluation inside pytest*:
+  - *Trade-off*: Pytest is designed for hermetic pass/fail unit assertions, not multi-minute benchmark runs emitting statistical metric distributions.
+
+#### 6. What can fail and how failures are handled
+- **Investigation Exception**: If an investigation throws (e.g. rate limit or timeout), `evaluate_case` catches the error, sets `status="failed"`, records `error_reason`, and proceeds to the next case.
+- **Database Write Failure**: Database save failures are logged as warnings without aborting the benchmark summary.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_eval_runner.py`](../tests/unit/test_eval_runner.py)
+- **Verifications**: Single case evaluation, failure recovery, database persistence, e2e filtering, and summary formatting.
+- **Run command**:
+  ```powershell
+  uv run --offline pytest tests/unit/test_eval_runner.py
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- A robust evaluation harness must be fault-tolerant: **never let one failing test case crash an entire benchmark run**. Catch case-level exceptions, record them in the failure log, and complete the suite.
+
+---
+
+## Planned Implementation Roadmap (Phases 8 - 9)
+
+The following phases are specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md), but are **[PLANNED]** and have not yet been implemented (Phases 0–7 are fully implemented):
 
 ### Phase 8: Document RAG & Hybrid Retrieval [PLANNED]
 - **Goal**: Chunk documentation, READMEs, and related issues using BM25 / PostgreSQL full-text search. Add pgvector semantic search only if benchmark evaluation demonstrates semantic misses.

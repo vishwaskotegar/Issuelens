@@ -983,5 +983,65 @@ uv run pytest
 - *Alternative*: Disable session rollback on exceptions in `get_db_session`.
   - *Trade-off*: Dangerous; would commit partial or corrupted state on unexpected application crashes. Explicitly committing only the verified status change before re-raising is strictly superior.
 
+---
+
+### Entry 019: Windows Runpy Module Execution Warnings, Asyncio Event Loop Policy, and Snippet Byte Alignment in Evaluation Harness
+- **Date**: 2026-11-18
+- **Phase**: Phase 7 (Evaluation Harness)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During the Phase 7 implementation of the evaluation benchmark dataset, metrics engine, and runner CLI:
+1. **Circular `runpy` Warning on CLI Execution**: When running the evaluation CLI via `python -m issuelens.evaluation.run_eval`, Python emitted:
+   `RuntimeWarning: 'issuelens.evaluation.run_eval' found in sys.modules after import of package 'issuelens.evaluation', but prior to execution of 'issuelens.evaluation.run_eval'; this may result in unpredictable behaviour`.
+2. **ProactorEventLoop Stalls in AppContainer Sandbox**: On Windows environments, `asyncio.run()` in the evaluation CLI stalled because Python defaults to `ProactorEventLoop`, which encounters AppContainer restriction stalls.
+3. **Citation Validity Assertion Failure in Unit Tests**: In `test_compute_citation_validity_with_snapshot`, asserting `valid == 1` unexpectedly failed with `0 == 1` and logged `Invalid citation detected: Excerpt content does not match physical file lines in repository snapshot`.
+
+#### 2. Root Cause
+1. **Circular Package Initialization**: [`src/issuelens/evaluation/__init__.py`](../src/issuelens/evaluation/__init__.py) eagerly imported `EvaluationRunner`, `format_evaluation_summary`, and `run_evaluation` from `issuelens.evaluation.run_eval`. When invoked as `python -m issuelens.evaluation.run_eval`, Python's `runpy` loader first loads the parent package `issuelens.evaluation`, which in turn imported `run_eval` into `sys.modules` before `runpy` executed it as `__main__`.
+2. **Windows ProactorEventLoop**: On Windows Python 3.12, `asyncio.run()` instantiates `ProactorEventLoop` by default. Under restricted Windows sandboxes, Proactor I/O completion ports on loopback or standard stream descriptors block.
+3. **Synthetic Excerpt Mismatch**: The unit test fixture had used synthetic snippet text (`"""Authentication utilities."""\nimport os`) rather than reading authentic line-numbered lines from the fixture file [`tests/fixtures/sample_repo/sample_pkg/auth.py`](../tests/fixtures/sample_repo/sample_pkg/auth.py). IssueLens's citation validator strictly verifies candidate lines against snapshot disk bytes using [`read_snippet()`](../src/issuelens/repository/snippets.py).
+
+#### 3. Fix
+1. **PEP 562 Lazy Loading in Package Root**:
+   - In [`src/issuelens/evaluation/__init__.py`](../src/issuelens/evaluation/__init__.py), replaced eager imports of `run_eval` symbols with PEP 562 `__getattr__` dynamic loading, guarded by `if TYPE_CHECKING:` for static type checkers. This completely eliminates the `runpy` warning.
+2. **Windows Event Loop Policy Configuration**:
+   - In `main()` of [`src/issuelens/evaluation/run_eval.py`](../src/issuelens/evaluation/run_eval.py), added conditional event loop initialization:
+     ```python
+     if sys.platform == "win32":
+         from asyncio import WindowsSelectorEventLoopPolicy
+         asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
+     ```
+3. **Authentic Snippet Extraction in Test Fixtures**:
+   - Updated [`tests/unit/test_eval_metrics.py`](../tests/unit/test_eval_metrics.py) to use `read_snippet(snapshot, "sample_pkg/auth.py", 1, 5)` to extract genuine line-numbered excerpts from the fixture snapshot, ensuring citation validity checks succeed on real bytes.
+
+#### 4. Verification
+Ran complete quality and test verification:
+```powershell
+uv run --offline ruff check src tests
+uv run --offline mypy src tests
+uv run --offline pytest
+uv run --offline python -m issuelens.evaluation.run_eval --max-cases 3 --output evals/results.json
+```
+**Results**:
+- Ruff: All checks passed cleanly.
+- Mypy: Success: no issues found in 63 source files in strict mode.
+- Pytest: 186 passed in 7.95s.
+- CLI: Executed without warnings, emitted formatted ASCII summary table, and wrote structured `evals/results.json`.
+
+#### 5. Engineering Lesson
+1. When designing a Python package that includes executable CLI modules (`python -m pkg.module`), do not eagerly import that module in `pkg/__init__.py`. Use PEP 562 lazy loading to maintain clean module namespaces and avoid `runpy` circular import warnings.
+2. In evidence-backed architectures, test fixtures must practice what the system enforces: never fabricate test citations; always test against authentic snapshot bytes.
+
+#### 6. Regression Tests
+- [`tests/unit/test_eval_dataset.py`](../tests/unit/test_eval_dataset.py) (8 tests)
+- [`tests/unit/test_eval_metrics.py`](../tests/unit/test_eval_metrics.py) (9 tests)
+- [`tests/unit/test_eval_runner.py`](../tests/unit/test_eval_runner.py) (4 tests)
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Move CLI runner out of package to `scripts/run_eval.py`.
+  - *Trade-off*: Violates the suggested repository structure in Section 11 of the Build Specification. PEP 562 lazy loading cleanly resolves the circular warning while keeping the runner cohesive within `issuelens.evaluation`.
+
+
 
 
