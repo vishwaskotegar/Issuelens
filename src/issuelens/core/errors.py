@@ -58,6 +58,13 @@ class SafetyViolationError(IssueLensError):
         super().__init__(message, code="SAFETY_VIOLATION", status_code=400)
 
 
+class AuthenticationError(IssueLensError):
+    """Raised when client API key or authentication token is missing or invalid."""
+
+    def __init__(self, message: str = "Invalid or missing API key") -> None:
+        super().__init__(message, code="UNAUTHORIZED", status_code=401)
+
+
 class LLMOutputValidationError(IssueLensError):
     """Raised when LLM response fails schema or JSON validation."""
 
