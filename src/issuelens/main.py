@@ -68,12 +68,16 @@ def create_app() -> FastAPI:
             exc.code,
             exc.status_code,
         )
+        headers = {}
+        if exc.status_code == 429:
+            headers["Retry-After"] = "60"
         return JSONResponse(
             status_code=exc.status_code,
             content={
                 "error": exc.message,
                 "code": exc.code,
             },
+            headers=headers if headers else None,
         )
 
     @app.exception_handler(Exception)

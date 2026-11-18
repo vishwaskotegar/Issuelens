@@ -1086,6 +1086,42 @@ During Phase 8 implementation:
 - *Alternative*: Leave blank lines inside chunks and allow `end_line` to cover trailing whitespace.
   - *Trade-off*: Would cause physical snippet readers to include trailing empty lines in excerpts, causing subtle mismatch warnings in strict citation checks. Trimming ensures exact, clean boundary alignment.
 
+---
+
+### Entry 021: Mypy SecretStr Type Strictness and Pytest Generator Fixture Annotation in Deployment Hardening
+- **Date**: 2026-11-18
+- **Phase**: Phase 9 (Deployment and Pilot)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During Phase 9 static type checking verification with `uv run mypy src tests`, Mypy reported 6 errors:
+1. `tests/unit/test_deployment_hardening.py:14: error: The return type of a generator function should be "Generator" or one of its supertypes [misc]`
+2. `tests/unit/test_deployment_hardening.py:74: error: Argument "api_key" to "Settings" has incompatible type "str"; expected "SecretStr | None" [arg-type]`
+
+#### 2. Root Cause
+1. **Pydantic SecretStr Strict Type Invariance**: In [`src/issuelens/config.py`](../src/issuelens/config.py), `Settings.api_key` was typed as `SecretStr | None`. While Pydantic automatically coerces raw strings to `SecretStr` at runtime, Mypy in strict mode (`strict = true`) does not allow passing `str` into constructor arguments expecting `SecretStr`.
+2. **Pytest Generator Fixture Type Signature**: The `reset_limiter` fixture used Python's `yield` statement to execute cleanup logic before and after tests, but was annotated with `-> None` instead of `-> Generator[None, None, None]`.
+
+#### 3. Fix
+1. In [`tests/unit/test_deployment_hardening.py`](../tests/unit/test_deployment_hardening.py), wrapped all test API key literals in `SecretStr("production_super_secret")`.
+2. Updated `reset_limiter` fixture signature to `-> Generator[None, None, None]` imported from `collections.abc`.
+
+#### 4. Verification
+- `uv run ruff check .`: Clean (0 errors).
+- `uv run mypy src tests`: Success: no issues found in 71 source files in strict mode.
+- `uv run pytest`: 206 passed in 8.65s.
+
+#### 5. Engineering Lesson
+1. When configuring Pydantic `SecretStr` fields in typed codebases, always instantiate test overrides with `SecretStr("value")` rather than raw strings to satisfy strict static type invariance.
+2. Generator fixtures in pytest that use `yield` must be typed with `collections.abc.Generator[YieldType, SendType, ReturnType]`.
+
+#### 6. Regression Tests
+- [`tests/unit/test_deployment_hardening.py`](../tests/unit/test_deployment_hardening.py)
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Allow `str | SecretStr | None` in `Settings.api_key`.
+  - *Trade-off*: Exposes raw strings to accidental printing or logging, weakening secret redaction. Requiring `SecretStr` guarantees secrets are never leaked in unmasked form.
+
 
 
 

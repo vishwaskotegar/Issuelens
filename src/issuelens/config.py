@@ -103,6 +103,22 @@ class Settings(BaseSettings):
         description="GitHub personal access token for higher rate limits",
     )
 
+    # API Security and Rate Limiting
+    api_key: SecretStr | None = Field(
+        default=None,
+        description="Static API key required to access /v1/ routes when authentication is enabled",
+    )
+    auth_required: bool = Field(
+        default=False,
+        description="Whether API key authentication is strictly enforced on /v1/ endpoints",
+    )
+    rate_limit_per_minute: int = Field(
+        default=60,
+        ge=1,
+        le=10_000,
+        description="Maximum allowed requests per minute per client IP or API key",
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
