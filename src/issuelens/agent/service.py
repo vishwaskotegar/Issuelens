@@ -209,6 +209,7 @@ class InvestigationService:
             snapshot=active_snapshot,
             llm_client=self.llm_client,
             settings=self.settings,
+            issue_context=context,
         )
         graph = create_investigation_graph(nodes)
 

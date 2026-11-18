@@ -76,8 +76,18 @@ flowchart TD
         EvalRunner --> MetricsEngine
     end
 
-    subgraph PlannedComponents["8. Planned Future Systems (Phases 8, 9)"]
-        DocumentRAG["Doc Chunking & BM25 / Vector RAG<br/>(Planned Phase 8)"]
+    subgraph DocumentRetrieval["8. Document RAG & Hybrid Retrieval (Implemented Phase 8)"]
+        DocRetriever["Document Retriever<br/><code>DocumentRetriever</code><br/><code>src/issuelens/retrieval/documents.py</code>"]
+        Chunker["Heading & Line Chunker<br/><code>chunk_markdown()</code><br/><code>src/issuelens/retrieval/chunking.py</code>"]
+        BM25Engine["Okapi BM25 Lexical Engine<br/><code>BM25Index</code><br/><code>src/issuelens/retrieval/lexical.py</code>"]
+        HybridEngine["Hybrid Search & RRF<br/><code>HybridSearchEngine</code><br/><code>src/issuelens/retrieval/hybrid.py</code>"]
+        DocRetriever --> Chunker
+        DocRetriever --> HybridEngine
+        HybridEngine --> BM25Engine
+    end
+
+    subgraph PlannedComponents["9. Planned Future Systems (Phase 9)"]
+        DeploymentPilot["Containerized Deployment & Pilot Hardening<br/>(Planned Phase 9)"]
     end
 
     User -->|"POST /v1/investigations<br/>{issue_url}"| APIRouter
@@ -99,13 +109,14 @@ flowchart TD
     RepoLayer -->|"Persist SQL"| PostgresDB
     APIRouter -->|"JSON Report"| User
 
-    GraphNodes -.->|"Future Doc Retrieval"| DocumentRAG
+    GraphNodes -->|"Search Query"| DocRetriever
+    DocRetriever -->|"EvidenceItem (doc)"| GraphNodes
     EvalRunner -->|"Pin Pre-Fix Snapshot"| SnapshotManager
     EvalRunner -->|"Investigate Target"| ServiceOrchestrator
     EvalRunner -.->|"Persist Case & Result"| RepoLayer
 
     style PlannedComponents stroke-dasharray: 5 5
-    style DocumentRAG stroke-dasharray: 5 5
+    style DeploymentPilot stroke-dasharray: 5 5
 ```
 
 ---

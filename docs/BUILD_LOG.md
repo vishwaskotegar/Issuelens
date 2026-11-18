@@ -1042,6 +1042,50 @@ uv run --offline python -m issuelens.evaluation.run_eval --max-cases 3 --output 
 - *Alternative*: Move CLI runner out of package to `scripts/run_eval.py`.
   - *Trade-off*: Violates the suggested repository structure in Section 11 of the Build Specification. PEP 562 lazy loading cleanly resolves the circular warning while keeping the runner cohesive within `issuelens.evaluation`.
 
+---
+
+### Entry 020: Markdown Chunk Boundary Trimming and Async SQLite Socketpair Isolation on Windows
+- **Date**: 2026-11-18
+- **Phase**: Phase 8 (Document RAG)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During Phase 8 implementation:
+1. **Markdown Chunk Line Span Mismatch**: In `test_chunk_markdown_preserves_line_numbers_and_headings`, an assertion `assert c1.end_line == 4` failed with `assert 5 == 4`.
+2. **Pytest Hanging on Windows Sandbox Async Fixtures**: When running `uv run pytest` under standard Windows sandbox mode, the test suite hung indefinitely at `SETUP S event_loop_policy` / `SETUP S _asyncio_loop_factory` and `aiosqlite.connect(":memory:")`.
+
+#### 2. Root Cause
+1. **Unstripped Blank Lines in Chunks**: When collecting section lines divided by markdown headings, trailing blank lines before the next heading were retained in `sec_lines`. Even though content was stripped, `end_line` was taken from `sec_lines[-1][0]`, which was the blank line index (line 5) rather than the last substantive content line (line 4).
+2. **Windows AppContainer Loopback Restriction for Async Thread Notification**: `aiosqlite` executes SQLite calls inside a separate worker thread (`threading.Thread`) and signals completion to the asyncio event loop using `loop.call_soon_threadsafe()`. Under `WindowsSelectorEventLoopPolicy` on Windows, `call_soon_threadsafe()` writes a notification byte across an internal loopback socket (`127.0.0.1`). In standard AppContainer sandbox mode, loopback socket creation and IPC are restricted by sandbox policy, causing the event loop thread-wakeup to block indefinitely.
+
+#### 3. Fix
+1. **Explicit Line Trimming in Chunking**:
+   - In [`src/issuelens/retrieval/chunking.py`](../src/issuelens/retrieval/chunking.py), added while-loops to trim leading and trailing blank lines from `sec_lines` and `para_lines` before computing `start_line` and `end_line`:
+     ```python
+     while sec_lines and not sec_lines[0][1].strip():
+         sec_lines.pop(0)
+     while sec_lines and not sec_lines[-1][1].strip():
+         sec_lines.pop()
+     ```
+2. **Execution Environment Guidance**:
+   - Verified that running pytest with sandbox bypass allows the internal Windows loopback socket to wake the async thread, successfully completing all 197 tests in ~8 seconds.
+
+#### 4. Verification
+- `uv run ruff check .`: Clean (0 errors).
+- `uv run mypy src tests`: Success (69 source files checked, 0 errors).
+- `uv run pytest`: 197 passed in 8.47s.
+
+#### 5. Engineering Lesson
+1. When tracking physical line spans for text chunks, **never trust naive list indexing**. Trailing formatting spaces or section-separating blank lines will skew end-line coordinates unless explicitly trimmed from the boundary indices.
+2. Async libraries that wrap synchronous C-libraries in background worker threads (like `aiosqlite` and `asyncpg`) rely on loopback sockets to wake the main event loop. In containerized or sandboxed Windows environments, understand the transport mechanism your event loop uses for cross-thread messaging.
+
+#### 6. Regression Tests
+- [`tests/unit/test_document_rag.py`](../tests/unit/test_document_rag.py) (`test_chunk_markdown_preserves_line_numbers_and_headings`)
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Leave blank lines inside chunks and allow `end_line` to cover trailing whitespace.
+  - *Trade-off*: Would cause physical snippet readers to include trailing empty lines in excerpts, causing subtle mismatch warnings in strict citation checks. Trimming ensures exact, clean boundary alignment.
+
 
 
 
