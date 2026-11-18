@@ -1441,14 +1441,160 @@ The LangGraph investigation agent needs a high-level component that automaticall
 
 ---
 
-## Planned Implementation Roadmap (Phase 9)
+---
 
-The following phase is specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md), and is **[PLANNED]** (Phases 0–8 are fully implemented):
+## Phase 9: Deployment, Pilot & Production Hardening (Implemented)
 
-### Phase 9: Deployment, Pilot & Production Readiness [PLANNED]
-- **Goal**: Containerization with Docker, authenticated API endpoints, rate limiting, and observability.
-- **Architecture**: `Dockerfile`, production configs.
-- **Criteria**: Fully deployable container with security hardening and health checks.
+Phase 9 completes the MVP implementation roadmap by transitioning IssueLens into a secure, containerized, and production-ready service. In Phase 9, we deliver multi-stage Docker containerization running under an unprivileged user, docker-compose orchestration with persistent volume management, constant-time API token authentication, and thread-safe sliding-window rate limiting to protect against abuse and quota depletion.
+
+---
+
+### Feature 9.1: Multi-Stage Hardened Docker Container & Compose Orchestration
+
+#### 1. What problem it solves
+Deploying Python applications with external tool dependencies (such as ripgrep) directly onto bare-metal hosts causes environment drift, dependency collisions, and major security vulnerabilities if executed as the `root` superuser.
+
+#### 2. What happens from input to output
+1. The developer or CI system runs `docker compose build` or `docker build -t issuelens:latest .`.
+2. In Stage 1 (`builder`), `uv` compiles a dedicated virtual environment in `/build/.venv`, installing all project dependencies into a clean build layer.
+3. In Stage 2 (`runtime`), a clean Debian Bookworm slim image installs minimal system utilities: `curl` (for healthchecks), `ripgrep` (for fast deterministic lexical search), and CA certificates.
+4. The container creates a dedicated unprivileged system user and group `issuelens:issuelens` with UID/GID 1000.
+5. Application files, virtual environment, and snapshot cache directories are set up and owned by `issuelens`.
+6. Root privileges are dropped via `USER issuelens:issuelens`.
+7. `HEALTHCHECK` periodically probes `http://localhost:8000/healthz`.
+8. `docker-compose.yml` orchestrates `issuelens-app` alongside `postgres:16-alpine`, configuring health dependencies (`depends_on: db: condition: service_healthy`) and persistent volumes.
+
+#### 3. Which files and functions participate
+- **Source files**: [`Dockerfile`](../Dockerfile), [`docker-compose.yml`](../docker-compose.yml), [`.dockerignore`](../.dockerignore).
+
+#### 4. Why the implementation is structured this way
+- **Multi-Stage Build**: Keeps the runtime image lightweight (~180MB) and strips out build tooling (`gcc`, headers, build-backends), reducing the attack surface.
+- **Least-Privilege Non-Root User**: Even if an unexpected vulnerability occurred in an untrusted dependency, the container cannot write to system binaries or escape container namespace isolation.
+- **Container Health Probes**: Docker and Kubernetes engines can automatically detect deadlocks and restart unhealthy containers.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Running as root in a single-stage container*:
+  - *Trade-off*: Easy to configure, but violates basic CIS container security benchmarks and risks host system compromise.
+
+#### 6. What can fail and how failures are handled
+- **Database Cold Start**: When starting via `docker compose up`, `app` delays startup until `db` passes its internal `pg_isready` healthcheck.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_deployment_hardening.py`](../tests/unit/test_deployment_hardening.py)
+- **Verifications**: Non-root user directives, multi-stage builder/runtime blocks, healthcheck command validity, compose service parsing.
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_deployment_hardening.py -k test_docker
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- **Never run production containers as root**. Creating a dedicated unprivileged user (`USER 1000:1000`) is one of the simplest and most effective security controls you can implement.
+
+---
+
+### Feature 9.2: Constant-Time API Token Authentication
+
+#### 1. What problem it solves
+Publicly accessible investigation endpoints must be protected from unauthorized access, accidental exposure of internal endpoints, and third-party quota exhaustion.
+
+#### 2. What happens from input to output
+1. A client initiates a request to `/v1/` routes (e.g. `POST /v1/investigations`).
+2. FastAPI executes the [`verify_api_key`](../src/issuelens/api/security.py#L74) dependency.
+3. If `auth_required` is disabled and no `api_key` is configured, the request proceeds unauthenticated.
+4. When authentication is active:
+   - The handler extracts the token from the `X-API-Key` header or standard `Authorization: Bearer <token>`.
+   - If missing, it raises [`AuthenticationError`](../src/issuelens/core/errors.py#L62) returning HTTP 401 Unauthorized.
+   - It compares candidate and expected keys using Python's `secrets.compare_digest(candidate, expected)`.
+   - If mismatch, it logs a warning with the client's IP and raises 401 Unauthorized.
+   - If match, it permits the request to proceed.
+5. Operational probes (`/healthz`, `/readyz`, `/`) remain unauthenticated so monitoring tools can probe health freely.
+
+#### 3. Which files and functions participate
+- **Source files**: [`src/issuelens/api/security.py`](../src/issuelens/api/security.py), [`src/issuelens/api/routes.py`](../src/issuelens/api/routes.py), [`src/issuelens/config.py`](../src/issuelens/config.py).
+- **Key symbols**: `verify_api_key()`, `AuthenticationError`, `Settings.auth_required`, `Settings.api_key`.
+
+#### 4. Why the implementation is structured this way
+- **Timing Attack Defense**: Standard string comparison (`==`) terminates at the first differing byte, allowing attackers to measure microscopic timing variations to guess keys byte-by-byte. `secrets.compare_digest` runs in constant time regardless of where differences occur.
+- **Selective Route Protection**: Only analytical `/v1/` routes require credentials; system liveness `/healthz` stays open for orchestrators.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: OAuth2 with full JWT token issuance*:
+  - *Trade-off*: Adds substantial complexity (JWKS rotation, token refresh, authorization servers) disproportionate to the MVP pilot requirements.
+
+#### 6. What can fail and how failures are handled
+- **Unset Server Secret**: If auth is requested but the administrator omitted `API_KEY` from configuration, the handler raises 401 with an internal error log.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_deployment_hardening.py`](../tests/unit/test_deployment_hardening.py)
+- **Verifications**: Missing keys, valid X-API-Key, valid Bearer token, invalid key rejection, public probe access.
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_deployment_hardening.py -k test_api_auth
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- Always use **`secrets.compare_digest`** whenever comparing passwords, tokens, or hashes. Never use standard `==` operators for secret comparisons.
+
+---
+
+### Feature 9.3: Thread-Safe Sliding-Window Rate Limiting
+
+#### 1. What problem it solves
+Preventing abusive clients, runaway CI loops, and malicious bots from flooding the investigation service with concurrent requests, protecting both system memory and upstream LLM / GitHub API rate limits.
+
+#### 2. What happens from input to output
+1. An incoming HTTP request arrives at a protected endpoint.
+2. The [`enforce_rate_limit`](../src/issuelens/api/security.py#L112) dependency identifies the client:
+   - Checks `X-Forwarded-For` for upstream reverse proxy IP headers.
+   - Falls back to direct client socket IP address (`request.client.host`).
+3. [`RateLimiter`](../src/issuelens/api/security.py#L18) acquires an internal thread lock and prunes timestamps older than 60 seconds.
+4. If the number of requests in the sliding window meets or exceeds `Settings.rate_limit_per_minute` (default: 60):
+   - Computes exact `retry_after` seconds until the earliest request expires from the window.
+   - Raises [`RateLimitExceededError`](../src/issuelens/core/errors.py#L40).
+5. The global exception handler returns HTTP 429 Too Many Requests with a `Retry-After` header.
+6. If under the limit, appends current monotonic time and allows request execution.
+
+#### 3. Which files and functions participate
+- **Source files**: [`src/issuelens/api/security.py`](../src/issuelens/api/security.py), [`src/issuelens/main.py`](../src/issuelens/main.py).
+- **Key symbols**: `RateLimiter`, `enforce_rate_limit()`, `get_client_identifier()`, `RateLimitExceededError`.
+
+#### 4. Why the implementation is structured this way
+- **Sliding-Window over Fixed-Window**: Fixed-window counters suffer from the "boundary burst" flaw (e.g. sending 60 requests at 00:59 and 60 at 01:00 sends 120 requests in 2 seconds). Sliding windows evaluate a continuous rolling 60-second window.
+- **`time.monotonic()`**: Immune to system clock adjustments (NTP syncs or manual time changes).
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Token bucket with Redis*:
+  - *Trade-off*: Ideal for multi-container clusters, but adds an extra infrastructure dependency for single-container or pilot deployments.
+
+#### 6. What can fail and how failures are handled
+- **Proxy Spoofing**: `get_client_identifier` extracts only the leftmost (client-originating) IP from `X-Forwarded-For`.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_deployment_hardening.py`](../tests/unit/test_deployment_hardening.py)
+- **Verifications**: Sliding window limit enforcement, 429 status code, `Retry-After` response header, per-client partition.
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_deployment_hardening.py -k test_rate_limit
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- Use **`time.monotonic()`** instead of `time.time()` for all latency, rate limiting, and timeout calculations. `time.time()` can jump backwards during NTP clock synchronization, causing rate limit calculations to behave erratically.
+
+---
+
+## 4. Implementation Complete: All Phases (0–9) Delivered
+
+The complete end-to-end IssueLens architecture specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md) is now fully implemented across all 10 engineering milestones:
+- **Phase 0**: Repository bootstrap, FastAPI skeleton, strict type checking, and linting.
+- **Phase 1**: GitHub issue ingestion, URL parsing, SSRF defense, and rate-limit handling.
+- **Phase 2**: Bounded repository snapshots, dual-engine ripgrep search, and AST symbols.
+- **Phase 3**: Structured report generation, XML injection defense, and LLM client adapters.
+- **Phase 4**: Deterministic citation validation, physical disk byte verification, and LRU cache.
+- **Phase 5**: LangGraph multi-round cyclic state machine, tool tracing, and loop caps.
+- **Phase 6**: PostgreSQL schema, Alembic async migrations, and repository pattern.
+- **Phase 7**: Retrospective evaluation benchmark dataset, deterministic metrics, and runner CLI.
+- **Phase 8**: Document RAG, heading-preserving chunking, BM25, and hybrid Reciprocal Rank Fusion.
+- **Phase 9**: Production containerization, non-root execution, API token auth, and rate limiting.
 
 ---
 

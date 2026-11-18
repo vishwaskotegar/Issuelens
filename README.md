@@ -63,6 +63,26 @@ IssueLens is an evidence-backed AI debugging assistant for public GitHub bug rep
 - Operational readiness probe (`GET /readyz`) with automated database connectivity check (`SELECT 1`) and credential redaction.
 - Hermetic test suite running offline against in-memory SQLite with zero external network dependencies.
 
+### Phase 7: Evaluation Harness & Retrospective Benchmark (Complete)
+- Curated retrospective benchmark dataset (`evals/cases.jsonl`) spanning 20 real public Python bug reports.
+- Leakage prevention withholding post-fix commits and resolution pull requests from agent input.
+- Deterministic metrics engine (`compute_citation_validity`, `compute_recall_at_k`, `compute_unsupported_claims`).
+- Automated CLI runner (`python -m issuelens.evaluation.run_eval`) emitting machine-readable results (`evals/results.json`).
+
+### Phase 8: Document RAG & Hybrid Retrieval (Complete)
+- Heading-preserving markdown chunker (`chunk_markdown`, `chunk_issue_context`) maintaining exact 1-indexed line spans and SHA-256 content hashes.
+- Pure-Python Okapi BM25 lexical ranking engine with Robertson-Spärck Jones IDF and term saturation parameters.
+- Hybrid search engine combining lexical BM25 and dense vector embeddings using Reciprocal Rank Fusion ($k=60$) with graceful fallback.
+- Snapshot document retriever (`DocumentRetriever`) discovering and indexing `README.md`, `docs/`, and issue context.
+- Full integration into LangGraph agent nodes (`retrieve_initial`, `retrieve_followup`) providing complementary documentation evidence.
+
+### Phase 9: Deployment, Pilot & Production Hardening (Complete)
+- Multi-stage production `Dockerfile` with non-root user (`issuelens:issuelens`, UID 1000), `ripgrep` install, and automated healthcheck probe.
+- Multi-service `docker-compose.yml` orchestrating FastAPI application alongside PostgreSQL 16 Alpine with persistent volumes and health dependencies.
+- Constant-time API token authentication (`verify_api_key`) via `X-API-Key` or `Authorization: Bearer <token>` using `secrets.compare_digest`.
+- Thread-safe sliding-window rate limiter (`RateLimiter`, `enforce_rate_limit`) enforcing requests per minute per IP, returning HTTP 429 and `Retry-After` header.
+- Unauthenticated public operational probes (`/healthz`, `/readyz`) for cloud orchestrators and load balancers.
+
 ---
 
 ## Getting Started
@@ -111,6 +131,25 @@ Start the local development server:
 ```bash
 uv run uvicorn issuelens.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+### Running with Docker Compose (Production Stack)
+
+To run the complete production-ready stack (FastAPI app + PostgreSQL 16) with health checks:
+```bash
+# Build and run containers in background
+docker compose up -d --build
+
+# View container logs
+docker compose logs -f app
+```
+
+### Authentication & Rate Limiting
+
+When running in production or when `AUTH_REQUIRED=true` is set:
+- Provide your API key in every `/v1/` request via header:
+  `X-API-Key: your_secret_api_key` or `Authorization: Bearer your_secret_api_key`
+- Requests exceeding `RATE_LIMIT_PER_MINUTE` (default: 60) receive an HTTP `429 Too Many Requests` response with a `Retry-After: <seconds>` header.
+- Operational probes (`GET /healthz` and `GET /readyz`) remain unauthenticated for container orchestrators.
 
 ### Endpoints
 - **Liveness probe**: `GET http://127.0.0.1:8000/healthz`
