@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   app:
     build:
@@ -9,8 +7,10 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    entrypoint: []
+    command: sh -c "alembic upgrade head && python -m uvicorn issuelens.main:app --host 0.0.0.0 --port 8000"
     environment:
-      - APP_ENV=production
+      - APP_ENV=local
       - LOG_LEVEL=INFO
       - DATABASE_URL=postgresql+psycopg://issuelens:issuelens_pass@db:5432/issuelens
       - SNAPSHOT_CACHE_DIR=/app/.cache/issuelens/snapshots
@@ -40,7 +40,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U issuelens -d issuelens"]
+      test: [ "CMD-SHELL", "pg_isready -U issuelens -d issuelens" ]
       interval: 5s
       timeout: 5s
       retries: 5

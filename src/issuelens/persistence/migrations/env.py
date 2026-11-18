@@ -29,7 +29,7 @@ def get_url() -> str:
     cli_url = config.get_main_option("sqlalchemy.url")
     settings = get_settings()
     app_url = get_default_database_url(settings)
-    url = cli_url or app_url
+    url = cli_url if (cli_url and cli_url.strip()) else app_url
     return normalize_database_url(url)
 
 
@@ -85,4 +85,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-

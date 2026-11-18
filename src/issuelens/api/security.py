@@ -87,10 +87,14 @@ def verify_api_key(
 ) -> str | None:
     """Verify API token from X-API-Key or Authorization Bearer header.
 
-    If auth_required is False and no api_key is configured, requests proceed unauthenticated.
+    If auth_required is False, requests proceed unauthenticated.
     """
-    if not settings.auth_required and settings.api_key is None:
+    if not settings.auth_required:
         return None
+
+    if settings.api_key is None or not settings.api_key.get_secret_value().strip():
+        logger.error("Authentication requested but server has no API_KEY configured in Settings")
+        raise AuthenticationError("API authentication is enabled on server but no API_KEY is set.")
 
     candidate_key = x_api_key
 
@@ -104,10 +108,6 @@ def verify_api_key(
         raise AuthenticationError(
             "API key required. Provide via 'X-API-Key' header or 'Authorization: Bearer <token>'."
         )
-
-    if settings.api_key is None:
-        logger.error("Authentication requested but server has no API_KEY configured in Settings")
-        raise AuthenticationError("API authentication is enabled on server but no API_KEY is set.")
 
     expected_key = settings.api_key.get_secret_value()
     if not secrets.compare_digest(candidate_key, expected_key):

@@ -59,13 +59,24 @@ def test_rate_limiter_sliding_window_logic() -> None:
 
 
 def test_api_auth_disabled_by_default() -> None:
-    """Verify endpoints work unauthenticated when auth_required=False and api_key=None."""
+    """Verify endpoints work unauthenticated when auth_required=False."""
+    custom_settings = Settings(
+        app_env="local",
+        auth_required=False,
+        api_key=SecretStr(""),
+    )
     app = create_app()
+    app.dependency_overrides[get_settings] = lambda: custom_settings
     client = TestClient(app)
 
     response = client.get("/healthz")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+    # /v1/ endpoints should also be accessible without auth header when auth_required=False
+    v1_resp = client.get("/v1/investigations/inv_missing123")
+    assert v1_resp.status_code == 404
+    assert v1_resp.json()["code"] == "NOT_FOUND"
 
 
 def test_health_and_readiness_remain_public_when_auth_enabled() -> None:

@@ -12,18 +12,19 @@ FROM python:3.12-slim-bookworm AS builder
 # Install uv from the official Astral binary
 COPY --from=ghcr.io/astral-sh/uv:0.4.29 /uv /uvx /bin/
 
-WORKDIR /build
+# Build directly in /app so virtualenv shebangs match the runtime path
+WORKDIR /app
 
 # Copy project specification files for dependency resolution
 COPY pyproject.toml README.md ./
 
-# Compile virtual environment with pinned dependencies
-RUN uv venv /build/.venv && \
-    uv pip install --no-cache -r pyproject.toml
+# Compile virtual environment at /app/.venv with pinned dependencies
+RUN uv venv /app/.venv && \
+    uv pip install --python /app/.venv --no-cache -r pyproject.toml
 
-# Copy application source code and install project into venv
-COPY src/ /build/src/
-RUN uv pip install --no-cache --no-deps -e .
+# Copy application source code and install project into venv (standard non-editable)
+COPY src/ /app/src/
+RUN uv pip install --python /app/.venv --no-cache --no-deps .
 
 # ------------------------------------------------------------------------------
 # Stage 2: Minimal hardened runtime image
@@ -45,7 +46,7 @@ RUN groupadd -g 1000 issuelens && \
 WORKDIR /app
 
 # Copy compiled virtualenv and application from builder
-COPY --from=builder --chown=issuelens:issuelens /build/.venv /app/.venv
+COPY --from=builder --chown=issuelens:issuelens /app/.venv /app/.venv
 COPY --chown=issuelens:issuelens src/ /app/src/
 COPY --chown=issuelens:issuelens pyproject.toml README.md alembic.ini /app/
 
@@ -70,5 +71,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/healthz || exit 1
 
-# Production application entrypoint via Uvicorn
-ENTRYPOINT ["uvicorn", "issuelens.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Production application entrypoint via Uvicorn module
+ENTRYPOINT ["python", "-m", "uvicorn", "issuelens.main:app", "--host", "0.0.0.0", "--port", "8000"]
