@@ -17,6 +17,7 @@ from issuelens.api.schemas import (
     IssueIngestResponse,
     ReadinessResponse,
 )
+from issuelens.api.security import enforce_rate_limit, verify_api_key
 from issuelens.config import Settings, get_settings
 from issuelens.core.errors import ResourceNotFoundError
 from issuelens.github.client import GitHubClient, GitHubClientProtocol
@@ -28,6 +29,10 @@ from issuelens.persistence.repository import (
 )
 
 router = APIRouter()
+v1_router = APIRouter(
+    prefix="/v1",
+    dependencies=[Depends(verify_api_key), Depends(enforce_rate_limit)],
+)
 
 
 def get_github_client(
@@ -107,8 +112,8 @@ async def get_readiness(
     )
 
 
-@router.post(
-    "/v1/issues/ingest",
+@v1_router.post(
+    "/issues/ingest",
     response_model=IssueIngestResponse,
     tags=["GitHub Ingestion"],
     summary="Ingest public GitHub issue",
@@ -138,8 +143,8 @@ async def ingest_issue(
     )
 
 
-@router.post(
-    "/v1/investigations",
+@v1_router.post(
+    "/investigations",
     response_model=InvestigationCreateResponse,
     status_code=status.HTTP_201_CREATED,
     tags=["Investigations"],
@@ -243,8 +248,8 @@ async def execute_investigation(
     )
 
 
-@router.get(
-    "/v1/investigations/{run_id}",
+@v1_router.get(
+    "/investigations/{run_id}",
     response_model=InvestigationStatusResponse,
     tags=["Investigations"],
     summary="Fetch investigation run status",
@@ -273,3 +278,7 @@ async def get_investigation_status(
         report=report,
         error=run.error_message,
     )
+
+
+# Mount versioned API routes under the operational router
+router.include_router(v1_router)
