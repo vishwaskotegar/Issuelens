@@ -39,6 +39,13 @@ flowchart TD
         ReportModels["report.py"]
     end
 
+    subgraph Retrieval["issuelens.retrieval (Document RAG & Hybrid Retrieval)"]
+        Chunking["chunking.py"]
+        Lexical["lexical.py"]
+        Hybrid["hybrid.py"]
+        Documents["documents.py"]
+    end
+
     subgraph Repository["issuelens.repository (Code Context Engine)"]
         Snapshot["snapshot.py"]
         CodeSearch["code_search.py"]
@@ -77,9 +84,14 @@ flowchart TD
     Evaluation --> Core
 
     Agent --> Repository
+    Agent --> Retrieval
     Agent --> GitHub
     Agent --> Config
     Agent --> Core
+
+    Retrieval --> Repository
+    Retrieval --> GitHub
+    Retrieval --> Core
 
     Repository --> Config
     Repository --> Core
@@ -147,6 +159,10 @@ issuelens/
 | [`src/issuelens/repository/code_search.py`](../../src/issuelens/repository/code_search.py) | [`search_code()`](../../src/issuelens/repository/code_search.py), `select_search_terms`, `term_weight`, `classify_path`, `find_ripgrep_executable`, `_search_with_python_fallback`, [`CodeHit`](../../src/issuelens/repository/code_search.py) | Dual-engine lexical code search with deterministic relevance ranking, automatic fallback, AST symbol enrichment, and per-file result budgets. |
 | [`src/issuelens/repository/python_symbols.py`](../../src/issuelens/repository/python_symbols.py) | [`parse_python_symbols()`](../../src/issuelens/repository/python_symbols.py#L107), `find_enclosing_symbol` | Pure AST visitor extracting classes and functions with 1-indexed line spans without execution. |
 | [`src/issuelens/repository/snippets.py`](../../src/issuelens/repository/snippets.py) | [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7), [`read_snippet_with_bounds()`](../../src/issuelens/repository/snippets.py) | Safe line-numbered snippet extractor with boundary clamping, context padding, and bounds verification. |
+| [`src/issuelens/retrieval/chunking.py`](../../src/issuelens/retrieval/chunking.py) | `DocumentChunk`, `chunk_markdown`, `chunk_issue_context` | Heading-preserving markdown and issue text chunker with 1-indexed line spans and SHA-256 hashes. |
+| [`src/issuelens/retrieval/lexical.py`](../../src/issuelens/retrieval/lexical.py) | `BM25Index`, `tokenize`, `DEFAULT_STOP_WORDS` | Deterministic Okapi BM25 index with Robertson-Spärck Jones IDF and term saturation parameters. |
+| [`src/issuelens/retrieval/hybrid.py`](../../src/issuelens/retrieval/hybrid.py) | `HybridSearchEngine`, `DenseEmbedderProtocol`, `reciprocal_rank_fusion` | Reciprocal Rank Fusion (k=60) combining lexical BM25 and dense vector rankings with safe fallback. |
+| [`src/issuelens/retrieval/documents.py`](../../src/issuelens/retrieval/documents.py) | `DocumentRetriever` | Repository snapshot documentation discoverer, index builder, and EvidenceItem generator. |
 | [`src/issuelens/persistence/models.py`](../../src/issuelens/persistence/models.py) | `Base`, `InvestigationRun`, `EvidenceItem`, `Hypothesis`, `InvestigationReportRecord`, `EvaluationCase`, `EvaluationResult` | Declarative SQLAlchemy 2.0 ORM models mapping relational tables and cascading foreign keys. |
 | [`src/issuelens/persistence/db.py`](../../src/issuelens/persistence/db.py) | `init_engine`, `get_engine`, `get_session_factory`, `get_db_session`, `check_database_health`, `create_all_tables` | Async database engine manager, session lifecycle, connection string normalizer, and `/readyz` health probe. |
 | [`src/issuelens/persistence/repository.py`](../../src/issuelens/persistence/repository.py) | `InvestigationRepositoryProtocol`, `SQLAlchemyInvestigationRepository` | Domain repository handling transactional persistence of runs, reports, evidence items, and hypotheses. |
@@ -178,7 +194,11 @@ When tasked with altering or extending IssueLens behavior, consult this lookup t
 | **Adjust snapshot cache storage limits** | [`src/issuelens/config.py`](../../src/issuelens/config.py), [`.env.example`](../../.env.example) | `Settings.max_cached_snapshots`, `Settings.max_cache_total_bytes` | Document defaults in `.env.example`. Test via [`tests/unit/test_snapshot_cache.py`](../../tests/unit/test_snapshot_cache.py). |
 | **Modify prompt engineering or injection defenses** | [`src/issuelens/agent/prompts.py`](../../src/issuelens/agent/prompts.py) | `SYSTEM_PROMPT`, `build_investigation_messages()` | Always preserve XML boundary tags `<untrusted_issue_data>`. Do not remove the strict prohibition against claiming tests passed. |
 | **Tweak citation verification or excerpt matching rules** | [`src/issuelens/agent/validator.py`](../../src/issuelens/agent/validator.py) | `validate_citation()`, `excerpts_match()` | Keep string normalization whitespace-agnostic. Never permit path traversals (`../`). |
-| **Modify database schema or persist new fields** | [`src/issuelens/persistence/models.py`](../../src/issuelens/persistence/models.py), [`src/issuelens/persistence/repository.py`](../../src/issuelens/persistence/repository.py) | `InvestigationRun`, `SQLAlchemyInvestigationRepository` | Create Alembic migration in `src/issuelens/persistence/migrations/versions/`. Update repository methods and verify with [`tests/unit/test_persistence.py`](../../tests/unit/test_persistence.py). |
+| **Modify database schema or persist new fields** | [`src/issuelens/retrieval/chunking.py`](../../src/issuelens/retrieval/chunking.py) | `DocumentChunk`, `chunk_markdown`, `chunk_issue_context` | Heading-preserving markdown and issue text chunker with 1-indexed line spans and SHA-256 hashes. |
+| [`src/issuelens/retrieval/lexical.py`](../../src/issuelens/retrieval/lexical.py) | `BM25Index`, `tokenize`, `DEFAULT_STOP_WORDS` | Deterministic Okapi BM25 index with Robertson-Spärck Jones IDF and term saturation parameters. |
+| [`src/issuelens/retrieval/hybrid.py`](../../src/issuelens/retrieval/hybrid.py) | `HybridSearchEngine`, `DenseEmbedderProtocol`, `reciprocal_rank_fusion` | Reciprocal Rank Fusion (k=60) combining lexical BM25 and dense vector rankings with safe fallback. |
+| [`src/issuelens/retrieval/documents.py`](../../src/issuelens/retrieval/documents.py) | `DocumentRetriever` | Repository snapshot documentation discoverer, index builder, and EvidenceItem generator. |
+| [`src/issuelens/persistence/models.py`](../../src/issuelens/persistence/models.py), [`src/issuelens/persistence/repository.py`](../../src/issuelens/persistence/repository.py) | `InvestigationRun`, `SQLAlchemyInvestigationRepository` | Create Alembic migration in `src/issuelens/persistence/migrations/versions/`. Update repository methods and verify with [`tests/unit/test_persistence.py`](../../tests/unit/test_persistence.py). |
 | **Add a new LLM provider (e.g. Google Gemini, Mistral)** | [`src/issuelens/agent/llm.py`](../../src/issuelens/agent/llm.py), [`src/issuelens/config.py`](../../src/issuelens/config.py) | `create_langchain_chat_model()` | Must support LangChain's `.with_structured_output()`. Ensure auth errors map to [`SafetyViolationError`](../../src/issuelens/core/errors.py#L43). |
 | **Add a new domain exception** | [`src/issuelens/core/errors.py`](../../src/issuelens/core/errors.py) | `IssueLensError` subclasses | Provide default `code` and explicit `status_code` so `main.py` exception handler emits accurate HTTP status. |
 | **Add a new evaluation benchmark case** | [`evals/cases.jsonl`](../../evals/cases.jsonl), [`src/issuelens/evaluation/dataset.py`](../../src/issuelens/evaluation/dataset.py) | `EvaluationCaseModel` | Ensure `target_commit_sha` is 40-char pre-fix commit. Expected files must be relative paths. Verify with `test_eval_dataset.py`. |

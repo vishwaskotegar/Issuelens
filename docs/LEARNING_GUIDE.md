@@ -1307,14 +1307,143 @@ Engineers need a single, reliable command to run evaluation benchmarks, inspect 
 
 ---
 
-## Planned Implementation Roadmap (Phases 8 - 9)
+---
 
-The following phases are specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md), but are **[PLANNED]** and have not yet been implemented (Phases 0–7 are fully implemented):
+## Phase 8: Document RAG & Hybrid Retrieval (Implemented)
 
-### Phase 8: Document RAG & Hybrid Retrieval [PLANNED]
-- **Goal**: Chunk documentation, READMEs, and related issues using BM25 / PostgreSQL full-text search. Add pgvector semantic search only if benchmark evaluation demonstrates semantic misses.
-- **Architecture**: `src/issuelens/retrieval/`.
-- **Criteria**: Measured comparison showing where lexical vs hybrid retrieval wins.
+In Phase 8, IssueLens expands its evidence retrieval capabilities beyond executable Python source code. In many real-world bug reports, the root cause is tied to configuration flags, architectural policies, timeout recommendations, or deprecation warnings that are documented only in `README.md`, `docs/`, or release notes. Phase 8 provides deterministic heading-preserving chunking, Okapi BM25 lexical search, dense vector protocols with Reciprocal Rank Fusion (RRF), and agent graph integration.
+
+---
+
+### Feature 8.1: Heading-Preserving Markdown & Issue Prose Chunking with Line Provenance
+
+#### 1. What problem it solves
+Blindly chunking documents by fixed character length (e.g. 500 characters) cuts code snippets and sentences in half, discards vital heading context (e.g. `### Database Setup`), and loses exact line number mappings. Without exact line mappings, the citation validator cannot verify document citations against the physical repository on disk, violating the core evidence integrity principle.
+
+#### 2. What happens from input to output
+1. The developer or retriever passes markdown text into [`chunk_markdown()`](../src/issuelens/retrieval/chunking.py#L35).
+2. The chunker identifies Markdown headings (`#`, `##`, `###`, etc.) using regular expressions while tracking 1-indexed physical file lines.
+3. For sections larger than `max_chunk_chars` (default: 1500), it sub-splits on paragraph boundaries (`\n\n`).
+4. Tiny fragments smaller than `min_chunk_chars` (default: 60) are merged into adjacent chunks to avoid fragment starvation.
+5. Leading and trailing blank lines are trimmed to bound actual visible text, computing `start_line` and `end_line`.
+6. A deterministic SHA-256 content hash and token count are calculated for each chunk, returning immutable [`DocumentChunk`](../src/issuelens/retrieval/chunking.py#L12) objects.
+7. [`chunk_issue_context()`](../src/issuelens/retrieval/chunking.py#L160) performs similar structured chunking for issue bodies and comments.
+
+#### 3. Which files and functions participate
+- **Source file**: [`src/issuelens/retrieval/chunking.py`](../src/issuelens/retrieval/chunking.py)
+- **Key symbols**: `DocumentChunk`, `chunk_markdown()`, `chunk_issue_context()`.
+
+#### 4. Why the implementation is structured this way
+- **Citation Provenance Invariant**: Every `DocumentChunk` tracks 1-indexed `start_line` and `end_line`. When the agent cites documentation in its final report, `validate_citation()` verifies the lines against disk bytes.
+- **Heading Preservation**: Maintaining the heading hierarchy ensures search queries matching section names (e.g., "Configuration", "Troubleshooting") match the relevant chunk.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Recursive character text splitters (e.g. LangChain)*:
+  - *Trade-off*: Does not natively record line numbers, requiring complex post-processing to map character offsets back to line spans.
+
+#### 6. What can fail and how failures are handled
+- **Empty or Whitespace-Only Files**: Return empty lists cleanly without raising exceptions.
+- **Massive Single Paragraphs**: Sliced safely by paragraph boundaries.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_document_rag.py`](../tests/unit/test_document_rag.py)
+- **Verifications**: Heading preservation, line range tracking, blank line trimming, empty inputs, issue context chunking.
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_document_rag.py -k test_chunk
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- In retrieval-augmented generation (RAG), **chunk metadata is just as important as chunk text**. If your chunks lose line numbers and document paths, your system cannot defend against hallucinations or prove where evidence came from.
+
+---
+
+### Feature 8.2: Okapi BM25 Lexical Ranking and Reciprocal Rank Fusion (RRF)
+
+#### 1. What problem it solves
+Keyword search needs to balance term frequency with term saturation (repeating a word 20 times shouldn't make a document 20 times more relevant) and document length normalization (longer docs naturally contain more words). When dense semantic embeddings are optionally added, we need a mathematically sound method to combine lexical and vector scores without brittle manual weight tuning.
+
+#### 2. What happens from input to output
+1. [`BM25Index`](../src/issuelens/retrieval/lexical.py#L38) builds an inverted index over document chunks, calculating term frequencies, document lengths, and the average corpus document length.
+2. For any query, it calculates Robertson-Spärck Jones IDF with Lucene non-negative smoothing:
+   $$\text{IDF}(q_i) = \ln\left(1 + \frac{N - n(q_i) + 0.5}{n(q_i) + 0.5}\right)$$
+3. It scores each document with standard Okapi BM25 saturation parameters ($k_1 = 1.5, b = 0.75$).
+4. When dense vector embeddings are configured, [`HybridSearchEngine`](../src/issuelens/retrieval/hybrid.py#L58) computes cosine similarities and fuses lexical and dense rankings using Reciprocal Rank Fusion (RRF):
+   $$\text{RRF}(d) = \sum_{m} \frac{1}{k + \text{rank}_m(d)}$$
+5. If the dense embedder fails or is unconfigured, it falls back seamlessly to BM25 results.
+
+#### 3. Which files and functions participate
+- **Source files**: [`src/issuelens/retrieval/lexical.py`](../src/issuelens/retrieval/lexical.py), [`src/issuelens/retrieval/hybrid.py`](../src/issuelens/retrieval/hybrid.py)
+- **Key symbols**: `BM25Index`, `tokenize()`, `HybridSearchEngine`, `DenseEmbedderProtocol`, `reciprocal_rank_fusion()`, `cosine_similarity()`.
+
+#### 4. Why the implementation is structured this way
+- **Zero Third-Party Dependencies**: Implemented in pure Python using standard library `math` and `collections`, maintaining minimal footprint.
+- **Rank-Based Normalization**: Reciprocal Rank Fusion (RRF) relies solely on relative rank positions rather than arbitrary raw score scales, making it immune to scale discrepancies between BM25 scores and cosine distances.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Linear score combination ($\alpha \cdot \text{BM25} + (1-\alpha) \cdot \text{dense}$)*:
+  - *Trade-off*: Highly unstable because BM25 scores are unbounded while cosine similarity is bounded in $[-1, 1]$, requiring heuristic min-max score calibration.
+
+#### 6. What can fail and how failures are handled
+- **Dense Embedder Crash**: If the dense embedding model fails (network glitch or out-of-memory), `HybridSearchEngine` catches the error, logs a warning, and falls back to pure BM25 ranking.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_document_rag.py`](../tests/unit/test_document_rag.py)
+- **Verifications**: BM25 ranking accuracy, stop word suppression, RRF mathematical accuracy, cosine similarity, fallback on embedder failure.
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_document_rag.py -k "bm25 or fusion or hybrid"
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- **Reciprocal Rank Fusion (RRF)** is the gold standard for hybrid retrieval because it requires zero calibration. You don't need to guess whether a 4.2 BM25 score equals a 0.81 cosine similarity.
+
+---
+
+### Feature 8.3: Repository Snapshot Document Retriever & Agent Graph Integration
+
+#### 1. What problem it solves
+The LangGraph investigation agent needs a high-level component that automatically discovers documentation files inside the snapshot, builds the hybrid index, and emits validated [`EvidenceItem`](../src/issuelens/agent/report.py#L12) objects that the LLM can cite during hypothesis formulation.
+
+#### 2. What happens from input to output
+1. During investigation initialization, [`DocumentRetriever`](../src/issuelens/retrieval/documents.py#L64) inspects the snapshot filesystem.
+2. It discovers candidate documentation files (`README.md`, `docs/`, `CONTRIBUTING.md`, etc.) while enforcing security bounds (`max_doc_files`, `max_file_bytes`, and path exclusions).
+3. In [`InvestigationNodes.retrieve_initial`](../src/issuelens/agent/nodes.py#L254), the agent queries code search AND document retrieval.
+4. Top documentation chunks are formatted as `EvidenceItem` records with `source_type="documentation"`.
+5. In [`retrieve_followup`](../src/issuelens/agent/nodes.py#L467), the agent performs follow-up queries across both code and documentation.
+6. The final report is validated by `validate_citation()`, which verifies documentation paths and line ranges against disk bytes.
+
+#### 3. Which files and functions participate
+- **Source files**: [`src/issuelens/retrieval/documents.py`](../src/issuelens/retrieval/documents.py), [`src/issuelens/agent/nodes.py`](../src/issuelens/agent/nodes.py), [`src/issuelens/agent/service.py`](../src/issuelens/agent/service.py).
+- **Key symbols**: `DocumentRetriever`, `retrieve_documents()`, `InvestigationNodes.retrieve_initial()`.
+
+#### 4. Why the implementation is structured this way
+- **Measured Complementary Value**: Code search is optimized for Python AST symbols and stack traces. Document search is optimized for prose, setup guides, and architectural rules.
+- **Bounded Ingestion**: Bounded by `max_doc_files` and `max_file_bytes` to prevent denial-of-service from massive repositories.
+
+#### 5. What alternatives exist and their trade-offs
+- *Alternative: Indexing all source code files in the document chunker*:
+  - *Trade-off*: Dilutes signal; AST code search and ripgrep are much better suited for finding exact symbol declarations.
+
+#### 6. What can fail and how failures are handled
+- **Corrupted or Binary Doc Files**: Decoded with `errors="replace"` to prevent UnicodeDecodeError crashes.
+
+#### 7. How the feature is tested
+- **Test file**: [`tests/unit/test_document_rag.py`](../tests/unit/test_document_rag.py)
+- **Verifications**: Snapshot discovery, evidence generation, measured comparison proving doc RAG discovers configuration/policy guidance where code search alone yields zero hits.
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_document_rag.py -k "discovers or comparison"
+  ```
+
+#### 8. What a junior developer should learn from the implementation
+- **Never treat all text the same**. Code retrieval requires exact symbol boundaries; documentation retrieval requires paragraph semantics and heading contexts. Separating them into distinct, specialized engines yields superior investigation quality.
+
+---
+
+## Planned Implementation Roadmap (Phase 9)
+
+The following phase is specified in [`docs/BUILD_SPECIFICATION.md`](BUILD_SPECIFICATION.md), and is **[PLANNED]** (Phases 0–8 are fully implemented):
 
 ### Phase 9: Deployment, Pilot & Production Readiness [PLANNED]
 - **Goal**: Containerization with Docker, authenticated API endpoints, rate limiting, and observability.
