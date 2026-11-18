@@ -30,6 +30,7 @@ from issuelens.repository.code_search import (
     search_code,
 )
 from issuelens.repository.snapshot import RepoSnapshot
+from issuelens.retrieval.documents import DocumentRetriever
 
 logger = get_logger("issuelens.agent.nodes")
 
@@ -152,10 +153,27 @@ class InvestigationNodes:
         snapshot: RepoSnapshot | None,
         llm_client: LLMClientProtocol,
         settings: Settings,
+        issue_context: GitHubIssueContext | None = None,
+        doc_retriever: DocumentRetriever | None = None,
     ) -> None:
         self.snapshot = snapshot
         self.llm_client = llm_client
         self.settings = settings
+        self.issue_context = issue_context
+        if doc_retriever is not None:
+            self.doc_retriever: DocumentRetriever | None = doc_retriever
+        elif snapshot is not None:
+            try:
+                self.doc_retriever = DocumentRetriever(
+                    snapshot=snapshot,
+                    issue_context=issue_context,
+                    max_file_bytes=settings.max_file_bytes,
+                )
+            except Exception as exc:
+                logger.warning("Failed to initialize DocumentRetriever: %s", exc)
+                self.doc_retriever = None
+        else:
+            self.doc_retriever = None
 
     async def parse_issue(self, state: InvestigationState) -> dict[str, Any]:
         """Node 1: Parse raw issue text, extracting stack traces, error types, and symbols."""
@@ -285,7 +303,23 @@ class InvestigationNodes:
                     ).model_dump()
                     for idx, hit in enumerate(code_hits, start=1)
                 ]
-                output_summary = f"Retrieved {len(evidence_items)} initial code evidence hits."
+
+                # Document RAG: retrieve complementary documentation passages
+                if self.doc_retriever is not None:
+                    try:
+                        doc_hits = self.doc_retriever.retrieve_documents(
+                            query=query,
+                            max_results=5,
+                            start_evidence_idx=len(evidence_items) + 1,
+                        )
+                        for d_hit in doc_hits:
+                            evidence_items.append(d_hit.model_dump())
+                    except Exception as doc_exc:
+                        logger.warning("Document retrieval error in retrieve_initial: %s", doc_exc)
+
+                output_summary = (
+                    f"Retrieved {len(evidence_items)} initial code and doc evidence hits."
+                )
             except Exception as exc:
                 status = "error"
                 error_msg = f"Initial code retrieval error: {exc}"
@@ -509,6 +543,22 @@ class InvestigationNodes:
                         evidence.append(new_item.model_dump())
                         existing_keys.add((hit.path, hit.start_line))
                         new_evidence_count += 1
+
+                # Search documentation for follow-up query if retriever is available
+                if self.doc_retriever is not None:
+                    try:
+                        doc_hits = self.doc_retriever.retrieve_documents(
+                            query=executed_query,
+                            max_results=3,
+                            start_evidence_idx=len(evidence) + 1,
+                        )
+                        for d_hit in doc_hits:
+                            if (d_hit.path_or_url, d_hit.start_line) not in existing_keys:
+                                evidence.append(d_hit.model_dump())
+                                existing_keys.add((d_hit.path_or_url, d_hit.start_line))
+                                new_evidence_count += 1
+                    except Exception as doc_exc:
+                        logger.warning("Document retrieval error in retrieve_followup: %s", doc_exc)
 
                 output_summary = (
                     f"Follow-up retrieval added {new_evidence_count} new evidence items."
