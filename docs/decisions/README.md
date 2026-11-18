@@ -85,6 +85,7 @@ Create an ADR when a decision **materially affects**:
 | [**ADR-007**](ADR-007-postgresql-persistence-and-alembic-migrations.md) | Relational PostgreSQL Persistence with SQLAlchemy 2.0 and Alembic Migrations | Accepted | 2026-11-17 | Phase 6 | Original |
 | [**ADR-008**](ADR-008-evaluation-harness-and-retrospective-benchmark.md) | Evaluation Harness and Retrospective Benchmark Architecture | Accepted | 2026-11-18 | Phase 7 | Original |
 | [**ADR-009**](ADR-009-document-rag-and-hybrid-retrieval.md) | Document RAG with Heading-Preserving Chunking and Reciprocal Rank Fusion | Accepted | 2026-11-18 | Phase 8 | Original |
+| [**ADR-010**](ADR-010-production-deployment-and-api-hardening.md) | Production Deployment Containerization, API Authentication, and Rate Limiting | Accepted | 2026-11-18 | Phase 9 | Original |
 
 ---
 

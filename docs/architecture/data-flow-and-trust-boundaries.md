@@ -15,6 +15,14 @@ flowchart TD
         GHExternal["Public GitHub Repository<br/>(Issues, Comments, Source Code)"]
     end
 
+    subgraph APIGatewayBoundary["Boundary 0: Ingress Authentication & Rate Limiting (Phase 9)"]
+        direction TB
+        TokenAuth["API Key Verification<br/>X-API-Key / Bearer Token<br/>secrets.compare_digest()"]
+        RateLimiter["Sliding-Window Rate Limiter<br/>60 req/min per IP, 429 Retry-After"]
+        NonRootUser["Non-Root Container Isolation<br/>UID/GID 1000 (issuelens)"]
+        TokenAuth --> RateLimiter --> NonRootUser
+    end
+
     subgraph IngestionBoundary["Boundary 1: Ingestion & SSRF Gateway"]
         direction TB
         URLValidator["Host Allowlist: https://github.com<br/>PR Rejection Filter"]
@@ -56,7 +64,8 @@ flowchart TD
         SecretScrubber["SecretRedactionFilter in Logging"]
     end
 
-    UntrustedZone -->|Raw URL| IngestionBoundary
+    UntrustedZone -->|HTTP Request| APIGatewayBoundary
+    APIGatewayBoundary -->|Validated Client| IngestionBoundary
     IngestionBoundary -->|GitHub Context & Archive| SandboxStorage
     SandboxStorage -->|Isolated File Descriptors| InspectionBoundary
     InspectionBoundary -->|Raw Text Snippets| LLMEnclaveBoundary

@@ -86,8 +86,12 @@ flowchart TD
         HybridEngine --> BM25Engine
     end
 
-    subgraph PlannedComponents["9. Planned Future Systems (Phase 9)"]
-        DeploymentPilot["Containerized Deployment & Pilot Hardening<br/>(Planned Phase 9)"]
+    subgraph DeploymentHardening["9. Production Deployment & Security Hardening (Implemented Phase 9)"]
+        DockerContainer["Multi-Stage Docker<br/>Non-root UID 1000 + Ripgrep<br/><code>Dockerfile</code>"]
+        ComposeStack["Docker Compose Stack<br/>App + PostgreSQL 16 Alpine<br/><code>docker-compose.yml</code>"]
+        APISecurity["API Security & Rate Limiting<br/>X-API-Key + Sliding Window<br/><code>src/issuelens/api/security.py</code>"]
+        ComposeStack --> DockerContainer
+        APIRouter --> APISecurity
     end
 
     User -->|"POST /v1/investigations<br/>{issue_url}"| APIRouter
@@ -114,9 +118,6 @@ flowchart TD
     EvalRunner -->|"Pin Pre-Fix Snapshot"| SnapshotManager
     EvalRunner -->|"Investigate Target"| ServiceOrchestrator
     EvalRunner -.->|"Persist Case & Result"| RepoLayer
-
-    style PlannedComponents stroke-dasharray: 5 5
-    style DeploymentPilot stroke-dasharray: 5 5
 ```
 
 ---
