@@ -1,0 +1,32 @@
+# Git
+.git/
+.gitignore
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Local disk caches and test outputs
+.cache/
+evals/results.json
+tests/fixtures/downloads/
+
+# IDE files
+.idea/
+.vscode/
+*.swp

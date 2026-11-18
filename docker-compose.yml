@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: issuelens-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+      - DATABASE_URL=postgresql+psycopg://issuelens:issuelens_pass@db:5432/issuelens
+      - SNAPSHOT_CACHE_DIR=/app/.cache/issuelens/snapshots
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - API_KEY=${API_KEY:-}
+      - AUTH_REQUIRED=${AUTH_REQUIRED:-false}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - snapshot_cache:/app/.cache/issuelens/snapshots
+
+  db:
+    image: postgres:16-alpine
+    container_name: issuelens-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=issuelens
+      - POSTGRES_PASSWORD=issuelens_pass
+      - POSTGRES_DB=issuelens
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U issuelens -d issuelens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  snapshot_cache:
