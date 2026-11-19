@@ -1,6 +1,7 @@
 """Prompt templates and untrusted content boundaries for IssueLens LLM interactions."""
 
 import json
+import re
 from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -63,6 +64,22 @@ Return a single, valid JSON object matching the following structure exactly
 """
 
 
+BOUNDARY_TAG_PATTERN = re.compile(
+    r"<\s*(/?)\s*(untrusted_(?:issue_data|repository_evidence))\s*>",
+    re.IGNORECASE,
+)
+
+
+def sanitize_boundary_tags(text: str) -> str:
+    """Neutralize boundary tags inside untrusted text to prevent prompt injection breakouts.
+
+    Replaces occurrences such as </untrusted_issue_data> or <untrusted_repository_evidence>
+    with safe escaped equivalents (&lt;...&gt;) so that malicious input cannot close
+    or reopen enclaves.
+    """
+    return BOUNDARY_TAG_PATTERN.sub(r"&lt;\1\2&gt;", text)
+
+
 def format_evidence_block(evidence_items: list[EvidenceItem]) -> str:
     """Format list of EvidenceItem instances into a structured, delimited text block."""
     if not evidence_items:
@@ -75,9 +92,11 @@ def format_evidence_block(evidence_items: list[EvidenceItem]) -> str:
             if item.start_line and item.end_line
             else "whole file"
         )
-        lines.append(f"[{item.evidence_id}] Source: {item.path_or_url} ({line_range})")
+        sanitized_path = sanitize_boundary_tags(item.path_or_url)
+        sanitized_excerpt = sanitize_boundary_tags(item.excerpt.strip())
+        lines.append(f"[{item.evidence_id}] Source: {sanitized_path} ({line_range})")
         lines.append("```")
-        lines.append(item.excerpt.strip())
+        lines.append(sanitized_excerpt)
         lines.append("```")
         lines.append("")
 
@@ -114,12 +133,14 @@ def build_investigation_prompt(
         ],
     }
 
+    raw_issue_json = json.dumps(issue_payload, indent=2, ensure_ascii=False)
+    sanitized_issue_json = sanitize_boundary_tags(raw_issue_json)
     evidence_text = format_evidence_block(evidence_items)
 
     user_prompt = f"""Please investigate this GitHub bug report using the retrieved evidence.
 
 <untrusted_issue_data>
-{json.dumps(issue_payload, indent=2, ensure_ascii=False)}
+{sanitized_issue_json}
 </untrusted_issue_data>
 
 <untrusted_repository_evidence>

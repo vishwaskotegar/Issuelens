@@ -1,9 +1,9 @@
 """Configuration management for IssueLens using Pydantic Settings."""
 
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal, Self
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -118,6 +118,48 @@ class Settings(BaseSettings):
         le=10_000,
         description="Maximum allowed requests per minute per client IP or API key",
     )
+    trusted_proxies: list[str] = Field(
+        default_factory=lambda: ["127.0.0.1", "::1"],
+        description="List of trusted reverse proxy IPs or CIDRs allowed to forward client IPs",
+    )
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://localhost:8000"],
+        description="List of allowed origins for Cross-Origin Resource Sharing (CORS)",
+    )
+
+    @field_validator("trusted_proxies", "cors_allowed_origins", mode="before")
+    @classmethod
+    def parse_string_list(cls, v: Any) -> list[str]:
+        """Support comma-separated strings or JSON arrays in environment variables."""
+        if isinstance(v, str):
+            clean = v.strip()
+            if clean.startswith("[") and clean.endswith("]"):
+                try:
+                    import json
+
+                    parsed = json.loads(clean)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except Exception:
+                    pass
+            return [part.strip() for part in clean.split(",") if part.strip()]
+        if isinstance(v, list):
+            return [str(item).strip() for item in v if str(item).strip()]
+        return []
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Self:
+        """Enforce strict authentication and security requirements in production."""
+        if self.app_env == "production":
+            if not self.auth_required:
+                raise ValueError(
+                    "Security violation: 'auth_required' must be True when app_env is 'production'."
+                )
+            if self.api_key is None or not self.api_key.get_secret_value().strip():
+                raise ValueError(
+                    "Security violation: 'api_key' must be configured when app_env is 'production'."
+                )
+        return self
 
 
 @lru_cache(maxsize=1)

@@ -225,3 +225,4 @@ def test_dockerfile_and_compose_configuration() -> None:
     assert "issuelens-db" in compose_content
     assert "postgres:16-alpine" in compose_content
     assert "pg_isready" in compose_content
+    assert "127.0.0.1:5432:5432" in compose_content

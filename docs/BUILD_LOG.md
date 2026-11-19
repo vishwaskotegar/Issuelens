@@ -1167,6 +1167,45 @@ Real-world bug reports contain noisy artifacts (virtualenv stack traces, full Gi
 - *Alternative*: Disable citation validation demotions for live LLM evaluations.
   - *Trade-off*: Would weaken safety and allow ungrounded hallucinations to pass undetected. Fixing prompt calibration and grounding logic maintains strict deterministic guardrails while enabling 100% benchmark completion.
 
+---
+
+### Entry 023: X-Forwarded-For IP Spoofing in Sliding-Window Rate Limiter and Missing Security Headers
+- **Date**: 2026-11-20
+- **Phase**: Phase 10 (Security Hardening)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+During security audit and threat modeling for production readiness:
+1. An attacker could bypass the in-memory sliding-window rate limiter by sending randomized IP addresses in the `X-Forwarded-For` header, evading the 60 req/min quota and risking API budget depletion ("Denial of Wallet").
+2. API responses were emitted without standard defense-in-depth HTTP headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Strict-Transport-Security`).
+
+#### 2. Root Cause
+1. `get_client_identifier()` in [`src/issuelens/api/security.py`](../src/issuelens/api/security.py) checked `request.headers.get("X-Forwarded-For")` unconditionally without verifying whether the direct socket peer (`request.client.host`) was an authorized reverse proxy.
+2. [`src/issuelens/main.py`](../src/issuelens/main.py) had no HTTP middleware attached to inject security headers or enforce CORS restrictions across responses.
+
+#### 3. Fix
+1. Added `Settings.trusted_proxies` to [`src/issuelens/config.py`](../src/issuelens/config.py) and created `is_trusted_proxy()` in [`src/issuelens/api/security.py`](../src/issuelens/api/security.py). `get_client_identifier()` now strictly enforces `request.client.host` unless the direct caller is in `trusted_proxies`.
+2. Added HTTP security headers middleware and `CORSMiddleware` in [`src/issuelens/main.py`](../src/issuelens/main.py), enforcing `nosniff`, `DENY`, and conditional `Strict-Transport-Security` when in production or over HTTPS.
+
+#### 4. Verification
+- `uv run pytest tests/unit/test_trusted_proxies.py`: 4 passed.
+- `uv run pytest tests/unit/test_security_headers.py`: 5 passed.
+- `uv run ruff check .`: Clean (0 errors).
+- `uv run mypy src tests`: Success in strict mode.
+- `uv run pytest`: 221 passed.
+
+#### 5. Engineering Lesson
+Never trust HTTP request headers supplied by arbitrary callers. Any client can send `X-Forwarded-For: 1.2.3.4`. Ingress controls and rate limiters must authenticate that the intermediate hop is a known trusted proxy (such as Cloudflare, NGINX, or AWS ALB) before extracting forwarded identity.
+
+#### 6. Regression Tests
+- [`tests/unit/test_trusted_proxies.py`](../tests/unit/test_trusted_proxies.py)
+- [`tests/unit/test_security_headers.py`](../tests/unit/test_security_headers.py)
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Reject `X-Forwarded-For` entirely and rate limit only on socket IP.
+  - *Trade-off*: Would break legitimate multi-tier cloud deployments (e.g., behind AWS ALB or Cloudflare) by throttling all users under the single proxy IP. Adding configurable trusted proxy validation provides both anti-spoofing security and production compatibility.
+
+
 
 
 

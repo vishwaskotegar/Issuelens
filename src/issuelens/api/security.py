@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import math
 import secrets
 import threading
@@ -66,18 +67,44 @@ def get_rate_limiter() -> RateLimiter:
     return _global_rate_limiter
 
 
-def get_client_identifier(request: Request) -> str:
-    """Extract client IP address from X-Forwarded-For header or direct socket."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
-        if client_ip:
-            return client_ip
+def is_trusted_proxy(host: str, trusted_list: list[str]) -> bool:
+    """Check whether a client host matches an allowed IP or CIDR network range."""
+    if host in trusted_list:
+        return True
+    try:
+        candidate_ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
 
-    if request.client and request.client.host:
-        return request.client.host
+    for proxy in trusted_list:
+        try:
+            if "/" in proxy:
+                if candidate_ip in ipaddress.ip_network(proxy, strict=False):
+                    return True
+            elif candidate_ip == ipaddress.ip_address(proxy):
+                return True
+        except ValueError:
+            continue
+    return False
 
-    return "127.0.0.1"
+
+def get_client_identifier(request: Request, settings: Settings | None = None) -> str:
+    """Extract client IP address, honoring X-Forwarded-For only from trusted proxies.
+
+    Prevents IP spoofing attacks where adversarial clients send fake X-Forwarded-For
+    headers to evade rate limits.
+    """
+    app_settings = settings or get_settings()
+    direct_host = request.client.host if request.client and request.client.host else "127.0.0.1"
+
+    if is_trusted_proxy(direct_host, app_settings.trusted_proxies):
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            client_ip = forwarded.split(",")[0].strip()
+            if client_ip:
+                return client_ip
+
+    return direct_host
 
 
 def verify_api_key(
@@ -113,7 +140,7 @@ def verify_api_key(
     if not secrets.compare_digest(candidate_key, expected_key):
         logger.warning(
             "Rejected unauthorized request with invalid API key from %s",
-            get_client_identifier(request),
+            get_client_identifier(request, settings),
         )
         raise AuthenticationError("Invalid API key.")
 
@@ -126,7 +153,7 @@ def enforce_rate_limit(
     limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> None:
     """Enforce request rate limit per client IP or authenticated caller."""
-    client_id = get_client_identifier(request)
+    client_id = get_client_identifier(request, settings)
     allowed, current_count, retry_after = limiter.check_rate_limit(
         client_id=client_id,
         limit=settings.rate_limit_per_minute,
