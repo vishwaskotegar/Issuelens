@@ -1,28 +1,29 @@
 {
-  "total_cases": 3,
-  "completed_cases": 0,
-  "failed_cases": 3,
+  "total_cases": 20,
+  "completed_cases": 20,
+  "failed_cases": 0,
   "insufficient_evidence_cases": 0,
-  "mean_citation_validity": 0.0,
+  "mean_citation_validity": 1.0,
   "mean_recall_at_k": {
-    "1": 0.0,
-    "3": 0.0,
-    "5": 0.0,
-    "10": 0.0
+    "1": 0.4667,
+    "3": 0.7333,
+    "5": 0.7333,
+    "10": 0.8083
   },
   "mean_hit_at_k": {
-    "1": 0.0,
-    "3": 0.0,
-    "5": 0.0,
-    "10": 0.0
+    "1": 0.55,
+    "3": 0.85,
+    "5": 0.85,
+    "10": 0.9
   },
   "mean_unsupported_claims": 0.0,
-  "mean_latency_seconds": 0.0,
+  "mean_latency_seconds": 10.662,
   "root_cause_distribution": {
-    "incorrect": 3
+    "correct": 19,
+    "incorrect": 1
   },
   "benchmark_targets_met": {
-    "citation_validity_ge_95": false,
+    "citation_validity_ge_95": true,
     "recall_at_5_ge_80": false,
     "unsupported_claims_lt_0_5": true
   },
@@ -31,127 +32,944 @@
       "case_id": "CASE-001",
       "repo_full_name": "pallets/flask",
       "issue_number": 4020,
-      "target_commit_sha": "d4a1b8e4f1c3a7d2e5b9f8a0c6e4d2a1b3c5e7f9",
-      "status": "failed",
-      "total_code_citations": 0,
-      "valid_code_citations": 0,
-      "citation_validity_rate": 0.0,
+      "target_commit_sha": "d575de5159a6e40944275763c9ada2801214058b",
+      "status": "completed",
+      "total_code_citations": 15,
+      "valid_code_citations": 15,
+      "citation_validity_rate": 1.0,
       "recall_at_k": {
-        "1": 0.0,
-        "3": 0.0,
-        "5": 0.0,
-        "10": 0.0
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
       },
       "hit_at_k": {
-        "1": 0.0,
-        "3": 0.0,
-        "5": 0.0,
-        "10": 0.0
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
       },
-      "retrieved_files": [],
+      "retrieved_files": [
+        "src/flask/globals.py",
+        "src/flask/logging.py",
+        "tests/test_basic.py",
+        "docs/appcontext.rst",
+        "docs/reqcontext.rst",
+        "docs/installation.rst",
+        "docs/quickstart.rst",
+        "src/flask/app.py",
+        "src/flask/ctx.py",
+        "src/flask/helpers.py",
+        "tests/test_appctx.py",
+        "docs/api.rst"
+      ],
       "expected_files": [
-        "src/flask/blueprints.py"
+        "src/flask/globals.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
-      "root_cause_alignment": "incorrect",
-      "alignment_score": 0.0,
-      "latency_seconds": 6.00004568696022e-07,
-      "error_reason": "No investigation service provided to EvaluationRunner"
+      "root_cause_alignment": "correct",
+      "alignment_score": 1.0,
+      "latency_seconds": 10.87,
+      "error_reason": null
     },
     {
       "case_id": "CASE-002",
       "repo_full_name": "pallets/flask",
       "issue_number": 3950,
-      "target_commit_sha": "c3b2a1f0e9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4",
-      "status": "failed",
-      "total_code_citations": 0,
-      "valid_code_citations": 0,
-      "citation_validity_rate": 0.0,
+      "target_commit_sha": "ecb3450f19d3d817b4b857bb5831b309131b37e1",
+      "status": "completed",
+      "total_code_citations": 22,
+      "valid_code_citations": 22,
+      "citation_validity_rate": 1.0,
       "recall_at_k": {
-        "1": 0.0,
-        "3": 0.0,
-        "5": 0.0,
-        "10": 0.0
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
       },
       "hit_at_k": {
-        "1": 0.0,
-        "3": 0.0,
-        "5": 0.0,
-        "10": 0.0
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
       },
-      "retrieved_files": [],
+      "retrieved_files": [
+        "src/flask/app.py",
+        "src/flask/config.py",
+        "src/flask/sessions.py",
+        "src/flask/blueprints.py",
+        "src/flask/cli.py",
+        "src/flask/ctx.py",
+        "src/flask/debughelpers.py",
+        "src/flask/helpers.py",
+        "src/flask/scaffold.py",
+        "src/flask/views.py",
+        "tests/test_config.py",
+        "tests/test_basic.py",
+        "docs/quickstart.rst",
+        "docs/api.rst",
+        "docs/config.rst"
+      ],
       "expected_files": [
-        "src/flask/json/__init__.py",
-        "src/flask/json/provider.py"
+        "src/flask/app.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
-      "root_cause_alignment": "incorrect",
-      "alignment_score": 0.0,
-      "latency_seconds": 4.00003045797348e-07,
-      "error_reason": "No investigation service provided to EvaluationRunner"
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.6429,
+      "latency_seconds": 8.561,
+      "error_reason": null
     },
     {
       "case_id": "CASE-003",
       "repo_full_name": "psf/requests",
-      "issue_number": 5201,
-      "target_commit_sha": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1",
-      "status": "failed",
-      "total_code_citations": 0,
-      "valid_code_citations": 0,
-      "citation_validity_rate": 0.0,
+      "issue_number": 4716,
+      "target_commit_sha": "dd754d13de250a6af8a68a6a83a8b4419fd429c6",
+      "status": "completed",
+      "total_code_citations": 12,
+      "valid_code_citations": 12,
+      "citation_validity_rate": 1.0,
       "recall_at_k": {
-        "1": 0.0,
-        "3": 0.0,
-        "5": 0.0,
-        "10": 0.0
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
       },
       "hit_at_k": {
-        "1": 0.0,
-        "3": 0.0,
-        "5": 0.0,
-        "10": 0.0
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
       },
-      "retrieved_files": [],
+      "retrieved_files": [
+        "requests/sessions.py",
+        "docs/user/quickstart.rst",
+        "docs/user/authentication.rst",
+        "docs/user/advanced.rst",
+        "requests/adapters.py",
+        "requests/auth.py",
+        "docs/dev/contributing.rst",
+        "README.rst"
+      ],
       "expected_files": [
         "requests/sessions.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.6667,
+      "latency_seconds": 8.734,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-004",
+      "repo_full_name": "psf/requests",
+      "issue_number": 6027,
+      "target_commit_sha": "0192aac24123735b3eaf9b08df46429bb770c283",
+      "status": "completed",
+      "total_code_citations": 15,
+      "valid_code_citations": 15,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "requests/help.py",
+        "requests/__init__.py",
+        "requests/models.py",
+        "requests/adapters.py",
+        "requests/auth.py",
+        "requests/compat.py",
+        "requests/packages.py",
+        "requests/sessions.py",
+        "requests/status_codes.py",
+        "setup.py",
+        "tests/test_help.py",
+        "tests/test_lowlevel.py",
+        "docs/user/advanced.rst"
+      ],
+      "expected_files": [
+        "requests/utils.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.6429,
+      "latency_seconds": 10.549,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-005",
+      "repo_full_name": "encode/httpx",
+      "issue_number": 1498,
+      "target_commit_sha": "ea5ffce14f6a1430a3cb89eae573b388047f3f2c",
+      "status": "completed",
+      "total_code_citations": 22,
+      "valid_code_citations": 22,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.5,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "httpx/_client.py",
+        "httpx/_models.py",
+        "httpx/_api.py",
+        "tests/client/test_client.py",
+        "httpx/_transports/default.py",
+        "tests/client/test_async_client.py",
+        "tests/client/test_redirects.py",
+        "tests/models/test_requests.py",
+        "tests/client/test_auth.py",
+        "tests/client/test_cookies.py",
+        "tests/client/test_headers.py",
+        "tests/client/test_properties.py",
+        "docs/api.md",
+        "docs/environment_variables.md",
+        "docs/advanced.md",
+        "httpx/__init__.py",
+        "docs/async.md"
+      ],
+      "expected_files": [
+        "httpx/_client.py",
+        "httpx/_models.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.5,
+      "latency_seconds": 13.807,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-006",
+      "repo_full_name": "encode/httpx",
+      "issue_number": 1405,
+      "target_commit_sha": "d0835da230892bfa7ef42a5aed9dba8122a4359e",
+      "status": "completed",
+      "total_code_citations": 9,
+      "valid_code_citations": 9,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.5,
+        "3": 0.5,
+        "5": 0.5,
+        "10": 0.5
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "httpx/_models.py",
+        "httpx/__init__.py",
+        "httpx/_api.py",
+        "docs/async.md",
+        "docs/api.md",
+        "CHANGELOG.md"
+      ],
+      "expected_files": [
+        "httpx/_models.py",
+        "httpx/_urls.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 1.0,
+      "latency_seconds": 15.155,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-007",
+      "repo_full_name": "pytest-dev/pytest",
+      "issue_number": 8410,
+      "target_commit_sha": "f0ad73c4b05b4307e3dbf890f4e2772ea73e0a2e",
+      "status": "completed",
+      "total_code_citations": 16,
+      "valid_code_citations": 16,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.5,
+        "5": 0.5,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "src/_pytest/pytester.py",
+        "src/_pytest/tmpdir.py",
+        "testing/test_tmpdir.py",
+        "src/_pytest/main.py",
+        "testing/python/fixtures.py",
+        "testing/test_main.py",
+        "src/_pytest/config/__init__.py",
+        "doc/en/changelog.rst",
+        "testing/test_assertrewrite.py",
+        "src/_pytest/pathlib.py",
+        "testing/python/collect.py",
+        "doc/en/builtin.rst",
+        "doc/en/fixture.rst",
+        "doc/en/capture.rst",
+        "doc/en/tmpdir.rst"
+      ],
+      "expected_files": [
+        "src/_pytest/pathlib.py",
+        "src/_pytest/tmpdir.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 1.0,
+      "latency_seconds": 12.617,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-008",
+      "repo_full_name": "pytest-dev/pytest",
+      "issue_number": 7392,
+      "target_commit_sha": "e6e300e729dd33956e5448d8be9a0b1540b4e53a",
+      "status": "completed",
+      "total_code_citations": 22,
+      "valid_code_citations": 22,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "src/_pytest/skipping.py",
+        "src/_pytest/hookspec.py",
+        "src/_pytest/runner.py",
+        "src/_pytest/pytester.py",
+        "src/_pytest/unittest.py",
+        "testing/python/collect.py",
+        "testing/python/metafunc.py",
+        "bench/manyparam.py",
+        "src/_pytest/compat.py",
+        "src/_pytest/debugging.py",
+        "testing/python/fixtures.py",
+        "testing/python/integration.py",
+        "doc/en/reference.rst",
+        "doc/en/unittest.rst",
+        "doc/en/skipping.rst",
+        "src/_pytest/outcomes.py",
+        "src/_pytest/python.py"
+      ],
+      "expected_files": [
+        "src/_pytest/skipping.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.8571,
+      "latency_seconds": 11.202,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-009",
+      "repo_full_name": "pydantic/pydantic",
+      "issue_number": 3100,
+      "target_commit_sha": "5ccbdcb5904f35834300b01432a665c75dc02296",
+      "status": "completed",
+      "total_code_citations": 15,
+      "valid_code_citations": 15,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "pydantic/main.py",
+        "pydantic/config.py",
+        "pydantic/env_settings.py",
+        "pydantic/decorator.py",
+        "pydantic/fields.py",
+        "pydantic/schema.py",
+        "pydantic/__init__.py",
+        "pydantic/annotated_types.py",
+        "pydantic/dataclasses.py",
+        "pydantic/generics.py",
+        "pydantic/json.py",
+        "pydantic/mypy.py",
+        "docs/usage/models.md"
+      ],
+      "expected_files": [
+        "pydantic/main.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.8571,
+      "latency_seconds": 9.359,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-010",
+      "repo_full_name": "pydantic/pydantic",
+      "issue_number": 3583,
+      "target_commit_sha": "8ef492b85fddbfbeadde49e07163580c13d432d5",
+      "status": "completed",
+      "total_code_citations": 19,
+      "valid_code_citations": 19,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.3333,
+        "3": 0.6667,
+        "5": 0.6667,
+        "10": 0.6667
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "pydantic/json.py",
+        "pydantic/main.py",
+        "pydantic/error_wrappers.py",
+        "pydantic/fields.py",
+        "pydantic/generics.py",
+        "pydantic/typing.py",
+        "pydantic/utils.py",
+        "tests/test_construction.py",
+        "tests/test_dataclasses.py",
+        "tests/test_edge_cases.py",
+        "tests/test_main.py",
+        "tests/test_orm_mode.py",
+        "docs/contributing.md",
+        "docs/visual_studio_code.md",
+        "docs/usage/validation_decorator.md"
+      ],
+      "expected_files": [
+        "pydantic/main.py",
+        "pydantic/json.py",
+        "pydantic/config.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
       "root_cause_alignment": "incorrect",
       "alignment_score": 0.0,
-      "latency_seconds": 1.9997241906821728e-07,
-      "error_reason": "No investigation service provided to EvaluationRunner"
+      "latency_seconds": 9.861,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-011",
+      "repo_full_name": "tiangolo/fastapi",
+      "issue_number": 1472,
+      "target_commit_sha": "98bb9f13da4932fac8bc138f77fba38c34e553ee",
+      "status": "completed",
+      "total_code_citations": 23,
+      "valid_code_citations": 23,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "fastapi/applications.py",
+        "fastapi/security/api_key.py",
+        "fastapi/security/http.py",
+        "fastapi/security/oauth2.py",
+        "fastapi/security/open_id_connect_url.py",
+        "pending_tests/main.py",
+        "fastapi/dependencies/utils.py",
+        "tests/test_modules_same_name_body/app/a.py",
+        "tests/test_dependency_class.py",
+        "tests/test_invalid_path_param.py",
+        "tests/test_invalid_sequence_param.py",
+        "docs_src/dependencies/tutorial011.py",
+        "docs/en/docs/advanced/templates.md",
+        "docs/en/docs/advanced/middleware.md",
+        "docs/en/docs/release-notes.md",
+        "docs/en/docs/deployment.md",
+        "fastapi/routing.py",
+        "README.md",
+        "docs/en/docs/advanced/custom-request-and-route.md",
+        "docs/en/docs/alternatives.md"
+      ],
+      "expected_files": [
+        "fastapi/applications.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.4286,
+      "latency_seconds": 11.497,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-012",
+      "repo_full_name": "tiangolo/fastapi",
+      "issue_number": 3790,
+      "target_commit_sha": "864643ef7608d28ac4ed321835a7fb4abe3dfc13",
+      "status": "completed",
+      "total_code_citations": 16,
+      "valid_code_citations": 16,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "fastapi/exceptions.py",
+        "fastapi/openapi/utils.py",
+        "fastapi/applications.py",
+        "fastapi/exception_handlers.py",
+        "fastapi/routing.py",
+        "scripts/gitter_releases_bot.py",
+        "tests/test_additional_properties.py",
+        "tests/test_additional_responses_custom_model_in_callback.py",
+        "tests/test_additional_responses_default_validationerror.py",
+        "tests/test_application.py",
+        "tests/test_dependency_duplicates.py",
+        "tests/test_exception_handlers.py",
+        "docs/en/docs/release-notes.md",
+        "docs/en/docs/help-fastapi.md",
+        "docs/en/docs/alternatives.md"
+      ],
+      "expected_files": [
+        "fastapi/openapi/utils.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.375,
+      "latency_seconds": 12.739,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-013",
+      "repo_full_name": "pallets/werkzeug",
+      "issue_number": 2200,
+      "target_commit_sha": "d781b06c3fbac8eaeb3bfb61bea005a3a5288b91",
+      "status": "completed",
+      "total_code_citations": 21,
+      "valid_code_citations": 21,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "src/werkzeug/http.py",
+        "src/werkzeug/routing.py",
+        "src/werkzeug/serving.py",
+        "src/werkzeug/test.py",
+        "src/werkzeug/utils.py",
+        "src/werkzeug/wsgi.py",
+        "tests/test_wrappers.py",
+        "tests/test_formparser.py",
+        "tests/test_serving.py",
+        "tests/test_test.py",
+        "CHANGES.rst",
+        "artwork/logo.svg",
+        "docs/installation.rst",
+        "docs/deployment/fastcgi.rst",
+        "docs/tutorial.rst",
+        "CONTRIBUTING.rst",
+        "src/werkzeug/_internal.py",
+        "src/werkzeug/debug/__init__.py",
+        "src/werkzeug/debug/shared/debugger.js",
+        "src/werkzeug/exceptions.py",
+        "src/werkzeug/local.py"
+      ],
+      "expected_files": [
+        "src/werkzeug/serving.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.6,
+      "latency_seconds": 9.188,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-014",
+      "repo_full_name": "pallets/jinja",
+      "issue_number": 1510,
+      "target_commit_sha": "8cc3a64fa6cb90817b4bbe5aaeca87fa73ea9103",
+      "status": "completed",
+      "total_code_citations": 22,
+      "valid_code_citations": 22,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "src/jinja2/environment.py",
+        "src/jinja2/bccache.py",
+        "tests/test_api.py",
+        "tests/test_async.py",
+        "tests/test_core_tags.py",
+        "tests/test_ext.py",
+        "tests/test_filters.py",
+        "tests/test_imports.py",
+        "tests/test_inheritance.py",
+        "tests/test_lexnparse.py",
+        "tests/test_nativetypes.py",
+        "tests/test_regression.py",
+        "docs/nativetypes.rst",
+        "docs/templates.rst",
+        "src/jinja2/nativetypes.py"
+      ],
+      "expected_files": [
+        "src/jinja2/nativetypes.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.8571,
+      "latency_seconds": 9.73,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-015",
+      "repo_full_name": "pallets/click",
+      "issue_number": 2105,
+      "target_commit_sha": "65eceb08e392e74dcc761be2090e951274ccbe36",
+      "status": "completed",
+      "total_code_citations": 18,
+      "valid_code_citations": 18,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "src/click/utils.py",
+        "src/click/__init__.py",
+        "src/click/types.py",
+        "src/click/_unicodefun.py",
+        "src/click/termui.py",
+        "tests/test_utils.py",
+        "tests/test_arguments.py",
+        "tests/test_info_dict.py",
+        "tests/test_basic.py",
+        "tests/test_options.py",
+        "tests/test_types.py",
+        "CHANGES.rst",
+        "docs/utils.rst",
+        "docs/arguments.rst"
+      ],
+      "expected_files": [
+        "src/click/types.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.5,
+      "latency_seconds": 9.511,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-016",
+      "repo_full_name": "urllib3/urllib3",
+      "issue_number": 2400,
+      "target_commit_sha": "cff8b5ba3d2ba9338e31c102e1e91273124df297",
+      "status": "completed",
+      "total_code_citations": 21,
+      "valid_code_citations": 21,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "src/urllib3/contrib/securetransport.py",
+        "src/urllib3/contrib/socks.py",
+        "src/urllib3/exceptions.py",
+        "src/urllib3/connection.py",
+        "src/urllib3/poolmanager.py",
+        "src/urllib3/util/ssl_.py",
+        "src/urllib3/connectionpool.py",
+        "src/urllib3/util/ssltransport.py",
+        "src/urllib3/contrib/pyopenssl.py",
+        "src/urllib3/response.py",
+        "src/urllib3/util/request.py",
+        "src/urllib3/util/response.py",
+        "docs/advanced-usage.rst",
+        "docs/contributing.rst"
+      ],
+      "expected_files": [
+        "src/urllib3/util/ssl_.py",
+        "src/urllib3/connectionpool.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 1.0,
+      "latency_seconds": 10.918,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-017",
+      "repo_full_name": "textualize/rich",
+      "issue_number": 1890,
+      "target_commit_sha": "51e7503e5e9b440561d2fb51e1d15e73fe9b27b1",
+      "status": "completed",
+      "total_code_citations": 16,
+      "valid_code_citations": 16,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.5,
+        "5": 0.5,
+        "10": 0.5
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "rich/console.py",
+        "rich/progress.py",
+        "rich/color.py",
+        "rich/_emoji_codes.py",
+        "rich/status.py",
+        "rich/__main__.py",
+        "rich/segment.py",
+        "rich/text.py",
+        "rich/traceback.py",
+        "rich/pretty.py",
+        "rich/spinner.py",
+        "rich/theme.py",
+        "CHANGELOG.md",
+        "docs/source/protocol.rst",
+        "docs/source/style.rst",
+        "docs/source/traceback.rst"
+      ],
+      "expected_files": [
+        "rich/color.py",
+        "rich/palette.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 1.0,
+      "latency_seconds": 12.733,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-018",
+      "repo_full_name": "marshmallow-code/marshmallow",
+      "issue_number": 1898,
+      "target_commit_sha": "bc5cde04330ae53f7a23e6990f9a0ce9d9891a4a",
+      "status": "completed",
+      "total_code_citations": 15,
+      "valid_code_citations": 15,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.5,
+        "5": 0.5,
+        "10": 0.5
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "src/marshmallow/utils.py",
+        "src/marshmallow/decorators.py",
+        "src/marshmallow/schema.py",
+        "tests/test_context.py",
+        "tests/test_decorators.py",
+        "tests/test_schema.py",
+        "src/marshmallow/__init__.py",
+        "tests/test_deserialization.py",
+        "tests/test_fields.py",
+        "tests/test_serialization.py",
+        "tests/test_utils.py",
+        "tests/test_registry.py",
+        "docs/upgrading.rst"
+      ],
+      "expected_files": [
+        "src/marshmallow/schema.py",
+        "src/marshmallow/fields.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.6,
+      "latency_seconds": 9.429,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-019",
+      "repo_full_name": "psf/black",
+      "issue_number": 2600,
+      "target_commit_sha": "f80f49767cacafaeb20016d483b8315474504e6a",
+      "status": "completed",
+      "total_code_citations": 15,
+      "valid_code_citations": 15,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "src/black/__init__.py",
+        "src/black/files.py",
+        "src/black/report.py",
+        "src/black_primer/lib.py",
+        "tests/test_black.py",
+        "docs/usage_and_configuration/the_basics.md",
+        "tests/data/function2.py",
+        "CHANGES.md",
+        "README.md",
+        "action.yml",
+        "docs/contributing/gauging_changes.md",
+        "docs/integrations/github_actions.md",
+        "docs/integrations/editors.md"
+      ],
+      "expected_files": [
+        "src/black/__init__.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.9375,
+      "latency_seconds": 8.815,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-020",
+      "repo_full_name": "sample/repo",
+      "issue_number": 101,
+      "target_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+      "status": "completed",
+      "total_code_citations": 4,
+      "valid_code_citations": 4,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "sample_pkg/auth.py",
+        "sample_pkg/database.py"
+      ],
+      "expected_files": [
+        "sample_pkg/auth.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.75,
+      "latency_seconds": 7.957,
+      "error_reason": null
     }
   ],
-  "failure_notes": [
-    {
-      "case_id": "CASE-001",
-      "repo": "pallets/flask",
-      "status": "failed",
-      "citation_validity": 0.0,
-      "recall_at_5": 0.0,
-      "unsupported_claims": 0,
-      "error_reason": "No investigation service provided to EvaluationRunner"
-    },
-    {
-      "case_id": "CASE-002",
-      "repo": "pallets/flask",
-      "status": "failed",
-      "citation_validity": 0.0,
-      "recall_at_5": 0.0,
-      "unsupported_claims": 0,
-      "error_reason": "No investigation service provided to EvaluationRunner"
-    },
-    {
-      "case_id": "CASE-003",
-      "repo": "psf/requests",
-      "status": "failed",
-      "citation_validity": 0.0,
-      "recall_at_5": 0.0,
-      "unsupported_claims": 0,
-      "error_reason": "No investigation service provided to EvaluationRunner"
-    }
-  ]
+  "failure_notes": []
 }
