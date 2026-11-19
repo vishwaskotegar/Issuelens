@@ -41,3 +41,28 @@ def test_secrets_masked_in_representation() -> None:
     assert str(settings.llm_api_key) == "**********"
     assert settings.llm_api_key.get_secret_value() == "secret-key-12345"
     assert "secret-key-12345" not in repr(settings)
+
+
+def test_production_mode_requires_auth_and_api_key() -> None:
+    """Verify that production environment requires auth_required=True and a valid api_key."""
+    # Production without auth_required -> fails
+    with pytest.raises(ValidationError, match="auth_required.*must be True"):
+        Settings(app_env="production", auth_required=False, api_key=SecretStr("valid-key"))
+
+    # Production with auth_required=True but missing api_key -> fails
+    with pytest.raises(ValidationError, match="api_key.*must be configured"):
+        Settings(app_env="production", auth_required=True, api_key=None)
+
+    with pytest.raises(ValidationError, match="api_key.*must be configured"):
+        Settings(app_env="production", auth_required=True, api_key=SecretStr("   "))
+
+    # Production with valid auth_required and api_key -> succeeds
+    prod_settings = Settings(
+        app_env="production",
+        auth_required=True,
+        api_key=SecretStr("valid-production-key"),
+    )
+    assert prod_settings.app_env == "production"
+    assert prod_settings.auth_required is True
+    assert prod_settings.api_key is not None
+    assert prod_settings.api_key.get_secret_value() == "valid-production-key"

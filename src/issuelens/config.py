@@ -1,9 +1,9 @@
 """Configuration management for IssueLens using Pydantic Settings."""
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -118,6 +118,20 @@ class Settings(BaseSettings):
         le=10_000,
         description="Maximum allowed requests per minute per client IP or API key",
     )
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Self:
+        """Enforce strict authentication and security requirements in production."""
+        if self.app_env == "production":
+            if not self.auth_required:
+                raise ValueError(
+                    "Security violation: 'auth_required' must be True when app_env is 'production'."
+                )
+            if self.api_key is None or not self.api_key.get_secret_value().strip():
+                raise ValueError(
+                    "Security violation: 'api_key' must be configured when app_env is 'production'."
+                )
+        return self
 
 
 @lru_cache(maxsize=1)
