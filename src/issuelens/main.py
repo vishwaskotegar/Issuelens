@@ -1,15 +1,16 @@
 """FastAPI application entrypoint and lifespan lifecycle."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from issuelens import __version__
 from issuelens.api.routes import router as operational_router
-from issuelens.config import get_settings
+from issuelens.config import Settings, get_settings
 from issuelens.core.errors import IssueLensError
 from issuelens.core.logging import get_logger, setup_logging
 from issuelens.persistence.db import close_engine
@@ -32,17 +33,40 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     await close_engine()
 
 
-def create_app() -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:
     """Instantiate and configure the FastAPI application."""
-    settings = get_settings()
+    app_settings = settings or get_settings()
     app = FastAPI(
         title="IssueLens API",
         description="Evidence-backed AI debugging assistant for GitHub bug reports",
         version=__version__,
         lifespan=lifespan,
-        docs_url="/docs" if settings.app_env != "production" else None,
-        redoc_url="/redoc" if settings.app_env != "production" else None,
+        docs_url="/docs" if app_settings.app_env != "production" else None,
+        redoc_url="/redoc" if app_settings.app_env != "production" else None,
     )
+
+    # CORS Protection
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=app_settings.cors_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+    # HTTP Security Headers
+    @app.middleware("http")
+    async def add_security_headers(
+        request: Request, call_next: Callable[[Request], Any]
+    ) -> Response:
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+        if request.url.scheme == "https" or app_settings.app_env == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
     # Register routers
     app.include_router(operational_router)
@@ -54,7 +78,7 @@ def create_app() -> FastAPI:
             "name": "IssueLens API",
             "version": __version__,
             "status": "online",
-            "docs_url": "/docs" if settings.app_env != "production" else None,
+            "docs_url": "/docs" if app_settings.app_env != "production" else None,
         }
 
     # Exception Handlers
