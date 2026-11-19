@@ -84,15 +84,18 @@ def normalize_line_text(line: str) -> str:
 
 def excerpts_match(expected_snippet: str, candidate_excerpt: str) -> bool:
     """Compare candidate excerpt against physical snippet using normalized line comparison."""
+    # Strip any potential heading prefix if present (e.g. '[Heading]\n')
+    cleaned_candidate = re.sub(r"^\[[^\]\n]+\]\r?\n", "", candidate_excerpt)
+
     expected_lines = [
-        normalize_line_text(ln)
+        normalize_line_text(ln).strip()
         for ln in expected_snippet.splitlines()
-        if ln.strip()
+        if normalize_line_text(ln).strip()
     ]
     candidate_lines = [
-        normalize_line_text(ln)
-        for ln in candidate_excerpt.splitlines()
-        if ln.strip()
+        normalize_line_text(ln).strip()
+        for ln in cleaned_candidate.splitlines()
+        if normalize_line_text(ln).strip()
     ]
 
     if not expected_lines or not candidate_lines:
