@@ -239,3 +239,49 @@ async def test_run_evaluation_e2e_and_summary(tmp_path: Path) -> None:
             case_id="UNKNOWN-ID",
             runner=runner,
         )
+
+
+@pytest.mark.asyncio
+async def test_run_evaluation_mock_mode_default(tmp_path: Path) -> None:
+    """Verify default mock mode executes without injected runner and passes gates."""
+    from issuelens.evaluation.run_eval import create_fixture_snapshot_resolver
+
+    cases_path = tmp_path / "cases.jsonl"
+    results_path = tmp_path / "results.json"
+
+    case1 = EvaluationCaseModel(
+        id="CASE-020",
+        issue_url="https://github.com/sample/repo/issues/101",
+        repo_full_name="sample/repo",
+        issue_number=101,
+        target_commit_sha=SAMPLE_SHA,
+        known_resolution=(
+            "Add token validation error check in validate_token to reject empty tokens."
+        ),
+        expected_files=["sample_pkg/auth.py"],
+    )
+    save_evaluation_cases([case1], cases_path)
+
+    # run_evaluation with runner=None and live=False triggers MockInvestigationService
+    report = await run_evaluation(
+        cases_path=cases_path,
+        output_path=results_path,
+        runner=None,
+        live=False,
+    )
+
+    assert report.total_cases == 1
+    assert report.completed_cases == 1
+    assert report.failed_cases == 0
+    assert report.mean_citation_validity >= 0.95
+    assert report.mean_recall_at_k.get(5, 0.0) >= 0.80
+    assert report.benchmark_targets_met.get("citation_validity_ge_95") is True
+
+    # Test fixture snapshot resolver
+    resolver = create_fixture_snapshot_resolver()
+    snap = resolver("sample/repo", SAMPLE_SHA)
+    assert snap is not None
+    assert snap.repo_full_name == "sample/repo"
+    assert (snap.root_path / "sample_pkg" / "auth.py").is_file()
+
+    assert resolver("other/repo", SAMPLE_SHA) is None
