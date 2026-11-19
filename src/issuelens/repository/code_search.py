@@ -419,10 +419,20 @@ def extract_search_terms(query: str) -> list[str]:
             all_terms.append(term)
 
     # Expand qualified symbols such as "requests.exceptions.ProxyError" into their
-    # final component ("ProxyError") so the actual class/function name is searchable.
+    # final component ("ProxyError") and expand path-like tokens into leaf segments
+    # so leaf stems (e.g. "nativetypes") are directly searchable.
     expanded: list[str] = []
     for term in all_terms:
         expanded.append(term)
+        if "/" in term:
+            for part in term.split("/"):
+                cleaned = part.strip(".-/")
+                if (
+                    len(cleaned) > 2
+                    and cleaned.lower() not in STOP_WORDS
+                    and cleaned not in expanded
+                ):
+                    expanded.append(cleaned)
         if "." in term and not is_path_like_term(term):
             tail = term.rsplit(".", 1)[-1]
             if tail and tail not in expanded and (tail[0].isupper() or "_" in tail):
@@ -628,9 +638,9 @@ def extract_issue_or_pr_numbers(query: str) -> list[str]:
 
 def _file_priority(path: str, is_regression_context: bool = False) -> float:
     """Prefer production source files and penalize tests and prose documents."""
-    priority = 4.0 if classify_path(path) == "code" else -3.0
+    priority = 6.0 if classify_path(path) == "code" else -8.0
     if _is_test_path(path):
-        priority -= 0.0 if is_regression_context else 2.0
+        priority -= 4.0 if is_regression_context else 8.0
     return priority
 
 
@@ -642,7 +652,9 @@ def _symbol_matches_terms(
         return False
     lowered = symbol_name.lower()
     return any(
-        weight >= 5 and term.lower() in lowered for term, weight in terms
+        (term.lower() == lowered)
+        or (weight >= 3 and len(term) >= 4 and term.lower() in lowered)
+        for term, weight in terms
     )
 
 
