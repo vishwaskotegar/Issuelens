@@ -158,6 +158,12 @@ class InvestigationService:
             repo_full.split("/", 1) if "/" in repo_full else (repo_full, repo_full)
         )
 
+        effective_commit_sha = (
+            active_snapshot.commit_sha
+            if active_snapshot is not None
+            else context.commit_sha
+        )
+
         # 3. Construct initial LangGraph workflow state
         initial_state: InvestigationState = {
             "run_id": active_run_id,
@@ -184,7 +190,7 @@ class InvestigationService:
                 "html_url": f"https://github.com/{repo_full}",
                 "description": None,
             },
-            "commit_sha": context.commit_sha,
+            "commit_sha": effective_commit_sha,
             "summary": "",
             "issue_summary": {},
             "evidence": [],
