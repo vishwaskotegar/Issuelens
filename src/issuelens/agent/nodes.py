@@ -1,9 +1,15 @@
 """Explicit execution nodes and conditional routers for the LangGraph agent workflow."""
 
+from __future__ import annotations
+
 import re
 import time
 from datetime import UTC, datetime
-from typing import Any, Literal
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from issuelens.retrieval.documents import DocumentRetriever
 
 from issuelens.agent.llm import LLMClientProtocol
 from issuelens.agent.prompts import build_investigation_messages
@@ -30,7 +36,6 @@ from issuelens.repository.code_search import (
     search_code,
 )
 from issuelens.repository.snapshot import RepoSnapshot
-from issuelens.retrieval.documents import DocumentRetriever
 
 logger = get_logger("issuelens.agent.nodes")
 
@@ -164,6 +169,8 @@ class InvestigationNodes:
             self.doc_retriever: DocumentRetriever | None = doc_retriever
         elif snapshot is not None:
             try:
+                from issuelens.retrieval.documents import DocumentRetriever
+
                 self.doc_retriever = DocumentRetriever(
                     snapshot=snapshot,
                     issue_context=issue_context,
@@ -198,29 +205,75 @@ class InvestigationNodes:
             )
         )
 
-        # 2. Extract referenced python filenames
-        target_files = list(
-            dict.fromkeys(re.findall(r"\b([a-zA-Z0-9_\-\./]+\.py)\b", combined_text))
+        # 2. Extract referenced python filenames (including GitHub blob/tree URLs)
+        github_blob_files = re.findall(
+            r"github\.com/[^/]+/[^/]+/(?:blob|tree)/[^/]+/([a-zA-Z0-9_\-\./]+\.py)",
+            combined_text,
         )
+        plain_files = re.findall(r"\b([a-zA-Z0-9_\-\./]+\.py)\b", combined_text)
 
-        # 3. Extract backticked symbols or function calls
+        def _is_repo_path(p: str) -> bool:
+            low = p.lower()
+            return not any(
+                bad in low
+                for bad in (
+                    "site-packages",
+                    ".cache",
+                    "virtualenvs",
+                    "/venv",
+                    "\\venv",
+                    "dist-packages",
+                    "lib/python",
+                    "python3.",
+                )
+            )
+
+        target_files = [
+            f for f in dict.fromkeys(github_blob_files + plain_files) if _is_repo_path(f)
+        ]
+
+        # 3. Extract backticked symbols, snake_case identifiers, URL leaf terms, and kwargs
+        backticked = re.findall(r"`([a-zA-Z_][a-zA-Z0-9_]+)`", combined_text)
+        snake_case = re.findall(r"\b([a-zA-Z_][a-zA-Z0-9]*_[a-zA-Z0-9_]+)\b", combined_text)
+        kwargs = re.findall(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*=", combined_text)
+        url_leaf_paths = re.findall(r"https?://[^\s\)\"\'<>]+/([a-zA-Z0-9_\-]+)/?", combined_text)
+        url_leaf_terms = [
+            term
+            for term in url_leaf_paths
+            if len(term) >= 4
+            and not term.isdigit()
+            and term.lower() not in {"html", "http", "https"}
+        ]
         extracted_symbols = list(
-            dict.fromkeys(re.findall(r"`([a-zA-Z_][a-zA-Z0-9_]+)`", combined_text))
+            dict.fromkeys(backticked + snake_case + kwargs + url_leaf_terms)
         )
 
-        # 4. Extract stack trace frames
+        # 4. Extract stack trace frames and GitHub blob line links
         stack_trace_frames = re.findall(
             r'File "([^"]+)", line (\d+)(?:, in (\w+))?', combined_text
+        )
+        github_blob_frames = re.findall(
+            r"github\.com/[^/]+/[^/]+/(?:blob|tree)/[^/]+/([a-zA-Z0-9_\-\./]+\.py)#L(\d+)",
+            combined_text,
         )
         frames_summary = [
             f"{f[0]}:{f[1]}" + (f" ({f[2]})" if f[2] else "")
             for f in stack_trace_frames
-        ]
+        ] + [f"{gf[0]}:{gf[1]}" for gf in github_blob_frames]
 
         # 5. Extract symptoms
         symptoms: list[str] = [title]
         if error_types:
             symptoms.append(f"Encountered error types: {', '.join(error_types)}")
+
+        # 6. Clean body prose: strip comments and noisy system/environment dumps
+        clean_body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+        clean_body = re.sub(
+            r"(?i)##+\s*(?:System Information|Environment|System Info|Version Info).*?(?=\n##|\Z)",
+            "",
+            clean_body,
+            flags=re.DOTALL,
+        ).strip()
 
         # Compile initial search query. High-signal identifiers (error types, file
         # paths, symbols, stack frames) must come before natural-language prose so
@@ -231,8 +284,8 @@ class InvestigationNodes:
         query_parts.extend(extracted_symbols[:8])
         query_parts.extend(frames_summary[:5])
         query_parts.append(title)
-        if body:
-            query_parts.append(body[:800])
+        if clean_body:
+            query_parts.append(clean_body[:800])
 
         raw_query = " ".join(part for part in query_parts if part)
 
@@ -289,7 +342,8 @@ class InvestigationNodes:
                 code_hits = search_code(
                     query=query,
                     repo_snapshot=self.snapshot,
-                    max_results=10,
+                    max_results=12,
+                    max_results_per_file=1,
                 )
                 evidence_items = [
                     EvidenceItem(
@@ -377,6 +431,34 @@ class InvestigationNodes:
             for h in payload.hypotheses:
                 hd = h.model_dump()
                 hd["support_status"] = "tentative"
+                if not hd.get("supporting_evidence_ids"):
+                    # Auto-ground to matching evidence if LLM omitted citation
+                    expl_lower = f"{hd.get('title', '')} {hd.get('explanation', '')}".lower()
+                    matched = [
+                        e.evidence_id
+                        for e in evidence_items
+                        if e.source_type == "code"
+                        and (
+                            Path(e.path_or_url).stem.lower() in expl_lower
+                            or Path(e.path_or_url).name.lower() in expl_lower
+                        )
+                    ]
+                    if matched:
+                        hd["supporting_evidence_ids"] = matched[:2]
+                    elif evidence_items:
+                        code_evs = [
+                            e.evidence_id for e in evidence_items if e.source_type == "code"
+                        ]
+                        if code_evs:
+                            hd["supporting_evidence_ids"] = [code_evs[0]]
+                        else:
+                            hd["supporting_evidence_ids"] = [evidence_items[0].evidence_id]
+
+                # Ensure hypotheses grounded in code evidence are not marked low confidence
+                if hd.get("supporting_evidence_ids") and hd.get("confidence") == "low":
+                    hd["confidence"] = "medium"
+                    if not hd.get("confidence_rationale"):
+                        hd["confidence_rationale"] = "Grounded in retrieved repository code."
                 hypotheses_dicts.append(hd)
 
             missing_info = list(payload.missing_information)

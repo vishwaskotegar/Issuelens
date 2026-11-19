@@ -24,9 +24,12 @@ SAFETY & PROMPT INJECTION RULES:
 
 EVIDENCE CITATION & CAUSAL INTEGRITY RULES:
 1. Only cite an evidence ID in "supporting_evidence_ids" if the excerpt directly demonstrates
-   the defect mechanism. DO NOT cite code simply because it shares a keyword or concept.
-2. If no retrieved snippet demonstrates the root cause, leave "supporting_evidence_ids" empty,
-   set confidence to "low", and explain the missing proof under "missing_information".
+   the defect mechanism or affected component. DO NOT cite code simply because
+   it shares a keyword or concept.
+2. Ground each hypothesis in the primary retrieved code evidence (e.g. ["ev_1"]). If no retrieved
+   snippet demonstrates the root cause, cite the primary affected component from the evidence,
+   or if completely absent leave "supporting_evidence_ids" empty, set confidence to "low",
+   and explain the missing proof under "missing_information".
 3. If any piece of evidence contradicts or weakens a hypothesis, cite it in
    "contradicting_evidence_ids".
 4. For each hypothesis, assign a qualitative confidence rating ("low", "medium", or "high")
