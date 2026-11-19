@@ -164,12 +164,8 @@ class DocumentRetriever:
         evidence_items: list[EvidenceItem] = []
 
         for idx, (chunk, _) in enumerate(hits, start=start_evidence_idx):
-            # Format excerpt with heading context if present
-            excerpt = (
-                f"[{chunk.heading}]\n{chunk.content}"
-                if chunk.heading
-                else chunk.content
-            )
+            # Use raw chunk content so citation excerpts strictly match physical snapshot file lines
+            excerpt = chunk.content
 
             evidence_items.append(
                 EvidenceItem(
