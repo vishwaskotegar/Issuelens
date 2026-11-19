@@ -20,7 +20,7 @@ flowchart TD
     
     Step3 --> Step4["4. Deterministic Code Search<br/><code>search_code(ripgrep + AST expansion)</code>"]
     
-    Step4 --> Step5["5. Evidence Formulation<br/>Construct <code>list[EvidenceItem]</code> (ev_1, ev_2...)"]
+    Step4 --> Step5["5. Evidence Formulation<br/>Construct <code>list&#91;EvidenceItem&#93;</code> (ev_1, ev_2...)"]
     
     Step5 --> Step6["6. Prompt Enclave Assembly<br/><code>build_investigation_messages()</code><br/>XML tags: &lt;untrusted_issue_data&gt;"]
     
@@ -37,7 +37,7 @@ flowchart TD
     Action1 --> Gate2{"Valid Evidence Count > 0?"}
     Action2 --> Gate2
     
-    Gate2 -- Zero valid citations --> Action3["Insufficient Evidence Mode<br/>Prefix summary with [INSUFFICIENT EVIDENCE]<br/>verification_status = 'not_run'"]
+    Gate2 -- Zero valid citations --> Action3["Insufficient Evidence Mode<br/>Prefix summary with &#91;INSUFFICIENT EVIDENCE&#93;<br/>verification_status = 'not_run'"]
     Gate2 -- Verified citations exist --> Action4["verification_status = 'verified'"]
     
     Action3 --> End(["Return Final Sanitized Report"])

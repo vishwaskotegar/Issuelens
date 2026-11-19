@@ -1217,7 +1217,7 @@ Evaluating LLM output using "LLM-as-a-judge" self-ratings is noisy, expensive, a
    - Rate = $\frac{\text{valid code citations}}{\text{total code citations}}$ (Benchmark gate: $\ge 95\%$).
 3. **Retrieval Recall@k and Hit@k** are computed via [`compute_recall_at_k()`](../src/issuelens/evaluation/metrics.py#L76):
    - Compares unique ordered retrieved files against `expected_files` across ranks $k \in \{1, 3, 5, 10\}$.
-   - Recall@k = $\frac{|\text{retrieved files} \cap \text{expected files}|}{|\text{expected files}|}$ (Benchmark gate: $\ge 80\%$ at $k=5$).
+   - Recall@k = $\frac{\lvert\text{retrieved files} \cap \text{expected files}\rvert}{\lvert\text{expected files}\rvert}$ (Benchmark gate: $\ge 80\%$ at $k=5$).
    - Hit@k = $1.0$ if at least one expected buggy file appears in top $k$, else $0.0$.
 4. **Unsupported Claims Count** is computed via [`compute_unsupported_claims()`](../src/issuelens/evaluation/metrics.py#L123):
    - Counts hypotheses with empty supporting evidence IDs, references to nonexistent evidence IDs, or unverified citations (Benchmark gate: $< 0.5$ per report).

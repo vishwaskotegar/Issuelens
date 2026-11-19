@@ -83,6 +83,13 @@ IssueLens is an evidence-backed AI debugging assistant for public GitHub bug rep
 - Thread-safe sliding-window rate limiter (`RateLimiter`, `enforce_rate_limit`) enforcing requests per minute per IP, returning HTTP 429 and `Retry-After` header.
 - Unauthenticated public operational probes (`/healthz`, `/readyz`) for cloud orchestrators and load balancers.
 
+### Phase 10: Security Hardening & Trusted Proxy Protection (Complete)
+- Anti-spoofing `X-Forwarded-For` client IP resolution validating upstream proxies against configurable `TRUSTED_PROXIES` CIDR ranges.
+- Comprehensive HTTP security headers (`Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security`, `Referrer-Policy: no-referrer`) and configurable CORS middleware.
+- XML tag escaping (`escape_xml_enclave_tags`) protecting against prompt injection delimiter escape attempts in untrusted issue titles, bodies, and comments.
+- Production startup guardrails requiring `AUTH_REQUIRED=true` and non-empty `API_KEY` before accepting traffic in production mode.
+- Localhost port binding enforcement (`127.0.0.1:5432`) in `docker-compose.yml` preventing accidental network exposure of PostgreSQL.
+
 ---
 
 ## Getting Started
@@ -213,6 +220,10 @@ issuelens/
       ADR-005-langgraph-agent-workflow-and-state-machine.md
       ADR-006-deterministic-evidence-ranking.md
       ADR-007-postgresql-persistence-and-alembic-migrations.md
+      ADR-008-evaluation-harness-and-retrospective-benchmark.md
+      ADR-009-document-rag-and-hybrid-retrieval.md
+      ADR-010-production-deployment-and-api-hardening.md
+      ADR-011-security-hardening-and-trusted-proxy-defense.md
   src/
     issuelens/
       __init__.py
@@ -253,6 +264,19 @@ issuelens/
         python_symbols.py     # AST-based symbol parsing and line range extraction
         snippets.py           # Safe line-numbered excerpt reader with exact bounds
         snapshot.py           # Bounded repository snapshot and commit-pinned cache
+      retrieval/
+        __init__.py
+        chunking.py           # Heading-preserving markdown and issue text chunker
+        lexical.py            # Pure-Python Okapi BM25 lexical index with Robertson-Spärck Jones IDF
+        hybrid.py             # Hybrid search combining lexical BM25 and dense embeddings with RRF
+        documents.py          # Snapshot documentation discoverer and EvidenceItem generator
+      evaluation/
+        __init__.py
+        dataset.py            # Evaluation benchmark dataset loader & validation models
+        metrics.py            # Deterministic metrics engine (validity, Recall@k, Hit@k)
+        harness.py            # Pre-fix leak prevention test doubles and evaluation harness
+        runner.py             # Benchmark execution orchestrator & aggregation
+        run_eval.py           # CLI benchmark runner entrypoint
   tests/
     fixtures/
       sample_repo/            # Controlled mock repository for deterministic testing

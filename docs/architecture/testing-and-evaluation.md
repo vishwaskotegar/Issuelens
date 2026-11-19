@@ -131,7 +131,7 @@ The Phase 7 benchmark evaluates the following quantitative metrics:
 | Metric | Definition & Computation | Target Benchmark |
 | :--- | :--- | :--- |
 | **Citation Validity Rate** | `valid_code_citations / total_code_citations`. Fraction of citations whose path and line range exist and whose excerpt matches physical bytes in the snapshot. | `>= 95%` |
-| **Retrieval Recall@k** | $\frac{|\text{retrieved files} \cap \text{expected files}|}{|\text{expected files}|}$. Whether ground-truth buggy files appear in the top $k$ retrieved code hits ($k \in \{1, 3, 5, 10\}$). | `>= 80%` (at $k=5$) |
+| **Retrieval Recall@k** | $\frac{\lvert\text{retrieved files} \cap \text{expected files}\rvert}{\lvert\text{expected files}\rvert}$. Whether ground-truth buggy files appear in the top $k$ retrieved code hits ($k \in \{1, 3, 5, 10\}$). | `>= 80%` (at $k=5$) |
 | **Retrieval Hit@k** | $1.0$ if at least one expected buggy file appears in top $k$, else $0.0$. | `>= 90%` (at $k=5$) |
 | **Unsupported Claim Count** | Number of factual assertions in `observed_facts` or `hypotheses` not backed by valid retrieved evidence items. | `< 0.5` per report |
 | **Root-Cause Alignment** | Categorical rubric alignment (`correct`, `partially_useful`, `incorrect`, `insufficient_evidence`) scoring keyword overlap against `known_resolution`. | `>= 70%` correct/partial |

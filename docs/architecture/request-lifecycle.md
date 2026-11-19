@@ -149,7 +149,7 @@ flowchart TD
     Step5 -- Valid Payload --> Step6{"Citation Verification & Evidence?<br/>(validator.py)"}
     
     Step6 -- Citations Fail Excerpt Match --> PruneBad["Prune Invalid Citations<br/>Demote Hypotheses to Low Confidence<br/>(Sanitized In-Place)"]
-    Step6 -- 0 Valid Code Citations --> FallbackWeak["Trigger Insufficient Evidence Mode<br/>Summary: '[INSUFFICIENT EVIDENCE]'<br/>verification_status: 'not_run'"]
+    Step6 -- 0 Valid Code Citations --> FallbackWeak["Trigger Insufficient Evidence Mode<br/>Summary: '&#91;INSUFFICIENT EVIDENCE&#93;'<br/>verification_status: 'not_run'"]
     Step6 -- All Citations Verified --> SuccessClean["verification_status: 'verified'<br/>Retain Full Confidence"]
     
     PruneBad --> FinalResponse(["HTTP 201 / Validated Report Emitted"])

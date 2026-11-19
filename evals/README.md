@@ -78,7 +78,7 @@ IssueLens measures five primary quality metrics:
 | Metric | Computation | Target Benchmark |
 | :--- | :--- | :--- |
 | **Citation Validity Rate** | $\frac{\text{valid code citations}}{\text{total code citations}}$ verified against snapshot bytes | $\ge 95\%$ |
-| **Retrieval Recall@k** | $\frac{|\text{retrieved files} \cap \text{expected files}|}{|\text{expected files}|}$ at rank $k \in \{1, 3, 5\}$ | $\ge 80\%$ at $k=5$ |
+| **Retrieval Recall@k** | $\frac{\lvert\text{retrieved files} \cap \text{expected files}\rvert}{\lvert\text{expected files}\rvert}$ at rank $k \in \{1, 3, 5\}$ | $\ge 80\%$ at $k=5$ |
 | **Retrieval Hit@k** | $1.0$ if at least one expected buggy file is in top $k$, else $0.0$ | $\ge 90\%$ at $k=5$ |
 | **Unsupported Claims** | Count of hypotheses with empty citations or dangling evidence IDs | $< 0.5$ per report |
 | **Root-Cause Alignment** | Heuristic rubric classification: `correct`, `partially_useful`, `incorrect` | $\ge 70\%$ correct/partial |
