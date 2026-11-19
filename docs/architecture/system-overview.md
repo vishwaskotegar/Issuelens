@@ -86,10 +86,10 @@ flowchart TD
         HybridEngine --> BM25Engine
     end
 
-    subgraph DeploymentHardening["9. Production Deployment & Security Hardening (Implemented Phase 9)"]
+    subgraph DeploymentHardening["9. Production Deployment & Security Hardening (Implemented Phase 9 & 10)"]
         DockerContainer["Multi-Stage Docker<br/>Non-root UID 1000 + Ripgrep<br/><code>Dockerfile</code>"]
         ComposeStack["Docker Compose Stack<br/>App + PostgreSQL 16 Alpine<br/><code>docker-compose.yml</code>"]
-        APISecurity["API Security & Rate Limiting<br/>X-API-Key + Sliding Window<br/><code>src/issuelens/api/security.py</code>"]
+        APISecurity["API Security, Headers & Rate Limiting<br/>X-API-Key + Anti-Spoofing + Headers<br/><code>src/issuelens/api/security.py</code>"]
         ComposeStack --> DockerContainer
         APIRouter --> APISecurity
     end

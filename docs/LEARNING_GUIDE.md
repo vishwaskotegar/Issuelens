@@ -1544,19 +1544,21 @@ Preventing abusive clients, runaway CI loops, and malicious bots from flooding t
 
 #### 2. What happens from input to output
 1. An incoming HTTP request arrives at a protected endpoint.
-2. The [`enforce_rate_limit`](../src/issuelens/api/security.py#L112) dependency identifies the client:
-   - Checks `X-Forwarded-For` for upstream reverse proxy IP headers.
-   - Falls back to direct client socket IP address (`request.client.host`).
-3. [`RateLimiter`](../src/issuelens/api/security.py#L18) acquires an internal thread lock and prunes timestamps older than 60 seconds.
+2. The [`enforce_rate_limit`](../src/issuelens/api/security.py) dependency identifies the client:
+   - Inspects the direct connection peer IP (`request.client.host`).
+   - Uses `is_trusted_proxy()` to verify whether the direct caller matches an IP or CIDR network in `Settings.trusted_proxies`.
+   - Only if the peer is a trusted proxy does it read the client IP from `X-Forwarded-For`.
+   - Otherwise, it strictly enforces the direct socket IP, blocking header spoofing attacks.
+3. [`RateLimiter`](../src/issuelens/api/security.py) acquires an internal thread lock and prunes timestamps older than 60 seconds.
 4. If the number of requests in the sliding window meets or exceeds `Settings.rate_limit_per_minute` (default: 60):
    - Computes exact `retry_after` seconds until the earliest request expires from the window.
-   - Raises [`RateLimitExceededError`](../src/issuelens/core/errors.py#L40).
+   - Raises [`RateLimitExceededError`](../src/issuelens/core/errors.py).
 5. The global exception handler returns HTTP 429 Too Many Requests with a `Retry-After` header.
 6. If under the limit, appends current monotonic time and allows request execution.
 
 #### 3. Which files and functions participate
 - **Source files**: [`src/issuelens/api/security.py`](../src/issuelens/api/security.py), [`src/issuelens/main.py`](../src/issuelens/main.py).
-- **Key symbols**: `RateLimiter`, `enforce_rate_limit()`, `get_client_identifier()`, `RateLimitExceededError`.
+- **Key symbols**: `RateLimiter`, `enforce_rate_limit()`, `get_client_identifier()`, `is_trusted_proxy()`, `RateLimitExceededError`.
 
 #### 4. Why the implementation is structured this way
 - **Sliding-Window over Fixed-Window**: Fixed-window counters suffer from the "boundary burst" flaw (e.g. sending 60 requests at 00:59 and 60 at 01:00 sends 120 requests in 2 seconds). Sliding windows evaluate a continuous rolling 60-second window.
@@ -1567,18 +1569,51 @@ Preventing abusive clients, runaway CI loops, and malicious bots from flooding t
   - *Trade-off*: Ideal for multi-container clusters, but adds an extra infrastructure dependency for single-container or pilot deployments.
 
 #### 6. What can fail and how failures are handled
-- **Proxy Spoofing**: `get_client_identifier` extracts only the leftmost (client-originating) IP from `X-Forwarded-For`.
+- **Proxy Spoofing**: Adversaries attempting to bypass rate limits by rotating arbitrary `X-Forwarded-For` IPs are thwarted because `get_client_identifier()` ignores the header unless the socket IP matches `Settings.trusted_proxies`.
 
 #### 7. How the feature is tested
-- **Test file**: [`tests/unit/test_deployment_hardening.py`](../tests/unit/test_deployment_hardening.py)
-- **Verifications**: Sliding window limit enforcement, 429 status code, `Retry-After` response header, per-client partition.
+- **Test files**: [`tests/unit/test_deployment_hardening.py`](../tests/unit/test_deployment_hardening.py), [`tests/unit/test_trusted_proxies.py`](../tests/unit/test_trusted_proxies.py)
+- **Verifications**: Sliding window limit enforcement, 429 status code, `Retry-After` response header, per-client partition, and anti-spoofing tests.
 - **Run command**:
   ```powershell
-  uv run pytest tests/unit/test_deployment_hardening.py -k test_rate_limit
+  uv run pytest tests/unit/test_trusted_proxies.py tests/unit/test_deployment_hardening.py
   ```
 
 #### 8. What a junior developer should learn from the implementation
 - Use **`time.monotonic()`** instead of `time.time()` for all latency, rate limiting, and timeout calculations. `time.time()` can jump backwards during NTP clock synchronization, causing rate limit calculations to behave erratically.
+- **Never trust client-supplied headers blindly**. In HTTP, anyone can send `X-Forwarded-For: 8.8.8.8`. Unless you verify that your server is directly talking to a trusted proxy that sanitized or appended that header, treating it as an identity allows trivial IP spoofing.
+
+---
+
+### Feature 10.1: Security Hardening: Anti-Spoofing Proxy Validation, HTTP Headers, and Enclave Boundaries
+
+#### 1. What problem it solves
+Hardens the application against production cyber attacks, including rate-limit bypass via IP spoofing, MIME sniffing, clickjacking, insecure HTTP downgrade, and XML boundary tag escaping prompt injection.
+
+#### 2. What happens from input to output
+1. **Proxy Anti-Spoofing**: When a request arrives, `get_client_identifier()` checks `request.client.host` against `Settings.trusted_proxies`. If untrusted, `X-Forwarded-For` is discarded.
+2. **Security Headers Middleware**: The `@app.middleware("http")` hook wraps all responses, automatically attaching `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy`. In production or over HTTPS, it sets `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
+3. **CORS Guardrails**: `CORSMiddleware` limits browser origins to configured `cors_allowed_origins`.
+4. **Prompt Injection Boundary Escaping**: `escape_xml_enclave_tags()` in `prompts.py` neutralizes literal `</untrusted_issue_data>` and `</untrusted_repository_evidence>` occurrences in raw bug reports and code snippets, preventing jailbreak boundary breakouts.
+5. **Database Network Isolation**: `docker-compose.yml` binds PostgreSQL to `127.0.0.1:5432` only, blocking external internet exposure.
+
+#### 3. Which files and functions participate
+- **Source files**: [`src/issuelens/api/security.py`](../src/issuelens/api/security.py), [`src/issuelens/main.py`](../src/issuelens/main.py), [`src/issuelens/config.py`](../src/issuelens/config.py), [`src/issuelens/agent/prompts.py`](../src/issuelens/agent/prompts.py), [`docker-compose.yml`](../docker-compose.yml).
+- **Key symbols**: `is_trusted_proxy()`, `add_security_headers()`, `escape_xml_enclave_tags()`, `Settings.trusted_proxies`.
+
+#### 4. Why the implementation is structured this way
+- **Defense in Depth**: Even if deployed behind a gateway, application-layer security headers guarantee protection if the container is exposed directly or tested locally.
+- **Fail-Fast Production Validation**: Pydantic's `validate_production_security` halts bootup if `APP_ENV=production` is set without `AUTH_REQUIRED=True` and a valid `API_KEY`.
+
+#### 5. How the feature is tested
+- **Test files**: [`tests/unit/test_trusted_proxies.py`](../tests/unit/test_trusted_proxies.py), [`tests/unit/test_security_headers.py`](../tests/unit/test_security_headers.py), [`tests/unit/agent/test_prompt_injection_defense.py`](../tests/unit/agent/test_prompt_injection_defense.py).
+- **Run command**:
+  ```powershell
+  uv run pytest tests/unit/test_trusted_proxies.py tests/unit/test_security_headers.py tests/unit/agent/test_prompt_injection_defense.py
+  ```
+
+#### 6. What a junior developer should learn from the implementation
+- Security is not a single feature; it is a **layered system**. Input sanitization, network binding restrictions, HTTP response headers, transport encryption, and client authentication work together so that if any single defense has a blind spot, the remaining layers prevent compromise.
 
 ---
 

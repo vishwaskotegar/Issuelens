@@ -79,12 +79,15 @@ flowchart TD
 
 ## 2. Trust Boundaries & Verification Analysis
 
-### Boundary 0: Ingress Authentication & Rate Limiting
-- **Threat**: Unauthenticated clients or automated bots flood the API, causing denial-of-service, exhausting LLM token quotas ("Denial of Wallet"), or overwhelming GitHub API rate limits.
+### Boundary 0: Ingress Authentication, Rate Limiting & HTTP Hardening
+- **Threat**: Unauthenticated clients or automated bots flood the API, causing denial-of-service, exhausting LLM token quotas ("Denial of Wallet"), bypassing rate limits via `X-Forwarded-For` IP spoofing, or exploiting missing browser security headers (MIME sniffing, clickjacking, SSL stripping).
 - **Implemented Defenses**:
   - **API Key Authentication**: Constant-time verification (`secrets.compare_digest()`) via `X-API-Key` or `Authorization: Bearer <token>` in [`verify_api_key()`](../../src/issuelens/api/security.py#L83).
   - **Production Auth Guard**: [`validate_production_security()`](../../src/issuelens/config.py#L123) strictly requires `auth_required=True` and a non-empty `api_key` whenever running with `app_env="production"`, preventing accidental unauthenticated production deployments.
+  - **Anti-Spoofing Trusted Proxy Verification**: [`get_client_identifier()`](../../src/issuelens/api/security.py#L89) only accepts `X-Forwarded-For` if the direct socket connection matches an IP or CIDR network in `Settings.trusted_proxies`, preventing rate limit evasion by forging forwarded headers.
   - **Thread-Safe Sliding-Window Rate Limiter**: Enforces configurable requests per minute (`rate_limit_per_minute`, default 60 req/min) returning HTTP 429 with `Retry-After` headers via [`enforce_rate_limit()`](../../src/issuelens/api/security.py#L123).
+  - **HTTP Security Headers Middleware**: Injects `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, and conditional `Strict-Transport-Security` across all endpoints in [`src/issuelens/main.py`](../../src/issuelens/main.py).
+  - **CORS Protection**: Limits cross-origin web requests to configured `cors_allowed_origins`.
   - **Non-Root Container Isolation**: Application runs under unprivileged non-root user `issuelens:issuelens` (UID/GID 1000).
 
 ### Boundary 1: User-Provided Input & SSRF Defense
