@@ -215,12 +215,25 @@ class GitHubClient:
         if "headers" in kwargs:
             headers.update(kwargs.pop("headers"))
 
+        # Follow 301/302 redirects automatically (e.g. renamed repos or redirected endpoints)
+        kwargs.setdefault("follow_redirects", True)
+
         max_retries = 2
         for attempt in range(max_retries + 1):
             try:
                 response = await client.request(method, url, headers=headers, **kwargs)
                 if response.is_success:
                     return response.json()
+
+                # If token rejected with 401, retry unauthenticated for public repositories
+                if response.status_code == 401 and "Authorization" in headers:
+                    logger.warning(
+                        "GitHub API rejected GITHUB_TOKEN (HTTP 401). "
+                        "Retrying request unauthenticated for %s",
+                        path,
+                    )
+                    headers.pop("Authorization", None)
+                    continue
 
                 # If transient 5xx, retry once
                 if response.status_code in (500, 502, 503, 504) and attempt < max_retries:
@@ -323,39 +336,58 @@ class GitHubClient:
         url = f"{self.base_url}{path}"
         headers = dict(self._headers)
 
-        try:
-            async with client.stream(
-                "GET", url, headers=headers, follow_redirects=True
-            ) as response:
-                if response.status_code == 404:
-                    raise ResourceNotFoundError(
-                        f"Repository archive for '{owner}/{repo}@{ref}' not found."
-                    )
-                if response.status_code >= 400:
-                    self._handle_error_response(response, path)
-
-                chunks: list[bytes] = []
-                total_bytes = 0
-                async for chunk in response.aiter_bytes():
-                    total_bytes += len(chunk)
-                    if total_bytes > max_bytes:
-                        raise SafetyViolationError(
-                            f"Repository archive size exceeds limit of {max_bytes} bytes."
+        for attempt in range(2):
+            try:
+                async with client.stream(
+                    "GET", url, headers=headers, follow_redirects=True
+                ) as response:
+                    if (
+                        response.status_code == 401
+                        and "Authorization" in headers
+                        and attempt == 0
+                    ):
+                        logger.warning(
+                            "GitHub API rejected GITHUB_TOKEN (HTTP 401). "
+                            "Retrying archive download unauthenticated."
                         )
-                    chunks.append(chunk)
+                        headers.pop("Authorization", None)
+                        continue
 
-                return b"".join(chunks)
+                    if response.status_code == 404:
+                        raise ResourceNotFoundError(
+                            f"Repository archive for '{owner}/{repo}@{ref}' not found."
+                        )
+                    if response.status_code >= 400:
+                        self._handle_error_response(response, path)
 
-        except httpx.TimeoutException as exc:
-            raise UpstreamTimeoutError(
-                f"Timed out downloading archive for '{owner}/{repo}@{ref}'."
-            ) from exc
-        except httpx.RequestError as exc:
-            raise IssueLensError(
-                f"Network error downloading archive for '{owner}/{repo}@{ref}': {exc}",
-                code="NETWORK_ERROR",
-                status_code=502,
-            ) from exc
+                    chunks: list[bytes] = []
+                    total_bytes = 0
+                    async for chunk in response.aiter_bytes():
+                        total_bytes += len(chunk)
+                        if total_bytes > max_bytes:
+                            raise SafetyViolationError(
+                                f"Repository archive size exceeds limit of {max_bytes} bytes."
+                            )
+                        chunks.append(chunk)
+
+                    return b"".join(chunks)
+
+            except httpx.TimeoutException as exc:
+                if attempt == 0:
+                    continue
+                raise UpstreamTimeoutError(
+                    f"Timed out downloading archive for '{owner}/{repo}@{ref}'."
+                ) from exc
+            except httpx.RequestError as exc:
+                if attempt == 0:
+                    continue
+                raise IssueLensError(
+                    f"Network error downloading archive for '{owner}/{repo}@{ref}': {exc}",
+                    code="NETWORK_ERROR",
+                    status_code=502,
+                ) from exc
+
+        return b""
 
     async def fetch_issue_context(self, target: IssueTarget) -> GitHubIssueContext:
         """Fetch and aggregate issue, comments, repo metadata, and pinned commit SHA."""
