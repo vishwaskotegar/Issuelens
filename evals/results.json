@@ -1,41 +1,46 @@
 {
+  "mode": "live",
+  "run_timestamp": "2026-11-24T10:05:11.594394+00:00",
+  "model_name": "gpt-4o-mini",
+  "issuelens_commit_sha": "8756e7491bd09fe942a43fc8446259c80a26f7a0",
   "total_cases": 20,
-  "completed_cases": 20,
-  "failed_cases": 0,
+  "completed_cases": 17,
+  "failed_cases": 3,
   "insufficient_evidence_cases": 0,
-  "mean_citation_validity": 1.0,
+  "mean_citation_validity": 0.85,
   "mean_recall_at_k": {
-    "1": 0.4667,
-    "3": 0.7333,
-    "5": 0.7333,
-    "10": 0.8083
+    "1": 0.2417,
+    "3": 0.3667,
+    "5": 0.3667,
+    "10": 0.4167
   },
   "mean_hit_at_k": {
-    "1": 0.55,
-    "3": 0.85,
-    "5": 0.85,
-    "10": 0.9
+    "1": 0.3,
+    "3": 0.45,
+    "5": 0.45,
+    "10": 0.5
   },
   "mean_unsupported_claims": 0.0,
-  "mean_latency_seconds": 10.662,
+  "mean_latency_seconds": 149.351,
   "root_cause_distribution": {
-    "correct": 19,
-    "incorrect": 1
+    "correct": 12,
+    "partially_useful": 4,
+    "incorrect": 4
   },
   "benchmark_targets_met": {
-    "citation_validity_ge_95": true,
+    "citation_validity_ge_95": false,
     "recall_at_5_ge_80": false,
     "unsupported_claims_lt_0_5": true
   },
   "case_metrics": [
     {
       "case_id": "CASE-001",
-      "repo_full_name": "pallets/flask",
-      "issue_number": 4020,
-      "target_commit_sha": "d575de5159a6e40944275763c9ada2801214058b",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 46095,
+      "target_commit_sha": "ae8666b9d1a568db03f6aecfcd48de337381487e",
       "status": "completed",
-      "total_code_citations": 15,
-      "valid_code_citations": 15,
+      "total_code_citations": 17,
+      "valid_code_citations": 17,
       "citation_validity_rate": 1.0,
       "recall_at_k": {
         "1": 1.0,
@@ -50,458 +55,354 @@
         "10": 1.0
       },
       "retrieved_files": [
-        "src/flask/globals.py",
-        "src/flask/logging.py",
-        "tests/test_basic.py",
-        "docs/appcontext.rst",
-        "docs/reqcontext.rst",
-        "docs/installation.rst",
-        "docs/quickstart.rst",
-        "src/flask/app.py",
-        "src/flask/ctx.py",
-        "src/flask/helpers.py",
-        "tests/test_appctx.py",
-        "docs/api.rst"
+        "litellm/litellm_core_utils/streaming_handler.py",
+        "litellm/main.py",
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm/llms/azure_ai/agents/handler.py",
+        "litellm/llms/azure_ai/chat/transformation.py",
+        "litellm/llms/oci/chat/transformation.py",
+        "litellm/proxy/guardrails/guardrail_hooks/bedrock_guardrails.py",
+        "litellm/proxy/guardrails/guardrail_hooks/cisco_ai_defense/cisco_ai_defense.py",
+        "litellm/proxy/guardrails/guardrail_hooks/presidio.py",
+        "litellm/responses/litellm_completion_transformation/streaming_iterator.py",
+        "litellm/types/utils.py",
+        "README.md",
+        "litellm/llms/bytez/chat/transformation.py"
       ],
       "expected_files": [
-        "src/flask/globals.py"
+        "litellm/litellm_core_utils/streaming_handler.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
       "root_cause_alignment": "correct",
-      "alignment_score": 1.0,
-      "latency_seconds": 10.87,
+      "alignment_score": 0.6429,
+      "latency_seconds": 120.088,
       "error_reason": null
     },
     {
       "case_id": "CASE-002",
-      "repo_full_name": "pallets/flask",
-      "issue_number": 3950,
-      "target_commit_sha": "ecb3450f19d3d817b4b857bb5831b309131b37e1",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 51666,
+      "target_commit_sha": "8ef451a1879d20135c374d61ae09a4fee24969c9",
       "status": "completed",
-      "total_code_citations": 22,
-      "valid_code_citations": 22,
+      "total_code_citations": 16,
+      "valid_code_citations": 16,
       "citation_validity_rate": 1.0,
       "recall_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
       },
       "hit_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
       },
       "retrieved_files": [
-        "src/flask/app.py",
-        "src/flask/config.py",
-        "src/flask/sessions.py",
-        "src/flask/blueprints.py",
-        "src/flask/cli.py",
-        "src/flask/ctx.py",
-        "src/flask/debughelpers.py",
-        "src/flask/helpers.py",
-        "src/flask/scaffold.py",
-        "src/flask/views.py",
-        "tests/test_config.py",
-        "tests/test_basic.py",
-        "docs/quickstart.rst",
-        "docs/api.rst",
-        "docs/config.rst"
+        "litellm/exceptions.py",
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/llms/anthropic/chat/transformation.py",
+        "litellm/a2a_protocol/providers/watsonx_orchestrate/transformation.py",
+        "litellm/litellm_core_utils/error_normalization.py",
+        "litellm/llms/anthropic/files/transformation.py",
+        "litellm/router_rust/core.py",
+        "litellm/a2a_protocol/providers/bedrock_agentcore/transformation.py",
+        "litellm/a2a_protocol/providers/pydantic_ai_agents/transformation.py",
+        "litellm/litellm_core_utils/token_counter.py",
+        "litellm/__init__.py",
+        "litellm/decisions/call.py",
+        "README.md"
       ],
       "expected_files": [
-        "src/flask/app.py"
+        "litellm/llms/opencode/chat/transformation.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 0.6429,
-      "latency_seconds": 8.561,
+      "root_cause_alignment": "partially_useful",
+      "alignment_score": 0.1667,
+      "latency_seconds": 110.955,
       "error_reason": null
     },
     {
       "case_id": "CASE-003",
-      "repo_full_name": "psf/requests",
-      "issue_number": 4716,
-      "target_commit_sha": "dd754d13de250a6af8a68a6a83a8b4419fd429c6",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 51931,
+      "target_commit_sha": "e6b673e6e077d0c98f74ddddfcf1d466f609e529",
       "status": "completed",
-      "total_code_citations": 12,
-      "valid_code_citations": 12,
+      "total_code_citations": 17,
+      "valid_code_citations": 17,
       "citation_validity_rate": 1.0,
       "recall_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
       },
       "hit_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
       },
       "retrieved_files": [
-        "requests/sessions.py",
-        "docs/user/quickstart.rst",
-        "docs/user/authentication.rst",
-        "docs/user/advanced.rst",
-        "requests/adapters.py",
-        "requests/auth.py",
-        "docs/dev/contributing.rst",
-        "README.rst"
+        "litellm/exceptions.py",
+        "litellm/litellm_core_utils/error_normalization.py",
+        "litellm/proxy/common_utils/responses_stream_errors.py",
+        "litellm/responses/streaming_iterator.py",
+        "litellm/proxy/common_utils/proxy_rate_limit_error.py",
+        "litellm/types/router.py",
+        "tests/integration/_support/responses_stream.py",
+        "litellm/integrations/websearch_interception/transformation.py",
+        "litellm/proxy/response_api_endpoints/endpoints.py",
+        "litellm/router_utils/cooldown_handlers.py",
+        "tests/integration/observability/test_bedrock_error_request_id.py",
+        "tests/integration/sdk/test_responses_bridge_stream_errors_sdk.py",
+        "README.md",
+        "litellm/router_rust/invoke/streaming.py"
       ],
       "expected_files": [
-        "requests/sessions.py"
+        "litellm/router_rust/invoke/streaming.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
       "root_cause_alignment": "correct",
-      "alignment_score": 0.6667,
-      "latency_seconds": 8.734,
+      "alignment_score": 0.5455,
+      "latency_seconds": 33.121,
       "error_reason": null
     },
     {
       "case_id": "CASE-004",
-      "repo_full_name": "psf/requests",
-      "issue_number": 6027,
-      "target_commit_sha": "0192aac24123735b3eaf9b08df46429bb770c283",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 43059,
+      "target_commit_sha": "fdb1ce8d782474be6541e061912be9859054a1f5",
       "status": "completed",
-      "total_code_citations": 15,
-      "valid_code_citations": 15,
+      "total_code_citations": 14,
+      "valid_code_citations": 14,
       "citation_validity_rate": 1.0,
       "recall_at_k": {
         "1": 0.0,
-        "3": 0.0,
-        "5": 0.0,
-        "10": 0.0
-      },
-      "hit_at_k": {
-        "1": 0.0,
-        "3": 0.0,
-        "5": 0.0,
-        "10": 0.0
-      },
-      "retrieved_files": [
-        "requests/help.py",
-        "requests/__init__.py",
-        "requests/models.py",
-        "requests/adapters.py",
-        "requests/auth.py",
-        "requests/compat.py",
-        "requests/packages.py",
-        "requests/sessions.py",
-        "requests/status_codes.py",
-        "setup.py",
-        "tests/test_help.py",
-        "tests/test_lowlevel.py",
-        "docs/user/advanced.rst"
-      ],
-      "expected_files": [
-        "requests/utils.py"
-      ],
-      "unsupported_claims_count": 0,
-      "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 0.6429,
-      "latency_seconds": 10.549,
-      "error_reason": null
-    },
-    {
-      "case_id": "CASE-005",
-      "repo_full_name": "encode/httpx",
-      "issue_number": 1498,
-      "target_commit_sha": "ea5ffce14f6a1430a3cb89eae573b388047f3f2c",
-      "status": "completed",
-      "total_code_citations": 22,
-      "valid_code_citations": 22,
-      "citation_validity_rate": 1.0,
-      "recall_at_k": {
-        "1": 0.5,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "hit_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "retrieved_files": [
-        "httpx/_client.py",
-        "httpx/_models.py",
-        "httpx/_api.py",
-        "tests/client/test_client.py",
-        "httpx/_transports/default.py",
-        "tests/client/test_async_client.py",
-        "tests/client/test_redirects.py",
-        "tests/models/test_requests.py",
-        "tests/client/test_auth.py",
-        "tests/client/test_cookies.py",
-        "tests/client/test_headers.py",
-        "tests/client/test_properties.py",
-        "docs/api.md",
-        "docs/environment_variables.md",
-        "docs/advanced.md",
-        "httpx/__init__.py",
-        "docs/async.md"
-      ],
-      "expected_files": [
-        "httpx/_client.py",
-        "httpx/_models.py"
-      ],
-      "unsupported_claims_count": 0,
-      "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 0.5,
-      "latency_seconds": 13.807,
-      "error_reason": null
-    },
-    {
-      "case_id": "CASE-006",
-      "repo_full_name": "encode/httpx",
-      "issue_number": 1405,
-      "target_commit_sha": "d0835da230892bfa7ef42a5aed9dba8122a4359e",
-      "status": "completed",
-      "total_code_citations": 9,
-      "valid_code_citations": 9,
-      "citation_validity_rate": 1.0,
-      "recall_at_k": {
-        "1": 0.5,
         "3": 0.5,
         "5": 0.5,
         "10": 0.5
       },
       "hit_at_k": {
-        "1": 1.0,
+        "1": 0.0,
         "3": 1.0,
         "5": 1.0,
         "10": 1.0
       },
       "retrieved_files": [
-        "httpx/_models.py",
-        "httpx/__init__.py",
-        "httpx/_api.py",
-        "docs/async.md",
-        "docs/api.md",
-        "CHANGELOG.md"
+        "litellm/types/router.py",
+        "litellm/scheduler.py",
+        "litellm/types/scheduler.py",
+        "litellm/proxy/common_request_processing.py",
+        "litellm/router_strategy/complexity_router/complexity_router.py",
+        "tests/unit/proxy/proxy_server/test_background_health.py",
+        "tests/unit/proxy/test_proxy_server.py",
+        "tests/unit/test_router_per_deployment_num_retries.py",
+        "enterprise/litellm_enterprise/enterprise_callbacks/send_emails/base_email.py",
+        "litellm-rust/crates/callbacks-legacy-python/src/logger.rs",
+        "litellm-rust/crates/host-python/src/driver.rs",
+        "litellm-rust/crates/host-python/src/file_reader.rs",
+        "CONTRIBUTING.md",
+        "ARCHITECTURE.md"
       ],
       "expected_files": [
-        "httpx/_models.py",
-        "httpx/_urls.py"
+        "litellm/router.py",
+        "litellm/scheduler.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
       "root_cause_alignment": "correct",
-      "alignment_score": 1.0,
-      "latency_seconds": 15.155,
+      "alignment_score": 0.5,
+      "latency_seconds": 97.559,
       "error_reason": null
     },
     {
-      "case_id": "CASE-007",
-      "repo_full_name": "pytest-dev/pytest",
-      "issue_number": 8410,
-      "target_commit_sha": "f0ad73c4b05b4307e3dbf890f4e2772ea73e0a2e",
+      "case_id": "CASE-005",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 38811,
+      "target_commit_sha": "9dbfb060bd84b2d4c2fc1ec3a8705f98f5f96856",
       "status": "completed",
       "total_code_citations": 16,
       "valid_code_citations": 16,
       "citation_validity_rate": 1.0,
       "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/spend_tracking/savings.py",
+        "tests/test_litellm/proxy/db/test_db_spend_update_writer.py",
+        "tests/test_litellm/proxy/hooks/test_proxy_track_cost_callback.py",
+        "tests/test_litellm/responses/litellm_completion_transformation/test_session_handler_with_cold_storage.py",
+        "tests/test_litellm/test_main.py",
+        "litellm/integrations/SlackAlerting/slack_alerting.py",
+        "litellm/integrations/cloudzero/database.py",
+        "litellm/integrations/datadog/datadog_llm_obs.py",
+        "litellm/integrations/focus/database.py",
+        "litellm/integrations/gcs_pubsub/pub_sub.py",
+        "litellm/interactions/background_cost_polling.py",
+        "litellm/litellm_core_utils/core_helpers.py",
+        "ARCHITECTURE.md",
+        "README.md"
+      ],
+      "expected_files": [
+        "litellm/proxy/spend_tracking/savings.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.5625,
+      "latency_seconds": 79.078,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-006",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 38816,
+      "target_commit_sha": "0c8321efc3cb725a619d8d768b82db1a46d32f52",
+      "status": "failed",
+      "total_code_citations": 0,
+      "valid_code_citations": 0,
+      "citation_validity_rate": 0.0,
+      "recall_at_k": {
         "1": 0.0,
-        "3": 0.5,
-        "5": 0.5,
-        "10": 1.0
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
       },
       "hit_at_k": {
         "1": 0.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
       },
-      "retrieved_files": [
-        "src/_pytest/pytester.py",
-        "src/_pytest/tmpdir.py",
-        "testing/test_tmpdir.py",
-        "src/_pytest/main.py",
-        "testing/python/fixtures.py",
-        "testing/test_main.py",
-        "src/_pytest/config/__init__.py",
-        "doc/en/changelog.rst",
-        "testing/test_assertrewrite.py",
-        "src/_pytest/pathlib.py",
-        "testing/python/collect.py",
-        "doc/en/builtin.rst",
-        "doc/en/fixture.rst",
-        "doc/en/capture.rst",
-        "doc/en/tmpdir.rst"
-      ],
+      "retrieved_files": [],
       "expected_files": [
-        "src/_pytest/pathlib.py",
-        "src/_pytest/tmpdir.py"
-      ],
-      "unsupported_claims_count": 0,
-      "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 1.0,
-      "latency_seconds": 12.617,
-      "error_reason": null
-    },
-    {
-      "case_id": "CASE-008",
-      "repo_full_name": "pytest-dev/pytest",
-      "issue_number": 7392,
-      "target_commit_sha": "e6e300e729dd33956e5448d8be9a0b1540b4e53a",
-      "status": "completed",
-      "total_code_citations": 22,
-      "valid_code_citations": 22,
-      "citation_validity_rate": 1.0,
-      "recall_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "hit_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "retrieved_files": [
-        "src/_pytest/skipping.py",
-        "src/_pytest/hookspec.py",
-        "src/_pytest/runner.py",
-        "src/_pytest/pytester.py",
-        "src/_pytest/unittest.py",
-        "testing/python/collect.py",
-        "testing/python/metafunc.py",
-        "bench/manyparam.py",
-        "src/_pytest/compat.py",
-        "src/_pytest/debugging.py",
-        "testing/python/fixtures.py",
-        "testing/python/integration.py",
-        "doc/en/reference.rst",
-        "doc/en/unittest.rst",
-        "doc/en/skipping.rst",
-        "src/_pytest/outcomes.py",
-        "src/_pytest/python.py"
-      ],
-      "expected_files": [
-        "src/_pytest/skipping.py"
-      ],
-      "unsupported_claims_count": 0,
-      "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 0.8571,
-      "latency_seconds": 11.202,
-      "error_reason": null
-    },
-    {
-      "case_id": "CASE-009",
-      "repo_full_name": "pydantic/pydantic",
-      "issue_number": 3100,
-      "target_commit_sha": "5ccbdcb5904f35834300b01432a665c75dc02296",
-      "status": "completed",
-      "total_code_citations": 15,
-      "valid_code_citations": 15,
-      "citation_validity_rate": 1.0,
-      "recall_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "hit_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "retrieved_files": [
-        "pydantic/main.py",
-        "pydantic/config.py",
-        "pydantic/env_settings.py",
-        "pydantic/decorator.py",
-        "pydantic/fields.py",
-        "pydantic/schema.py",
-        "pydantic/__init__.py",
-        "pydantic/annotated_types.py",
-        "pydantic/dataclasses.py",
-        "pydantic/generics.py",
-        "pydantic/json.py",
-        "pydantic/mypy.py",
-        "docs/usage/models.md"
-      ],
-      "expected_files": [
-        "pydantic/main.py"
-      ],
-      "unsupported_claims_count": 0,
-      "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 0.8571,
-      "latency_seconds": 9.359,
-      "error_reason": null
-    },
-    {
-      "case_id": "CASE-010",
-      "repo_full_name": "pydantic/pydantic",
-      "issue_number": 3583,
-      "target_commit_sha": "8ef492b85fddbfbeadde49e07163580c13d432d5",
-      "status": "completed",
-      "total_code_citations": 19,
-      "valid_code_citations": 19,
-      "citation_validity_rate": 1.0,
-      "recall_at_k": {
-        "1": 0.3333,
-        "3": 0.6667,
-        "5": 0.6667,
-        "10": 0.6667
-      },
-      "hit_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "retrieved_files": [
-        "pydantic/json.py",
-        "pydantic/main.py",
-        "pydantic/error_wrappers.py",
-        "pydantic/fields.py",
-        "pydantic/generics.py",
-        "pydantic/typing.py",
-        "pydantic/utils.py",
-        "tests/test_construction.py",
-        "tests/test_dataclasses.py",
-        "tests/test_edge_cases.py",
-        "tests/test_main.py",
-        "tests/test_orm_mode.py",
-        "docs/contributing.md",
-        "docs/visual_studio_code.md",
-        "docs/usage/validation_decorator.md"
-      ],
-      "expected_files": [
-        "pydantic/main.py",
-        "pydantic/json.py",
-        "pydantic/config.py"
+        "litellm/proxy/common_request_processing.py",
+        "litellm/proxy/db/autorouter_session_rollup.py",
+        "litellm/proxy/spend_tracking/savings.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
       "root_cause_alignment": "incorrect",
       "alignment_score": 0.0,
-      "latency_seconds": 9.861,
+      "latency_seconds": 131.5856860999993,
+      "error_reason": "LLM request timed out: Request timed out."
+    },
+    {
+      "case_id": "CASE-007",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 52962,
+      "target_commit_sha": "8ad03f09a1f97053f55e8eeba73700e1e0a3c16e",
+      "status": "completed",
+      "total_code_citations": 17,
+      "valid_code_citations": 17,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/auth/auth_checks.py",
+        "litellm/proxy/auth/auth_utils.py",
+        "litellm/proxy/_types.py",
+        "litellm/proxy/management_endpoints/compliance_endpoints.py",
+        "litellm/types/proxy/auth/auth_checks.py",
+        "litellm/types/proxy/compliance_endpoints.py",
+        "litellm/proxy/auth/auth_exception_handler.py",
+        "litellm/proxy/auth/fallback_model_access.py",
+        "litellm/proxy/health_endpoints/_health_endpoints.py",
+        "litellm/proxy/mcp_server/sampling_handler.py",
+        "tests/unit/proxy/auth/test_auth_exception_handler.py",
+        "tests/unit/proxy/auth/test_personal_key_team_model_access.py",
+        "README.md"
+      ],
+      "expected_files": [
+        "litellm/proxy/auth/auth_utils.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.5,
+      "latency_seconds": 93.749,
       "error_reason": null
     },
     {
-      "case_id": "CASE-011",
-      "repo_full_name": "tiangolo/fastapi",
-      "issue_number": 1472,
-      "target_commit_sha": "98bb9f13da4932fac8bc138f77fba38c34e553ee",
+      "case_id": "CASE-008",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 46450,
+      "target_commit_sha": "5088b0cea6da34e28b421e5d0a45fb3d6cc049f5",
       "status": "completed",
-      "total_code_citations": 23,
-      "valid_code_citations": 23,
+      "total_code_citations": 15,
+      "valid_code_citations": 15,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.5,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/caching/caching_handler.py",
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/litellm_core_utils/llm_response_utils/response_metadata.py",
+        "litellm/proxy/common_request_processing.py",
+        "litellm/cost_calculator.py",
+        "litellm/integrations/clickhouse/clickhouse_spend_logger.py",
+        "litellm/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm/proxy/litellm_pre_call_utils.py",
+        "litellm/proxy/pass_through_endpoints/llm_provider_handlers/anthropic_passthrough_logging_handler.py",
+        "litellm/proxy/pass_through_endpoints/llm_provider_handlers/azure_speech_passthrough_logging_handler.py",
+        "litellm/rust_bridge/host/callbacks_legacy_python.py",
+        "litellm/proxy/pass_through_endpoints/pass_through_endpoints.py",
+        "ARCHITECTURE.md"
+      ],
+      "expected_files": [
+        "litellm/caching/caching_handler.py",
+        "litellm/litellm_core_utils/llm_response_utils/response_metadata.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.75,
+      "latency_seconds": 129.597,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-009",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 32068,
+      "target_commit_sha": "a659e8be70bc95401ede0dc14c4c10545101950c",
+      "status": "completed",
+      "total_code_citations": 18,
+      "valid_code_citations": 18,
       "citation_validity_rate": 1.0,
       "recall_at_k": {
         "1": 1.0,
@@ -516,51 +417,140 @@
         "10": 1.0
       },
       "retrieved_files": [
-        "fastapi/applications.py",
-        "fastapi/security/api_key.py",
-        "fastapi/security/http.py",
-        "fastapi/security/oauth2.py",
-        "fastapi/security/open_id_connect_url.py",
-        "pending_tests/main.py",
-        "fastapi/dependencies/utils.py",
-        "tests/test_modules_same_name_body/app/a.py",
-        "tests/test_dependency_class.py",
-        "tests/test_invalid_path_param.py",
-        "tests/test_invalid_sequence_param.py",
-        "docs_src/dependencies/tutorial011.py",
-        "docs/en/docs/advanced/templates.md",
-        "docs/en/docs/advanced/middleware.md",
-        "docs/en/docs/release-notes.md",
-        "docs/en/docs/deployment.md",
-        "fastapi/routing.py",
+        "litellm/litellm_core_utils/llm_response_utils/convert_dict_to_response.py",
+        "litellm/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm/llms/bedrock/chat/invoke_handler.py",
+        "litellm/llms/databricks/chat/transformation.py",
+        "litellm/llms/openai/chat/gpt_transformation.py",
+        "litellm/_lazy_imports_registry.py",
+        "litellm/caching/caching_handler.py",
+        "litellm/utils.py",
+        "tests/unit/litellm_core_utils/llm_response_utils/test_convert_dict_to_response.py",
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/litellm_core_utils/prompt_templates/common_utils.py",
+        "litellm/litellm_core_utils/prompt_templates/factory.py",
         "README.md",
-        "docs/en/docs/advanced/custom-request-and-route.md",
-        "docs/en/docs/alternatives.md"
+        "ARCHITECTURE.md"
       ],
       "expected_files": [
-        "fastapi/applications.py"
+        "litellm/litellm_core_utils/llm_response_utils/convert_dict_to_response.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 0.4286,
-      "latency_seconds": 11.497,
+      "root_cause_alignment": "incorrect",
+      "alignment_score": 0.0,
+      "latency_seconds": 111.539,
       "error_reason": null
     },
     {
-      "case_id": "CASE-012",
-      "repo_full_name": "tiangolo/fastapi",
-      "issue_number": 3790,
-      "target_commit_sha": "864643ef7608d28ac4ed321835a7fb4abe3dfc13",
+      "case_id": "CASE-010",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 52271,
+      "target_commit_sha": "a435090b9d8b047b816ae15461095af60269889d",
       "status": "completed",
       "total_code_citations": 16,
       "valid_code_citations": 16,
       "citation_validity_rate": 1.0,
       "recall_at_k": {
         "1": 0.0,
-        "3": 1.0,
-        "5": 1.0,
+        "3": 0.0,
+        "5": 0.0,
         "10": 1.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/_types.py",
+        "litellm/proxy/management_endpoints/ui_sso.py",
+        "litellm/proxy/auth/login_utils.py",
+        "litellm/types/proxy/management_endpoints/ui_sso.py",
+        "litellm/types/proxy/ui_sso.py",
+        "litellm/enterprise/litellm_enterprise/proxy/auth/custom_sso_handler.py",
+        "litellm/integrations/SlackAlerting/slack_alerting.py",
+        "litellm/integrations/prometheus.py",
+        "litellm/integrations/shadow_eval_logger.py",
+        "litellm/proxy/auth/auth_checks.py",
+        "litellm/proxy/guardrails/guardrail_endpoints.py",
+        "litellm/proxy/health_endpoints/_health_endpoints.py",
+        "README.md"
+      ],
+      "expected_files": [
+        "litellm/proxy/auth/auth_checks.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.5,
+      "latency_seconds": 125.245,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-011",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 12273,
+      "target_commit_sha": "89ab210fc936bcd36c2741719d64ee7412862082",
+      "status": "completed",
+      "total_code_citations": 23,
+      "valid_code_citations": 23,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/_types.py",
+        "litellm/proxy/common_utils/openai_error_payload.py",
+        "litellm/proxy/auth/auth_exception_handler.py",
+        "litellm/rust/crates/gateway-auth-core/src/public.rs",
+        "litellm/proxy/anthropic_endpoints/claude_code_endpoints/claude_code_marketplace.py",
+        "litellm/proxy/litellm_pre_call_utils.py",
+        "litellm/proxy/utils.py",
+        "litellm/proxy/proxy_cli.py",
+        "litellm/setup_wizard.py",
+        "litellm/enterprise/litellm_enterprise/proxy/hooks/managed_files.py",
+        "litellm/enterprise/litellm_enterprise/proxy/management_endpoints/project_endpoints.py",
+        "litellm/exceptions.py",
+        "README.md",
+        "litellm/__init__.py",
+        "litellm/_lazy_imports_registry.py"
+      ],
+      "expected_files": [
+        "litellm/proxy/auth/core.py",
+        "litellm/proxy/proxy_server.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "partially_useful",
+      "alignment_score": 0.3333,
+      "latency_seconds": 277.094,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-012",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 52014,
+      "target_commit_sha": "21746eb287502c8ddde7d0f5c7b89c610a724144",
+      "status": "completed",
+      "total_code_citations": 20,
+      "valid_code_citations": 20,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.5,
+        "5": 0.5,
+        "10": 0.5
       },
       "hit_at_k": {
         "1": 0.0,
@@ -569,91 +559,166 @@
         "10": 1.0
       },
       "retrieved_files": [
-        "fastapi/exceptions.py",
-        "fastapi/openapi/utils.py",
-        "fastapi/applications.py",
-        "fastapi/exception_handlers.py",
-        "fastapi/routing.py",
-        "scripts/gitter_releases_bot.py",
-        "tests/test_additional_properties.py",
-        "tests/test_additional_responses_custom_model_in_callback.py",
-        "tests/test_additional_responses_default_validationerror.py",
-        "tests/test_application.py",
-        "tests/test_dependency_duplicates.py",
-        "tests/test_exception_handlers.py",
-        "docs/en/docs/release-notes.md",
-        "docs/en/docs/help-fastapi.md",
-        "docs/en/docs/alternatives.md"
+        "litellm/llms/github_copilot/per_user_auth.py",
+        "litellm/proxy/credential_endpoints/endpoints.py",
+        "litellm/a2a_protocol/utils.py",
+        "litellm/assistants/utils.py",
+        "litellm/containers/utils.py",
+        "litellm/enterprise/litellm_enterprise/proxy/utils.py",
+        "litellm/exceptions.py",
+        "litellm/files/utils.py",
+        "litellm/images/utils.py",
+        "litellm/integrations/SlackAlerting/utils.py",
+        "litellm/integrations/deepeval/utils.py",
+        "litellm/integrations/opik/utils.py",
+        "README.md",
+        "litellm/llms/github_copilot/app_auth.py",
+        "tests/unit/llms/github_copilot/test_app_auth.py"
       ],
       "expected_files": [
-        "fastapi/openapi/utils.py"
+        "litellm/llms/github_copilot/app_auth.py",
+        "litellm/proxy/credential_endpoints/endpoints.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
       "root_cause_alignment": "correct",
       "alignment_score": 0.375,
-      "latency_seconds": 12.739,
+      "latency_seconds": 101.84,
       "error_reason": null
     },
     {
       "case_id": "CASE-013",
-      "repo_full_name": "pallets/werkzeug",
-      "issue_number": 2200,
-      "target_commit_sha": "d781b06c3fbac8eaeb3bfb61bea005a3a5288b91",
-      "status": "completed",
-      "total_code_citations": 21,
-      "valid_code_citations": 21,
-      "citation_validity_rate": 1.0,
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 27144,
+      "target_commit_sha": "71f9cb63aca0a9065b3f57710b5045a21d178370",
+      "status": "failed",
+      "total_code_citations": 0,
+      "valid_code_citations": 0,
+      "citation_validity_rate": 0.0,
       "recall_at_k": {
         "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [],
+      "expected_files": [
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "incorrect",
+      "alignment_score": 0.0,
+      "latency_seconds": 139.45341569999437,
+      "error_reason": "LLM request timed out: Request timed out."
+    },
+    {
+      "case_id": "CASE-014",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 36402,
+      "target_commit_sha": "d11917e89cd66ce43fb0bfa36d6c0b6909346998",
+      "status": "completed",
+      "total_code_citations": 14,
+      "valid_code_citations": 14,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
         "3": 1.0,
         "5": 1.0,
         "10": 1.0
       },
       "hit_at_k": {
-        "1": 0.0,
+        "1": 1.0,
         "3": 1.0,
         "5": 1.0,
         "10": 1.0
       },
       "retrieved_files": [
-        "src/werkzeug/http.py",
-        "src/werkzeug/routing.py",
-        "src/werkzeug/serving.py",
-        "src/werkzeug/test.py",
-        "src/werkzeug/utils.py",
-        "src/werkzeug/wsgi.py",
-        "tests/test_wrappers.py",
-        "tests/test_formparser.py",
-        "tests/test_serving.py",
-        "tests/test_test.py",
-        "CHANGES.rst",
-        "artwork/logo.svg",
-        "docs/installation.rst",
-        "docs/deployment/fastcgi.rst",
-        "docs/tutorial.rst",
-        "CONTRIBUTING.rst",
-        "src/werkzeug/_internal.py",
-        "src/werkzeug/debug/__init__.py",
-        "src/werkzeug/debug/shared/debugger.js",
-        "src/werkzeug/exceptions.py",
-        "src/werkzeug/local.py"
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/enterprise/litellm_enterprise/litellm_core_utils/litellm_logging.py",
+        "litellm/integrations/rubrik.py",
+        "litellm/litellm_core_utils/prompt_templates/common_utils.py",
+        "litellm/litellm_core_utils/prompt_templates/factory.py",
+        "litellm/llms/azure_ai/responses/transformation.py",
+        "litellm/llms/claude_code/harness/transformation.py",
+        "litellm/llms/mistral/chat/transformation.py",
+        "litellm/proxy/management_endpoints/policy_endpoints/ai_policy_suggester.py",
+        "litellm/proxy/utils.py",
+        "litellm/router_strategy/complexity_router/complexity_router.py",
+        "litellm/router_utils/prompt_caching_cache.py",
+        "README.md"
       ],
       "expected_files": [
-        "src/werkzeug/serving.py"
+        "litellm/litellm_core_utils/litellm_logging.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "partially_useful",
+      "alignment_score": 0.1667,
+      "latency_seconds": 111.667,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-015",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 48996,
+      "target_commit_sha": "61efbd071e81a1cc59a147aed29569a9ac74e420",
+      "status": "completed",
+      "total_code_citations": 23,
+      "valid_code_citations": 23,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/responses/main.py",
+        "litellm/constants.py",
+        "litellm/types/llms/openai.py",
+        "tests/unit/completion_extras/litellm_responses_transformation/test_completion_extras_litellm_responses_transformation_transformation.py",
+        "tests/unit/test_main.py",
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/llms/openai/responses/transformation.py",
+        "litellm/llms/vertex_ai/gemini/transformation.py",
+        "litellm/llms/vertex_ai/gemini/vertex_and_google_ai_studio_gemini.py",
+        "litellm-rust/crates/llms/src/openai_like/chat/transformation.rs",
+        "litellm/integrations/websearch_interception/handler.py",
+        "litellm/llms/openai/chat/gpt_transformation.py",
+        "ARCHITECTURE.md",
+        "docs/adrs/adr_001_provider_usage_fields_ride_as_usage_extras.md",
+        "CONTRIBUTING.md",
+        "enterprise/litellm_enterprise/proxy/common_utils/check_responses_cost.py",
+        "litellm/completion_extras/litellm_responses_transformation/handler.py"
+      ],
+      "expected_files": [
+        "litellm/responses/litellm_completion_transformation/handler.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
       "root_cause_alignment": "correct",
-      "alignment_score": 0.6,
-      "latency_seconds": 9.188,
+      "alignment_score": 0.75,
+      "latency_seconds": 374.829,
       "error_reason": null
     },
     {
-      "case_id": "CASE-014",
-      "repo_full_name": "pallets/jinja",
-      "issue_number": 1510,
-      "target_commit_sha": "8cc3a64fa6cb90817b4bbe5aaeca87fa73ea9103",
+      "case_id": "CASE-016",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 45536,
+      "target_commit_sha": "969ded2b54199b6ec94b688de66a0cc7afd0b2ae",
       "status": "completed",
       "total_code_citations": 22,
       "valid_code_citations": 22,
@@ -671,305 +736,245 @@
         "10": 0.0
       },
       "retrieved_files": [
-        "src/jinja2/environment.py",
-        "src/jinja2/bccache.py",
-        "tests/test_api.py",
-        "tests/test_async.py",
-        "tests/test_core_tags.py",
-        "tests/test_ext.py",
-        "tests/test_filters.py",
-        "tests/test_imports.py",
-        "tests/test_inheritance.py",
-        "tests/test_lexnparse.py",
-        "tests/test_nativetypes.py",
-        "tests/test_regression.py",
-        "docs/nativetypes.rst",
-        "docs/templates.rst",
-        "src/jinja2/nativetypes.py"
+        "backend/main.py",
+        "cookbook/anthropic_agent_sdk/main.py",
+        "cookbook/codellama-server/main.py",
+        "cookbook/livekit_agent_sdk/main.py",
+        "gateway/main.py",
+        "litellm/a2a_protocol/litellm_completion_bridge/transformation.py",
+        "litellm/a2a_protocol/main.py",
+        "litellm/a2a_protocol/providers/bedrock_agentcore/transformation.py",
+        "litellm/a2a_protocol/providers/pydantic_ai_agents/transformation.py",
+        "litellm/a2a_protocol/providers/watsonx_orchestrate/transformation.py",
+        "litellm/assistants/main.py",
+        "litellm/batch_completion/main.py",
+        "CONTRIBUTING.md",
+        "ARCHITECTURE.md",
+        "litellm/llms/apiserpent/search/transformation.py",
+        "litellm/llms/azure/search/transformation.py",
+        "litellm/llms/base_llm/search/transformation.py",
+        "litellm/llms/bedrock/search/transformation.py",
+        "litellm/llms/deepseek/search/transformation.py"
       ],
       "expected_files": [
-        "src/jinja2/nativetypes.py"
+        "litellm/llms/perplexity/search/transformation.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
       "root_cause_alignment": "correct",
-      "alignment_score": 0.8571,
-      "latency_seconds": 9.73,
+      "alignment_score": 0.6,
+      "latency_seconds": 188.27,
       "error_reason": null
     },
     {
-      "case_id": "CASE-015",
-      "repo_full_name": "pallets/click",
-      "issue_number": 2105,
-      "target_commit_sha": "65eceb08e392e74dcc761be2090e951274ccbe36",
+      "case_id": "CASE-017",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 50893,
+      "target_commit_sha": "c36e1cf73dd3f337c92af1243466864953f83148",
       "status": "completed",
       "total_code_citations": 18,
       "valid_code_citations": 18,
       "citation_validity_rate": 1.0,
       "recall_at_k": {
         "1": 0.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "hit_at_k": {
-        "1": 0.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "retrieved_files": [
-        "src/click/utils.py",
-        "src/click/__init__.py",
-        "src/click/types.py",
-        "src/click/_unicodefun.py",
-        "src/click/termui.py",
-        "tests/test_utils.py",
-        "tests/test_arguments.py",
-        "tests/test_info_dict.py",
-        "tests/test_basic.py",
-        "tests/test_options.py",
-        "tests/test_types.py",
-        "CHANGES.rst",
-        "docs/utils.rst",
-        "docs/arguments.rst"
-      ],
-      "expected_files": [
-        "src/click/types.py"
-      ],
-      "unsupported_claims_count": 0,
-      "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 0.5,
-      "latency_seconds": 9.511,
-      "error_reason": null
-    },
-    {
-      "case_id": "CASE-016",
-      "repo_full_name": "urllib3/urllib3",
-      "issue_number": 2400,
-      "target_commit_sha": "cff8b5ba3d2ba9338e31c102e1e91273124df297",
-      "status": "completed",
-      "total_code_citations": 21,
-      "valid_code_citations": 21,
-      "citation_validity_rate": 1.0,
-      "recall_at_k": {
-        "1": 0.0,
         "3": 0.0,
         "5": 0.0,
-        "10": 1.0
+        "10": 0.0
       },
       "hit_at_k": {
         "1": 0.0,
         "3": 0.0,
         "5": 0.0,
-        "10": 1.0
+        "10": 0.0
       },
       "retrieved_files": [
-        "src/urllib3/contrib/securetransport.py",
-        "src/urllib3/contrib/socks.py",
-        "src/urllib3/exceptions.py",
-        "src/urllib3/connection.py",
-        "src/urllib3/poolmanager.py",
-        "src/urllib3/util/ssl_.py",
-        "src/urllib3/connectionpool.py",
-        "src/urllib3/util/ssltransport.py",
-        "src/urllib3/contrib/pyopenssl.py",
-        "src/urllib3/response.py",
-        "src/urllib3/util/request.py",
-        "src/urllib3/util/response.py",
-        "docs/advanced-usage.rst",
-        "docs/contributing.rst"
+        "litellm/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm/litellm_core_utils/token_counter.py",
+        "litellm/types/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm-rust/crates/python-bridge/src/tokenizer.rs",
+        "litellm/_logging.py",
+        "litellm/_redis.py",
+        "litellm/batches/main.py",
+        "litellm/caching/caching.py",
+        "litellm/completion_extras/litellm_responses_transformation/handler.py",
+        "litellm/cost_calculator.py",
+        "litellm/files/streaming.py",
+        "litellm/integrations/arize/_utils.py",
+        "ARCHITECTURE.md",
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/litellm_core_utils/prompt_templates/common_utils.py",
+        "litellm/litellm_core_utils/prompt_templates/factory.py"
       ],
       "expected_files": [
-        "src/urllib3/util/ssl_.py",
-        "src/urllib3/connectionpool.py"
+        "litellm/llms/sap/chat/handler.py",
+        "litellm/llms/sap/chat/reasoning.py",
+        "litellm/llms/sap/chat/transformation.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 1.0,
-      "latency_seconds": 10.918,
-      "error_reason": null
-    },
-    {
-      "case_id": "CASE-017",
-      "repo_full_name": "textualize/rich",
-      "issue_number": 1890,
-      "target_commit_sha": "51e7503e5e9b440561d2fb51e1d15e73fe9b27b1",
-      "status": "completed",
-      "total_code_citations": 16,
-      "valid_code_citations": 16,
-      "citation_validity_rate": 1.0,
-      "recall_at_k": {
-        "1": 0.0,
-        "3": 0.5,
-        "5": 0.5,
-        "10": 0.5
-      },
-      "hit_at_k": {
-        "1": 0.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "retrieved_files": [
-        "rich/console.py",
-        "rich/progress.py",
-        "rich/color.py",
-        "rich/_emoji_codes.py",
-        "rich/status.py",
-        "rich/__main__.py",
-        "rich/segment.py",
-        "rich/text.py",
-        "rich/traceback.py",
-        "rich/pretty.py",
-        "rich/spinner.py",
-        "rich/theme.py",
-        "CHANGELOG.md",
-        "docs/source/protocol.rst",
-        "docs/source/style.rst",
-        "docs/source/traceback.rst"
-      ],
-      "expected_files": [
-        "rich/color.py",
-        "rich/palette.py"
-      ],
-      "unsupported_claims_count": 0,
-      "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 1.0,
-      "latency_seconds": 12.733,
+      "root_cause_alignment": "partially_useful",
+      "alignment_score": 0.1875,
+      "latency_seconds": 110.324,
       "error_reason": null
     },
     {
       "case_id": "CASE-018",
-      "repo_full_name": "marshmallow-code/marshmallow",
-      "issue_number": 1898,
-      "target_commit_sha": "bc5cde04330ae53f7a23e6990f9a0ce9d9891a4a",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 47822,
+      "target_commit_sha": "23ca45756a8185dccf198bd954e57c57115a410a",
       "status": "completed",
-      "total_code_citations": 15,
-      "valid_code_citations": 15,
+      "total_code_citations": 20,
+      "valid_code_citations": 20,
       "citation_validity_rate": 1.0,
       "recall_at_k": {
         "1": 0.0,
-        "3": 0.5,
-        "5": 0.5,
-        "10": 0.5
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
       },
       "hit_at_k": {
         "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/anthropic_beta_headers_manager.py",
+        "litellm/integrations/otel/model/payloads.py",
+        "litellm/litellm_core_utils/exception_mapping_utils.py",
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/litellm_core_utils/llm_response_utils/get_api_base.py",
+        "litellm/litellm_core_utils/llm_response_utils/response_metadata.py",
+        "litellm/litellm_core_utils/url_utils.py",
+        "litellm/llms/anthropic/common_utils.py",
+        "litellm/llms/azure/common_utils.py",
+        "litellm/llms/azure/containers/transformation.py",
+        "litellm/llms/azure_ai/common_utils.py",
+        "litellm/llms/base_llm/anthropic_messages/transformation.py",
+        "README.md",
+        "litellm/assistants/main.py",
+        "litellm/batches/main.py"
+      ],
+      "expected_files": [
+        "litellm/main.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "alignment_score": 0.5625,
+      "latency_seconds": 239.841,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-019",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 24659,
+      "target_commit_sha": "a2773bdcad53aed8fee22e06056ab1e0732df589",
+      "status": "failed",
+      "total_code_citations": 0,
+      "valid_code_citations": 0,
+      "citation_validity_rate": 0.0,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [],
+      "expected_files": [
+        "litellm/llms/azure/realtime/http_transformation.py"
+      ],
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "incorrect",
+      "alignment_score": 0.0,
+      "latency_seconds": 142.85742970000138,
+      "error_reason": "LLM request timed out: Request timed out."
+    },
+    {
+      "case_id": "CASE-020",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 50243,
+      "target_commit_sha": "63b7c3366830241b662bf42941c1283c993779fb",
+      "status": "completed",
+      "total_code_citations": 24,
+      "valid_code_citations": 24,
+      "citation_validity_rate": 1.0,
+      "recall_at_k": {
+        "1": 0.3333,
+        "3": 0.3333,
+        "5": 0.3333,
+        "10": 0.3333
+      },
+      "hit_at_k": {
+        "1": 1.0,
         "3": 1.0,
         "5": 1.0,
         "10": 1.0
       },
       "retrieved_files": [
-        "src/marshmallow/utils.py",
-        "src/marshmallow/decorators.py",
-        "src/marshmallow/schema.py",
-        "tests/test_context.py",
-        "tests/test_decorators.py",
-        "tests/test_schema.py",
-        "src/marshmallow/__init__.py",
-        "tests/test_deserialization.py",
-        "tests/test_fields.py",
-        "tests/test_serialization.py",
-        "tests/test_utils.py",
-        "tests/test_registry.py",
-        "docs/upgrading.rst"
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/llms/anthropic/chat/transformation.py",
+        "litellm/llms/bedrock/chat/converse_transformation.py",
+        "litellm/llms/fireworks_ai/chat/transformation.py",
+        "tests/unit/completion_extras/litellm_responses_transformation/test_completion_extras_litellm_responses_transformation_transformation.py",
+        "litellm/llms/azure/chat/o_series_transformation.py",
+        "litellm/llms/azure_ai/chat/transformation.py",
+        "litellm/llms/base_llm/chat/transformation.py",
+        "litellm/llms/bedrock/chat/invoke_transformations/anthropic_claude_transformation.py",
+        "litellm/llms/bedrock/common_utils.py",
+        "litellm/llms/bedrock/files/transformation.py",
+        "litellm/llms/cohere/chat/v2_transformation.py",
+        "README.md",
+        "litellm/__init__.py",
+        "litellm/_lazy_imports_registry.py"
       ],
       "expected_files": [
-        "src/marshmallow/schema.py",
-        "src/marshmallow/fields.py"
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/llms/anthropic/messages/responses_adapters/handler.py",
+        "litellm/responses/instructions_length.py"
       ],
       "unsupported_claims_count": 0,
       "unsupported_claim_reasons": [],
       "root_cause_alignment": "correct",
       "alignment_score": 0.6,
-      "latency_seconds": 9.429,
-      "error_reason": null
-    },
-    {
-      "case_id": "CASE-019",
-      "repo_full_name": "psf/black",
-      "issue_number": 2600,
-      "target_commit_sha": "f80f49767cacafaeb20016d483b8315474504e6a",
-      "status": "completed",
-      "total_code_citations": 15,
-      "valid_code_citations": 15,
-      "citation_validity_rate": 1.0,
-      "recall_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "hit_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "retrieved_files": [
-        "src/black/__init__.py",
-        "src/black/files.py",
-        "src/black/report.py",
-        "src/black_primer/lib.py",
-        "tests/test_black.py",
-        "docs/usage_and_configuration/the_basics.md",
-        "tests/data/function2.py",
-        "CHANGES.md",
-        "README.md",
-        "action.yml",
-        "docs/contributing/gauging_changes.md",
-        "docs/integrations/github_actions.md",
-        "docs/integrations/editors.md"
-      ],
-      "expected_files": [
-        "src/black/__init__.py"
-      ],
-      "unsupported_claims_count": 0,
-      "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 0.9375,
-      "latency_seconds": 8.815,
-      "error_reason": null
-    },
-    {
-      "case_id": "CASE-020",
-      "repo_full_name": "sample/repo",
-      "issue_number": 101,
-      "target_commit_sha": "0123456789abcdef0123456789abcdef01234567",
-      "status": "completed",
-      "total_code_citations": 4,
-      "valid_code_citations": 4,
-      "citation_validity_rate": 1.0,
-      "recall_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "hit_at_k": {
-        "1": 1.0,
-        "3": 1.0,
-        "5": 1.0,
-        "10": 1.0
-      },
-      "retrieved_files": [
-        "sample_pkg/auth.py",
-        "sample_pkg/database.py"
-      ],
-      "expected_files": [
-        "sample_pkg/auth.py"
-      ],
-      "unsupported_claims_count": 0,
-      "unsupported_claim_reasons": [],
-      "root_cause_alignment": "correct",
-      "alignment_score": 0.75,
-      "latency_seconds": 7.957,
+      "latency_seconds": 268.331,
       "error_reason": null
     }
   ],
-  "failure_notes": []
+  "failure_notes": [
+    {
+      "case_id": "CASE-006",
+      "repo": "BerriAI/litellm",
+      "status": "failed",
+      "citation_validity": 0.0,
+      "recall_at_5": 0.0,
+      "unsupported_claims": 0,
+      "error_reason": "LLM request timed out: Request timed out."
+    },
+    {
+      "case_id": "CASE-013",
+      "repo": "BerriAI/litellm",
+      "status": "failed",
+      "citation_validity": 0.0,
+      "recall_at_5": 0.0,
+      "unsupported_claims": 0,
+      "error_reason": "LLM request timed out: Request timed out."
+    },
+    {
+      "case_id": "CASE-019",
+      "repo": "BerriAI/litellm",
+      "status": "failed",
+      "citation_validity": 0.0,
+      "recall_at_5": 0.0,
+      "unsupported_claims": 0,
+      "error_reason": "LLM request timed out: Request timed out."
+    }
+  ]
 }
