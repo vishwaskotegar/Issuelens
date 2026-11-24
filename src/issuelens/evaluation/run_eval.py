@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import inspect
 import json
+import subprocess
 import time
 import uuid
 from datetime import UTC, datetime
@@ -490,6 +491,17 @@ class MockInvestigationService:
         )
 
 
+def _get_git_commit_sha() -> str:
+    """Retrieve IssueLens repository HEAD commit SHA for provenance recording."""
+    try:
+        res = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        )
+        return res.stdout.strip()
+    except Exception:
+        return "unknown"
+
+
 async def run_evaluation(
     cases_path: Path | str = "evals/cases.jsonl",
     output_path: Path | str = "evals/results.json",
@@ -556,11 +568,19 @@ async def run_evaluation(
 
     report = await runner.run_benchmark(cases)
 
-    # Save machine-readable results JSON
+    # Save machine-readable results JSON with provenance metadata
     out_file = Path(output_path)
     out_file.parent.mkdir(parents=True, exist_ok=True)
+    report_dict = report.model_dump()
+    result_data = {
+        "mode": "live" if live else "mock",
+        "run_timestamp": datetime.now(UTC).isoformat(),
+        "model_name": runner.model_id,
+        "issuelens_commit_sha": _get_git_commit_sha(),
+        **report_dict,
+    }
     with out_file.open("w", encoding="utf-8") as f:
-        json.dump(report.model_dump(), f, indent=2, default=str)
+        json.dump(result_data, f, indent=2, default=str)
 
     logger.info("Saved evaluation results to %s", out_file)
     return report

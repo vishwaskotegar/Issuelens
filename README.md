@@ -4,11 +4,9 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-orange.svg)](https://langchain-ai.github.io/langgraph/)
 [![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Citation Validity](https://img.shields.io/badge/Citation_Validity-100%25-brightgreen.svg)](#empirical-evaluation--quality-gates-20-case-benchmark)
-[![Root-Cause Alignment](https://img.shields.io/badge/Root--Cause_Alignment-95%25-brightgreen.svg)](#empirical-evaluation--quality-gates-20-case-benchmark)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**IssueLens** is an evidence-backed AI debugging assistant for public GitHub bug reports. It transforms untrusted public issue descriptions into rigorously verified, reproducible bug investigations by combining deterministic lexical/AST code search, heading-preserving document RAG, LangGraph multi-round cyclic reasoning, and byte-level citation validation against physical repository snapshots.
+**IssueLens** is an evidence-backed AI debugging assistant for public GitHub bug reports. It transforms public issue descriptions into structured bug investigations by combining deterministic lexical/AST code search, document retrieval, LangGraph cyclic reasoning, and byte-level citation validation against physical repository snapshots.
 
 ---
 
@@ -36,89 +34,23 @@ flowchart LR
 
 ---
 
-## Empirical Evaluation & Quality Gates (20-Case Benchmark)
+## Evaluation Benchmark
 
-The credibility of an AI debugging assistant depends on reproducible measurement against real-world bug reports—not cherry-picked demos. IssueLens is continuously evaluated against a curated 20-case benchmark of prominent open-source Python repositories under strict **retrospective leak-prevention controls** (withholding post-fix commits, pull requests, and resolution discussions).
+The IssueLens evaluation framework assesses investigation quality against historical GitHub bug reports under retrospective leak-prevention controls:
+- **Pre-Fix Commit Pinning**: The repository snapshot provided to the investigation service is pinned to `target_commit_sha` (the pre-fix parent commit).
+- **Double-Blind Scoring**: Ground-truth fix files and resolutions are stored exclusively in the evaluation dataset and are never exposed to the agent or injected into prompts.
 
-### Measured Baseline Results
+The live evaluation suite is benchmarked against 20 real, closed bug reports from `BerriAI/litellm` generated via `scripts/build_eval_set.py`. Across the live benchmark run (`gpt-4o-mini`), 17 of 20 cases completed successfully with 100% citation validity on all completed cases (0 hallucinated line ranges) and 70.6% correct root-cause diagnoses, while revealing realistic retrieval recall bounds (36.7% Recall@5) on a 244MB codebase. Full per-case results and methodology are documented in [`evals/README.md`](evals/README.md).
 
-Evaluation executed across all 20 public benchmark cases (see [`evals/results.json`](evals/results.json)):
+### Reproducing Benchmark Runs Offline
 
-| Metric | Measured Baseline | Target Benchmark Gate | Outcome | Significance |
-| :--- | :--- | :--- | :--- | :--- |
-| **Total Cases Evaluated** | 20 / 20 | 20 | Complete | 100% test completion with zero pipeline crashes |
-| **Completed Cases** | 20 (100.0%) | 100% | **PASS** | Fault-resilient execution across diverse repositories |
-| **Citation Validity Rate** | **100.0%** | $\ge 95\%$ | **PASS** | Zero hallucinated files or lines; every citation verified |
-| **Mean Unsupported Claims**| **0.00** / report | $< 0.50$ | **PASS** | Zero unbacked hypotheses; all grounded in evidence |
-| **Root-Cause Alignment** | **19 / 20 (95.0%)** | $\ge 70\%$ | **PASS** | Diagnosed defect mechanism matches ground-truth fix |
-| **Retrieval Hit@5** | **85.0%** (17/20) | $\ge 90\%$ | 17/20 | Ground-truth buggy file appears in top 5 retrieved files |
-| **Retrieval Hit@10** | **90.0%** (18/20) | — | — | Ground-truth buggy file appears in top 10 hits |
-| **Retrieval Recall@5** | **73.3%** | $\ge 80\%$ | 12/20 perfect | Multi-file bug coverage across primary defect files |
-| **Retrieval Recall@10** | **80.8%** | — | — | Extended recall across secondary test fixtures |
-| **Mean End-to-End Latency**| **10.66s** | $< 30\text{s}$ | **PASS** | Fast interactive developer response time |
-
-### Benchmark Coverage
-
-The benchmark spans 12 prominent open-source Python libraries with pinned pre-fix commit SHAs:
-
-```text
-pallets/flask (#4020, #3950)     psf/requests (#5201, #4820)       encode/httpx (#1220, #1405)
-pytest-dev/pytest (#8410, #7920)  pydantic/pydantic (#3100, #2850)  tiangolo/fastapi (#4500, #3810)
-pallets/werkzeug (#2200)         pallets/jinja (#1510)             pallets/click (#2105)
-urllib3/urllib3 (#2400)          textualize/rich (#1890)           psf/black (#2600)
-```
-
-### Reproduce Benchmark Offline
-
-Run the hermetic benchmark suite in milliseconds with zero network or LLM API costs:
+Run the offline benchmark suite using test doubles with zero network or LLM API calls:
 
 ```bash
 uv run python -m issuelens.evaluation.run_eval
 ```
 
-For full evaluation dataset details and live agent execution flags, see [`evals/README.md`](evals/README.md).
-
----
-
-## What a Report Looks Like
-
-Here is an authentic excerpt from an `InvestigationReport` generated for [`pallets/flask#4020`](https://github.com/pallets/flask/issues/4020) (assigning attributes to `flask.g` triggering `assigning-non-slot`):
-
-```json
-{
-  "run_id": "run_20261120_flask_4020",
-  "issue_url": "https://github.com/pallets/flask/issues/4020",
-  "repository": "pallets/flask",
-  "commit_sha": "d575de5159a6e40944275763c9ada2801214058b",
-  "summary": "Attribute assignment on flask.g fails static analysis with assigning-non-slot because _AppCtxGlobals relies on custom __getattr__/__setattr__ without declaring __dict__ in __slots__.",
-  "observed_facts": [
-    "Issue reports Pylint warning assigning-non-slot when assigning attributes to flask.g.",
-    "Source file src/flask/globals.py defines _AppCtxGlobals with explicit __slots__.",
-    "Dynamic attribute storage is handled via object.__setattr__ without __dict__ slot allocation."
-  ],
-  "hypotheses": [
-    {
-      "hypothesis_id": "hyp_1",
-      "title": "Missing __dict__ in _AppCtxGlobals __slots__ declaration",
-      "confidence": "high",
-      "confidence_rationale": "Directly demonstrated by src/flask/globals.py lines 45-60 where __slots__ is defined without __dict__.",
-      "supporting_evidence_ids": ["ev_1"]
-    }
-  ],
-  "evidence": [
-    {
-      "evidence_id": "ev_1",
-      "source_type": "code",
-      "file_path": "src/flask/globals.py",
-      "start_line": 45,
-      "end_line": 55,
-      "excerpt": "class _AppCtxGlobals:\n    __slots__ = (\"_cv\",)\n\n    def __getattr__(self, name: str) -> t.Any:\n        try:\n            return self.__dict__[name]\n        except KeyError:\n            raise AttributeError(name)",
-      "description": "_AppCtxGlobals defines __slots__ with only '_cv', lacking '__dict__' for arbitrary attribute assignment."
-    }
-  ],
-  "verification_status": "verified"
-}
-```
+For full evaluation dataset details, live execution flags, and methodology, see [`evals/README.md`](evals/README.md).
 
 ---
 
@@ -158,19 +90,19 @@ uv run uvicorn issuelens.main:app --reload --host 127.0.0.1 --port 8000
 
 ### 3. Run an Investigation via API
 
-Investigate any public GitHub bug report with a single `curl` command:
+Investigate any public GitHub bug report by submitting an investigation request:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/investigations/run \
+curl -X POST http://127.0.0.1:8000/v1/investigations \
   -H "Content-Type: application/json" \
-  -d '{"target": "https://github.com/pallets/flask/issues/4020"}'
+  -d '{"issue_url": "https://github.com/pallets/flask/issues/4020", "execute": true}'
 ```
 
 ---
 
-## Running with Docker Compose (Production Stack)
+## Running with Docker Compose
 
-To run the full production-ready stack (FastAPI app + PostgreSQL 16) with automated health probes and restart survivability:
+To run the application and PostgreSQL database with Docker Compose:
 
 ```bash
 # Build and run containers in background
@@ -226,7 +158,7 @@ IssueLens was built through disciplined, test-driven phases conforming to [`docs
 Execute all verification checks locally:
 
 ```bash
-# Run unit and integration tests (221 tests)
+# Run unit and integration tests (224 tests)
 uv run pytest
 
 # Run linter
@@ -245,7 +177,7 @@ uv run mypy src tests
 - **Interactive Swagger Documentation**: `GET /docs`
 - **Ingest Public Issue**: `POST /v1/issues/ingest`
 - **Create Investigation Run**: `POST /v1/investigations`
-- **Execute End-to-End Investigation**: `POST /v1/investigations/run`
+- **Execute Existing Investigation**: `POST /v1/investigations/{run_id}/execute`
 - **Retrieve Investigation Run & Status**: `GET /v1/investigations/{run_id}`
 
 ---
