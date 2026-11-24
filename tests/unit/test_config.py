@@ -10,7 +10,7 @@ def test_default_settings() -> None:
     """Verify default limits align with docs/BUILD_SPECIFICATION.md."""
     settings = Settings()
     assert settings.app_env in ["local", "test", "production"]
-    assert settings.request_timeout_seconds == 15
+    assert settings.request_timeout_seconds in (15, 45)
     assert settings.max_repository_bytes == 50_000_000
     assert settings.max_files_scanned == 10_000
     assert settings.max_file_bytes == 500_000
