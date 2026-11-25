@@ -62,8 +62,13 @@ class EvaluationRunner:
         model_id: str = "default_model",
         prompt_version: str = "v1.0",
         k_values: list[int] | None = None,
+        require_snapshot: bool = False,
     ) -> None:
         self.service = service
+        # Live benchmarks must never fall back to another commit: if the pinned pre-fix
+        # snapshot cannot be loaded, the case fails instead of silently investigating
+        # whatever the default branch (possibly containing the fix) looks like now.
+        self.require_snapshot = require_snapshot
         self.snapshot_resolver = snapshot_resolver
         self.session_factory = session_factory
         self.model_id = model_id
@@ -99,13 +104,21 @@ class EvaluationRunner:
             except Exception as exc:
                 logger.warning("Could not resolve snapshot for case %s: %s", case.id, exc)
 
-        # Run investigation service
-        if self.service:
+        failure_status = "failed"
+        if self.require_snapshot and snapshot is None:
+            failure_status = "snapshot_unavailable"
+            error_reason = (
+                f"Pinned pre-fix snapshot {case.target_commit_sha} could not be loaded; "
+                "case not run (no fallback to another commit)."
+            )
+            logger.error("Case %s skipped: %s", case.id, error_reason)
+        elif self.service:
             try:
-                # Retrospective leak prevention: pin investigation to snapshot / target_commit_sha
+                # Retrospective leak prevention: pin to the pre-fix snapshot and commit.
                 report = await self.service.investigate(
                     target_or_url=case.issue_url,
                     snapshot=snapshot,
+                    commit_sha=case.target_commit_sha,
                 )
             except Exception as exc:
                 logger.error("Investigation failed for case %s: %s", case.id, exc)
@@ -119,10 +132,10 @@ class EvaluationRunner:
         metrics = compute_evaluation_metrics(
             case=case,
             report=report,
-            snapshot=snapshot,
             latency_seconds=latency,
             error_reason=error_reason,
             k_values=self.k_values,
+            failure_status=failure_status,
         )
 
         # Optionally persist evaluation case & result to database
@@ -186,53 +199,66 @@ class EvaluationRunner:
 
         report = aggregate_evaluation_metrics(metrics_list, k_values=self.k_values)
         logger.info(
-            "Benchmark completed: %d/%d passed, mean citation validity=%.2f, mean recall@5=%.2f",
-            report.completed_cases,
+            "Benchmark completed: %d/%d scored, root-cause useful rate=%.2f, "
+            "search recall@5=%.2f",
+            report.scored_cases,
             report.total_cases,
-            report.mean_citation_validity,
-            report.mean_recall_at_k.get(5, 0.0),
+            report.root_cause_useful_rate,
+            report.mean_search_recall_at_k.get(5, 0.0),
         )
         return report
 
 
+def _pct(value: float | None) -> str:
+    return "n/a" if value is None else f"{value * 100:.1f}%"
+
+
 def format_evaluation_summary(report: AggregatedEvaluationReport) -> str:
-    """Format evaluation benchmark report into a clear console summary table."""
-    cit_target = (
-        "PASS" if report.benchmark_targets_met.get("citation_validity_ge_95") else "FAIL"
-    )
-    unsupp_target = (
-        "PASS" if report.benchmark_targets_met.get("unsupported_claims_lt_0_5") else "FAIL"
-    )
+    """Format evaluation benchmark report into a console summary table."""
+    gates = report.benchmark_targets_met
+
+    def gate(key: str) -> str:
+        return "PASS" if gates.get(key) else "FAIL"
 
     lines: list[str] = [
         "=" * 78,
         "                     ISSUELENS BENCHMARK EVALUATION REPORT               ",
         "=" * 78,
         f"Total Cases:               {report.total_cases}",
-        f"Completed:                 {report.completed_cases}",
-        f"Failed:                    {report.failed_cases}",
-        f"Insufficient Evidence:     {report.insufficient_evidence_cases}",
+        f"Scored (produced report):  {report.scored_cases} ({_pct(report.completion_rate)})",
+        f"  Supported diagnosis:     {report.completed_cases}",
+        f"  Insufficient evidence:   {report.insufficient_evidence_cases}",
+        f"Failed / no snapshot:      {report.failed_cases}",
         f"Mean Latency:              {report.mean_latency_seconds:.2f}s",
         "-" * 78,
-        "METRIC PERFORMANCE & BENCHMARK GATES:",
-        f"  Citation Validity Rate:  {report.mean_citation_validity * 100:.1f}% "
-        f"(Target: >= 95% -> {cit_target})",
-        f"  Mean Unsupported Claims: {report.mean_unsupported_claims:.2f} per report "
-        f"(Target: < 0.50 -> {unsupp_target})",
+        "QUALITY (means over scored cases):",
+        f"  Root cause useful rate:  {_pct(report.root_cause_useful_rate)} "
+        f"(Target: >= 70% -> {gate('root_cause_useful_ge_70')})",
+        f"  LLM citation validity:   {_pct(report.mean_citation_validity)} over "
+        f"{report.cases_with_citations} cases with citations "
+        f"(Target: >= 95% -> {gate('citation_validity_ge_95')})",
+        f"  Unsupported claims:      {report.mean_unsupported_claims:.2f} per report "
+        f"(Target: < 0.50 -> {gate('unsupported_claims_lt_0_5')})",
     ]
-
-    for k, val in sorted(report.mean_recall_at_k.items()):
-        gate = ""
-        if k == 5:
-            passed = report.benchmark_targets_met.get("recall_at_5_ge_80", False)
-            gate = f" (Target: >= 80% -> {'PASS' if passed else 'FAIL'})"
-        lines.append(f"  Recall@{k}:                 {val * 100:.1f}%{gate}")
-
-    for k, val in sorted(report.mean_hit_at_k.items()):
-        lines.append(f"  Hit@{k}:                    {val * 100:.1f}%")
+    for k, val in sorted(report.mean_diagnosis_hit_at_k.items()):
+        lines.append(f"  Diagnosis Hit@{k} (cited files):   {_pct(val)}")
+    lines.append("RETRIEVAL (search tool ranking, not the diagnosis):")
+    for k, val in sorted(report.mean_search_recall_at_k.items()):
+        suffix = (
+            f" (Target: >= 80% -> {gate('search_recall_at_5_ge_80')})" if k == 5 else ""
+        )
+        lines.append(f"  Search Recall@{k}:        {_pct(val)}{suffix}")
+    for k, val in sorted(report.mean_search_hit_at_k.items()):
+        suffix = f" (Target: >= 90% -> {gate('search_hit_at_5_ge_90')})" if k == 5 else ""
+        lines.append(f"  Search Hit@{k}:           {_pct(val)}{suffix}")
+    lines.append("DIAGNOSTIC (not a quality metric):")
+    lines.append(
+        f"  Fix-title keyword overlap: agent {report.mean_keyword_overlap:.2f} vs "
+        f"issue-text echo baseline {report.mean_issue_echo_keyword_overlap:.2f}"
+    )
 
     lines.append("-" * 78)
-    lines.append("ROOT CAUSE ALIGNMENT DISTRIBUTION:")
+    lines.append("ROOT CAUSE ALIGNMENT DISTRIBUTION (file-based):")
     for cat, count in sorted(report.root_cause_distribution.items()):
         lines.append(f"  {cat.ljust(25)} {count} cases")
 
@@ -242,8 +268,8 @@ def format_evaluation_summary(report: AggregatedEvaluationReport) -> str:
         for fn in report.failure_notes[:10]:
             lines.append(
                 f"  Case {fn.get('case_id')}: status={fn.get('status')}, "
-                f"cit_val={fn.get('citation_validity')}, recall@5={fn.get('recall_at_5')} "
-                f"({fn.get('error_reason') or 'low citation validity'})"
+                f"alignment={fn.get('root_cause_alignment')} "
+                f"({fn.get('error_reason') or 'see case metrics'})"
             )
 
     lines.append("=" * 78)
@@ -253,8 +279,15 @@ def format_evaluation_summary(report: AggregatedEvaluationReport) -> str:
 class EvaluationGitHubClient:
     """Delegates to GitHubClient, providing local fixture issue context for sample/repo."""
 
-    def __init__(self, real_client: GitHubClient) -> None:
+    def __init__(
+        self,
+        real_client: GitHubClient,
+        cases: list[EvaluationCaseModel] | None = None,
+    ) -> None:
         self._real = real_client
+        self._cases = {
+            (c.repo_full_name.lower(), c.issue_number): c for c in (cases or [])
+        }
 
     async def get_issue(self, owner: str, repo: str, issue_number: int) -> GitHubIssue:
         if owner == "sample" and repo == "repo":
@@ -319,7 +352,35 @@ class EvaluationGitHubClient:
                 comments=[],
                 fetched_at=datetime.now(UTC),
             )
-        return await self._real.fetch_issue_context(target)
+        context = await self._real.fetch_issue_context(target)
+        return self.withhold_post_report_information(context, target)
+
+    def withhold_post_report_information(
+        self, context: GitHubIssueContext, target: IssueTarget
+    ) -> GitHubIssueContext:
+        """Remove information that may reveal the fix from a live issue context.
+
+        * Comments are withheld: maintainers often discuss or link the fix there.
+        * The issue title/body are replaced by the copy frozen in ``cases.jsonl`` when
+          available (the live text may have been edited after the fix).
+        * The issue is presented as open; ``closed`` tells the model a fix exists.
+        * The commit is the case's pinned pre-fix SHA.
+        """
+        case = self._cases.get((target.repo_full_name.lower(), target.issue_number))
+        issue_updates: dict[str, Any] = {
+            "state": "open",
+            "closed_at": None,
+            "comments_count": 0,
+        }
+        context_updates: dict[str, Any] = {"comments": []}
+        if case is not None:
+            if case.issue_title:
+                issue_updates["title"] = case.issue_title
+            if case.issue_body is not None:
+                issue_updates["body"] = case.issue_body
+            context_updates["commit_sha"] = case.target_commit_sha
+        context_updates["issue"] = context.issue.model_copy(update=issue_updates)
+        return context.model_copy(update=context_updates)
 
 
 def create_fixture_snapshot_resolver() -> Any:
@@ -413,7 +474,14 @@ class MockInvestigationService:
         target_or_url: str | Any,
         snapshot: RepoSnapshot | None = None,
         run_id: str | None = None,
+        commit_sha: str | None = None,
     ) -> InvestigationReport:
+        """Return a report built from the case's own ground truth.
+
+        PLUMBING ONLY: this echoes ``expected_files`` and ``known_resolution`` back, so
+        every quality metric is perfect by construction. It verifies that the harness,
+        metrics and serialization run end to end; it says nothing about agent quality.
+        """
         active_run_id = run_id or f"inv_mock_{uuid.uuid4().hex[:8]}"
         url_str = str(target_or_url)
 
@@ -502,9 +570,31 @@ def _get_git_commit_sha() -> str:
         return "unknown"
 
 
+def _git_tree_is_dirty() -> bool | None:
+    """True if tracked files differ from HEAD (results would not be reproducible from SHA)."""
+    try:
+        res = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return bool(res.stdout.strip())
+    except Exception:
+        return None
+
+
+DEFAULT_LIVE_OUTPUT = "evals/results.json"
+DEFAULT_MOCK_OUTPUT = "evals/results.mock.json"
+MOCK_MODE_WARNING = (
+    "Mock mode echoes each case's ground truth back as the report. Its metrics verify the "
+    "harness only and are NOT a measurement of investigation quality."
+)
+
+
 async def run_evaluation(
     cases_path: Path | str = "evals/cases.jsonl",
-    output_path: Path | str = "evals/results.json",
+    output_path: Path | str | None = None,
     case_id: str | None = None,
     max_cases: int | None = None,
     save_db: bool = False,
@@ -534,7 +624,7 @@ async def run_evaluation(
                 token=settings.github_token,
                 timeout_seconds=float(settings.request_timeout_seconds),
             )
-            github_client: Any = EvaluationGitHubClient(raw_client)
+            github_client: Any = EvaluationGitHubClient(raw_client, cases=dataset.cases)
             llm_client = get_llm_client(settings)
             service: Any = InvestigationService(
                 github_client=github_client,
@@ -552,6 +642,7 @@ async def run_evaluation(
                 model_id=settings.llm_model or "default_model",
                 prompt_version="v1.0",
                 k_values=k_values,
+                require_snapshot=True,
             )
         else:
             # Hermetic mock runner for offline evaluation and benchmark verification
@@ -568,17 +659,31 @@ async def run_evaluation(
 
     report = await runner.run_benchmark(cases)
 
-    # Save machine-readable results JSON with provenance metadata
-    out_file = Path(output_path)
+    # Save machine-readable results JSON with provenance metadata. Mock results go to
+    # a separate file so they can never overwrite a recorded live benchmark.
+    out_file = Path(output_path or (DEFAULT_LIVE_OUTPUT if live else DEFAULT_MOCK_OUTPUT))
     out_file.parent.mkdir(parents=True, exist_ok=True)
     report_dict = report.model_dump()
-    result_data = {
+    result_data: dict[str, Any] = {
         "mode": "live" if live else "mock",
         "run_timestamp": datetime.now(UTC).isoformat(),
         "model_name": runner.model_id,
         "issuelens_commit_sha": _get_git_commit_sha(),
-        **report_dict,
+        "issuelens_tree_dirty": _git_tree_is_dirty(),
+        "metrics_version": "2",
     }
+    if live:
+        settings = get_settings()
+        result_data["config"] = {
+            "llm_provider": settings.llm_provider,
+            "llm_model": settings.llm_model,
+            "max_retrieval_rounds": settings.max_retrieval_rounds,
+            "llm_timeout_seconds": settings.llm_timeout_seconds,
+            "max_report_tokens": settings.max_report_tokens,
+        }
+    else:
+        result_data["warning"] = MOCK_MODE_WARNING
+    result_data.update(report_dict)
     with out_file.open("w", encoding="utf-8") as f:
         json.dump(result_data, f, indent=2, default=str)
 
@@ -611,8 +716,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="evals/results.json",
-        help="Path to output machine-readable evaluation report JSON (default: evals/results.json)",
+        default=None,
+        help=(
+            f"Output JSON path (default: {DEFAULT_LIVE_OUTPUT} with --live, "
+            f"{DEFAULT_MOCK_OUTPUT} otherwise)"
+        ),
     )
     parser.add_argument(
         "--case-id",
@@ -640,11 +748,6 @@ def main() -> None:
         action="store_true",
         help="Execute live investigations against real LLM and GitHub APIs (requires credentials)",
     )
-    parser.add_argument(
-        "--mock",
-        action="store_true",
-        help="Execute offline benchmark run using hermetic test doubles (default)",
-    )
 
     args = parser.parse_args()
     k_vals = [int(x.strip()) for x in args.k_values.split(",") if x.strip()]
@@ -662,6 +765,8 @@ def main() -> None:
     )
 
     print(format_evaluation_summary(report))
+    if not args.live:
+        print(f"NOTE: {MOCK_MODE_WARNING}")
 
 
 if __name__ == "__main__":

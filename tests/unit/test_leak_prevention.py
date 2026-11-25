@@ -6,13 +6,11 @@ snapshots to pre-fix commit SHAs.
 """
 
 from datetime import UTC, datetime
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from issuelens.agent.report import InvestigationReport
-from issuelens.config import Settings
 from issuelens.core.errors import InvalidInputError
 from issuelens.evaluation.dataset import EvaluationCaseModel
 from issuelens.evaluation.run_eval import EvaluationRunner
@@ -96,6 +94,7 @@ async def test_evaluation_runner_withholds_ground_truth_from_agent() -> None:
     mock_service.investigate.assert_awaited_once_with(
         target_or_url=case.issue_url,
         snapshot=mock_snapshot,
+        commit_sha=target_sha,
     )
 
     # Verify call kwargs did not receive ground-truth resolution or expected files
@@ -107,57 +106,69 @@ async def test_evaluation_runner_withholds_ground_truth_from_agent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_leak_prevention_on_real_litellm_case_context(
-    tmp_path: pytest.TempPathFactory,
-) -> None:
-    """Verify investigating case BerriAI/litellm#50893 pins to pre-fix SHA and isolates PR."""
+async def test_eval_client_withholds_comments_closed_state_and_live_issue_edits() -> None:
+    """Regression: the agent received every issue comment and the 'closed' state.
+
+    Docs claimed post-report discussion was withheld, but live mode passed up to 100
+    comments into the prompt and document index. Comments often discuss or link the fix,
+    and 'closed' tells the model a fix exists.
+    """
+    from issuelens.evaluation.run_eval import EvaluationGitHubClient
+    from issuelens.github.models import GitHubComment
+    from issuelens.github.url_parser import IssueTarget
+
     pre_fix_sha = "4b6d1559b47ccff7df1d7fc490e8af22f656870b"
-    resolving_pr_num = 52741
-    resolving_pr_sha = "57fddaea78caeaee4f9a8b57ce57f712ae9a8de9"
-
-    mock_gh = AsyncMock()
-    Settings(
-        app_env="local",
-        snapshot_cache_dir=str(tmp_path),
+    case = EvaluationCaseModel(
+        id="CASE-L",
+        issue_url="https://github.com/BerriAI/litellm/issues/50893",
+        repo_full_name="BerriAI/litellm",
+        issue_number=50893,
+        target_commit_sha=pre_fix_sha,
+        known_resolution="fix(sap): accept list-shaped reasoning_content",
+        expected_files=["litellm/llms/sap/chat/handler.py"],
+        issue_title="Original title as reported",
+        issue_body="Original body as reported",
     )
-
-    issue_obj = GitHubIssue(
+    live_issue = GitHubIssue(
         number=50893,
-        title="stream_chunk_builder raises TypeError with list reasoning_content",
-        body="TypeError: sequence item 0: expected str instance, list found",
+        title="[FIXED in #52741] edited title",
+        body="Edited after the fix: see litellm/llms/sap/chat/handler.py",
         state="closed",
         author="tester",
         labels=["bug"],
         created_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
         closed_at=datetime.now(UTC),
-        comments_count=0,
-        html_url="https://github.com/BerriAI/litellm/issues/50893",
+        comments_count=1,
+        html_url=case.issue_url,
     )
-
-    mock_gh.fetch_issue_context.return_value = GitHubIssueContext(
-        issue_url="https://github.com/BerriAI/litellm/issues/50893",
+    fix_comment = GitHubComment(
+        id=1,
+        author="maintainer",
+        body="Fixed by #52741 in litellm/llms/sap/chat/handler.py",
+        created_at=datetime.now(UTC),
+        html_url=f"{case.issue_url}#issuecomment-1",
+    )
+    real = AsyncMock()
+    real.fetch_issue_context.return_value = GitHubIssueContext(
+        issue_url=case.issue_url,
         repository="BerriAI/litellm",
         issue_number=50893,
         default_branch="main",
-        commit_sha=pre_fix_sha,
-        issue=issue_obj,
-        comments=[],
+        commit_sha="ffffffffffffffffffffffffffffffffffffffff",  # default-branch HEAD
+        issue=live_issue,
+        comments=[fix_comment],
         fetched_at=datetime.now(UTC),
     )
 
-    async def mock_get_issue(owner: str, repo: str, num: int) -> GitHubIssue:
-        if num == resolving_pr_num:
-            raise InvalidInputError(
-                f"Resource '{owner}/{repo}#{num}' is a pull request, not an issue."
-            )
-        return cast(GitHubIssue, mock_gh.fetch_issue_context.return_value.issue)
+    client = EvaluationGitHubClient(real, cases=[case])
+    context = await client.fetch_issue_context(
+        IssueTarget(owner="BerriAI", repo="litellm", issue_number=50893)
+    )
 
-    mock_gh.get_issue.side_effect = mock_get_issue
-
-    # Verify PR access is denied
-    with pytest.raises(InvalidInputError, match="is a pull request, not an issue"):
-        await mock_gh.get_issue("BerriAI", "litellm", resolving_pr_num)
-
-    # Ensure pre-fix SHA differs from resolving PR merge commit
-    assert pre_fix_sha != resolving_pr_sha
+    assert context.comments == []
+    assert context.issue.state == "open"
+    assert context.issue.closed_at is None
+    assert context.issue.title == "Original title as reported"
+    assert context.issue.body == "Original body as reported"
+    assert context.commit_sha == pre_fix_sha
+    assert "52741" not in context.model_dump_json()
