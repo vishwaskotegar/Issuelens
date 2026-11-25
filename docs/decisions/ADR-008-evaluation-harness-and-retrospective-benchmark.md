@@ -8,6 +8,8 @@
 
 ---
 
+> **Amended by [ADR-013](ADR-013-evaluation-metric-redesign-and-leak-closure.md) (2026-11-25):** the metrics, leak controls, and dataset described below were revised after an audit. The dataset is now 20 `BerriAI/litellm` cases (not the flask/requests set described here); see [`evals/README.md`](../../evals/README.md) for the current protocol.
+
 ## 1. Context and Problem
 
 The engineering credibility of an AI debugging assistant hinges on quantitative, reproducible performance measurement against real-world bug reports rather than cherry-picked, qualitative demonstrations. Section 9 and US-08 of [`docs/BUILD_SPECIFICATION.md`](../BUILD_SPECIFICATION.md#L304-L331) establish that IssueLens must measure citation validity, retrieval recall, and unsupported claim rates across model versions.

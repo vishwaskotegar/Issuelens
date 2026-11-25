@@ -88,11 +88,14 @@ async def test_evaluation_runner_single_case_success() -> None:
     mock_service.investigate.assert_awaited_once_with(
         target_or_url=case.issue_url,
         snapshot=None,
+        commit_sha=SAMPLE_SHA,
     )
     assert report is not None
     assert metrics.case_id == "CASE-001"
     assert metrics.status == "completed"
-    assert metrics.recall_at_k[1] == 1.0
+    assert metrics.search_recall_at_k[1] == 1.0
+    assert metrics.diagnosis_hit_at_k[1] == 1.0
+    assert metrics.root_cause_alignment == "correct"
     assert metrics.citation_validity_rate == 1.0
     assert metrics.unsupported_claims_count == 0
 
@@ -119,7 +122,7 @@ async def test_evaluation_runner_case_failure() -> None:
     assert report is None
     assert metrics.status == "failed"
     assert metrics.error_reason == "Rate limit exceeded"
-    assert metrics.citation_validity_rate == 0.0
+    assert metrics.citation_validity_rate is None
 
 
 @pytest.mark.asyncio
@@ -219,7 +222,8 @@ async def test_run_evaluation_e2e_and_summary(tmp_path: Path) -> None:
     summary = format_evaluation_summary(report)
     assert "ISSUELENS BENCHMARK EVALUATION REPORT" in summary
     assert "Total Cases:               2" in summary
-    assert "Citation Validity Rate:" in summary
+    assert "LLM citation validity:" in summary
+    assert "Search Recall@5" in summary
 
     # Test filtering by case_id
     report_single = await run_evaluation(
@@ -273,9 +277,12 @@ async def test_run_evaluation_mock_mode_default(tmp_path: Path) -> None:
     assert report.total_cases == 1
     assert report.completed_cases == 1
     assert report.failed_cases == 0
-    assert report.mean_citation_validity >= 0.95
-    assert report.mean_recall_at_k.get(5, 0.0) >= 0.80
-    assert report.benchmark_targets_met.get("citation_validity_ge_95") is True
+    # Mock mode echoes ground truth, so it scores perfectly by construction. The output
+    # must say so, and this test only checks that the plumbing runs end to end.
+    data = json.loads(results_path.read_text(encoding="utf-8"))
+    assert data["mode"] == "mock"
+    assert "NOT a measurement of investigation quality" in data["warning"]
+    assert report.mean_search_recall_at_k.get(5, 0.0) == 1.0
 
     # Test fixture snapshot resolver
     resolver = create_fixture_snapshot_resolver()
@@ -285,3 +292,59 @@ async def test_run_evaluation_mock_mode_default(tmp_path: Path) -> None:
     assert (snap.root_path / "sample_pkg" / "auth.py").is_file()
 
     assert resolver("other/repo", SAMPLE_SHA) is None
+
+
+@pytest.mark.asyncio
+async def test_mock_mode_never_overwrites_live_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the documented default command overwrote the committed live results."""
+    cases_path = tmp_path / "cases.jsonl"
+    save_evaluation_cases(
+        [
+            EvaluationCaseModel(
+                id="CASE-X",
+                issue_url="https://github.com/sample/repo/issues/1",
+                repo_full_name="sample/repo",
+                issue_number=1,
+                target_commit_sha=SAMPLE_SHA,
+                known_resolution="Fixed the bug.",
+                expected_files=["sample_pkg/auth.py"],
+            )
+        ],
+        cases_path,
+    )
+    monkeypatch.chdir(tmp_path)
+    live_results = tmp_path / "evals" / "results.json"
+    live_results.parent.mkdir()
+    live_results.write_text('{"mode": "live"}', encoding="utf-8")
+
+    await run_evaluation(cases_path=cases_path, live=False)
+
+    assert json.loads(live_results.read_text(encoding="utf-8")) == {"mode": "live"}
+    assert (tmp_path / "evals" / "results.mock.json").is_file()
+
+
+@pytest.mark.asyncio
+async def test_required_snapshot_missing_fails_case_without_running_agent() -> None:
+    """Regression: an unavailable pinned snapshot fell back to the default branch (post-fix)."""
+    case = EvaluationCaseModel(
+        id="CASE-S",
+        issue_url="https://github.com/BerriAI/litellm/issues/1",
+        repo_full_name="BerriAI/litellm",
+        issue_number=1,
+        target_commit_sha=SAMPLE_SHA,
+        known_resolution="Fixed the bug.",
+        expected_files=["litellm/main.py"],
+    )
+    mock_service = AsyncMock()
+    runner = EvaluationRunner(
+        service=mock_service,
+        snapshot_resolver=lambda _repo, _sha: None,
+        require_snapshot=True,
+    )
+    metrics, report = await runner.evaluate_case(case)
+
+    mock_service.investigate.assert_not_awaited()
+    assert report is None
+    assert metrics.status == "snapshot_unavailable"

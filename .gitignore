@@ -50,3 +50,6 @@ Thumbs.db
 .tmp*
 *.tmp
 
+
+# Mock-mode evaluation output (harness check only, not a benchmark result)
+evals/results.mock.json

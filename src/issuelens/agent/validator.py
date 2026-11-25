@@ -442,6 +442,7 @@ def validate_investigation_report(
             contradicting_evidence_ids=verified_contradicting_ids,
             verification_steps=hyp.verification_steps,
             support_status="supported" if repository_support else "unsupported",
+            rejected_evidence_ids=bad_supporting_ids,
         )
         sanitized_hypotheses.append(sanitized_hyp)
 

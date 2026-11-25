@@ -1364,3 +1364,40 @@ The README and ADR-005 described cyclic, multi-round hypothesis evaluation. Trac
 #### 7. Alternatives & Trade-offs
 - Relabelling the loop as single-pass was the cheaper option; the owner chose real re-evaluation (more LLM calls, bounded by the round cap).
 - Version-tag resolution was kept (investigating the reported release is useful) but now fails loudly on non-404 errors rather than being removed.
+
+---
+
+### Entry 028: Benchmark Metrics That Could Not Fail, Leaked Issue Comments, and Mock Results Overwriting Live Results
+- **Date**: 2026-11-25
+- **Phase**: Post-build audit remediation (branch `fix/eval-integrity`)
+- **Status**: Resolved (live re-run pending)
+
+#### 1. Symptom & Objective
+The owner noticed discrepancies between the README and the evaluation results. The audit's question was: could any of the published numbers have come out differently?
+
+#### 2. Root Cause
+- [`metrics.py`](../src/issuelens/evaluation/metrics.py) v1: citation validity re-checked the already-filtered report; root-cause alignment was keyword overlap with the fix PR title; Recall@k used the search order; failed runs were averaged in as 0; 3 of 5 targets were computed; cases with no expected files scored a perfect recall.
+- [`run_eval.py`](../src/issuelens/evaluation/run_eval.py): the live client passed real issue comments through; `create_live_snapshot_resolver()` returned `None` on download failure and the service then used the default branch; mock mode returned ground truth and defaulted to `evals/results.json`.
+- [`build_eval_set.py`](../scripts/build_eval_set.py): accepted bare `#N` mentions, did not paginate PR files, and counted files the fix created as expected.
+
+#### 3. Fix
+Metrics v2, leak closure, separate mock output, provenance, and dataset-builder rules as described in [ADR-013](decisions/ADR-013-evaluation-metric-redesign-and-leak-closure.md). CASE-017 and CASE-020 `expected_files` corrected. The old run is preserved as `evals/results.legacy-v1.json`; README and `evals/README.md` no longer cite its figures as quality evidence.
+
+#### 4. Verification
+- `uv run pytest`: 279 passed. `uv run ruff check .`: All checks passed. `uv run mypy src tests`: no issues in 77 files.
+- Echo-baseline claim reproduced with the v1 scoring function from commit `52b018c`: issue title only → 15 correct / 5 partial; title + body → 20/20 correct; agent (legacy results) → 12 / 4 / 4 incorrect.
+- Dataset audit (read-only GitHub API): all 20 cases use a closing keyword; CASE-017's `litellm/llms/sap/chat/reasoning.py` and CASE-020's `litellm/responses/instructions_length.py` were confirmed absent from the cached pre-fix snapshots.
+- Mock CLI smoke run (`run_eval --max-cases 3`) wrote `evals/results.mock.json` and left `evals/results.json` untouched.
+- **Not run**: a live benchmark with the new code (paid LLM calls; awaiting owner approval).
+
+#### 5. Engineering Lesson
+A metric that is always 100% is a property of the pipeline, not of the model. Build a "dumb baseline" (here: echo the issue text) and check that your metric ranks it below the real system; if it does not, the metric is not measuring what you think.
+
+Also from this branch: the first tightened symptom filter rejected 11 of 20 genuine cases. Running a new filter over the existing, hand-trusted data before adopting it caught the over-correction.
+
+#### 6. Regression Tests
+- [`tests/unit/test_eval_metrics.py`](../tests/unit/test_eval_metrics.py) (rewritten), [`tests/unit/test_eval_runner.py`](../tests/unit/test_eval_runner.py) (`test_mock_mode_never_overwrites_live_results`, `test_required_snapshot_missing_fails_case_without_running_agent`), [`tests/unit/test_leak_prevention.py`](../tests/unit/test_leak_prevention.py) (`test_eval_client_withholds_comments_closed_state_and_live_issue_edits`), [`tests/unit/test_build_eval_set.py`](../tests/unit/test_build_eval_set.py) (new).
+
+#### 7. Alternatives & Trade-offs
+- Keeping v1 metrics with caveats was rejected: the numbers carry no information.
+- Withholding *all* comments is conservative (some contain legitimate reproduction details); filtering by pre-fix timestamp is a possible refinement.

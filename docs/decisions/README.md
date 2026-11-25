@@ -88,6 +88,7 @@ Create an ADR when a decision **materially affects**:
 | [**ADR-010**](ADR-010-production-deployment-and-api-hardening.md) | Production Deployment Containerization, API Authentication, and Rate Limiting | Accepted | 2026-11-18 | Phase 9 | Original |
 | [**ADR-011**](ADR-011-security-hardening-and-trusted-proxy-defense.md) | Security Hardening, Anti-Spoofing Trusted Proxy Verification, and HTTP Defenses | Accepted | 2026-11-20 | Phase 10 | Original |
 | [**ADR-012**](ADR-012-llm-hypothesis-reevaluation-loop.md) | LLM Hypothesis Re-evaluation in the Follow-up Retrieval Loop | Accepted | 2026-11-25 | Post-build audit | Original |
+| [**ADR-013**](ADR-013-evaluation-metric-redesign-and-leak-closure.md) | Evaluation Metric Redesign and Leak Closure | Accepted | 2026-11-25 | Post-build audit | Original |
 
 ---
 
