@@ -160,6 +160,11 @@ class MockLLMClient:
         )
 
 
+# Defaults used only when LLM_MODEL is unset. Set LLM_MODEL explicitly in deployments.
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
+DEFAULT_OPENAI_MODEL = "gpt-4o"
+
+
 def create_langchain_chat_model(settings: Settings) -> BaseChatModel:
     """Instantiate a configured LangChain BaseChatModel from application settings."""
     provider = (settings.llm_provider or "openai").lower()
@@ -169,9 +174,10 @@ def create_langchain_chat_model(settings: Settings) -> BaseChatModel:
         from langchain_anthropic import ChatAnthropic
 
         return ChatAnthropic(
-            model_name=settings.llm_model or "claude-3-5-sonnet-20241022",
+            model_name=settings.llm_model or DEFAULT_ANTHROPIC_MODEL,
             api_key=api_key_secret,
-            timeout=float(settings.request_timeout_seconds),
+            timeout=float(settings.llm_timeout_seconds),
+            max_tokens=settings.max_report_tokens,
             max_retries=2,
             stop=None,
         )
@@ -179,9 +185,10 @@ def create_langchain_chat_model(settings: Settings) -> BaseChatModel:
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
-        model=settings.llm_model or "gpt-4o",
+        model=settings.llm_model or DEFAULT_OPENAI_MODEL,
         api_key=api_key_secret,
-        timeout=float(settings.request_timeout_seconds),
+        timeout=float(settings.llm_timeout_seconds),
+        max_completion_tokens=settings.max_report_tokens,
         max_retries=2,
     )
 

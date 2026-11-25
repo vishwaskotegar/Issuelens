@@ -275,3 +275,20 @@ def test_classify_llm_exception_by_type_names() -> None:
 
     assert isinstance(classify_llm_exception(RateLimitError("x")), RateLimitExceededError)
     assert isinstance(classify_llm_exception(APITimeoutError("x")), UpstreamTimeoutError)
+
+
+def test_chat_models_use_llm_timeout_and_output_token_cap() -> None:
+    """LLM calls get their own timeout and an explicit output token cap."""
+    for provider in ("openai", "anthropic"):
+        settings = Settings(
+            llm_provider=provider,
+            llm_api_key=SecretStr("k"),
+            llm_timeout_seconds=99,
+            request_timeout_seconds=15,
+            max_report_tokens=3000,
+        )
+        model = create_langchain_chat_model(settings)
+        params = model.model_dump()
+        timeout = params.get("request_timeout", params.get("default_request_timeout"))
+        assert timeout == 99.0, provider
+        assert 3000 in (params.get("max_tokens"), params.get("max_completion_tokens")), provider

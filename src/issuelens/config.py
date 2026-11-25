@@ -33,6 +33,12 @@ class Settings(BaseSettings):
         le=300,
         description="Timeout for external API requests in seconds",
     )
+    llm_timeout_seconds: int = Field(
+        default=120,
+        ge=1,
+        le=900,
+        description="Timeout for a single LLM call in seconds (separate from GitHub requests)",
+    )
     max_repository_bytes: int = Field(
         default=50_000_000,
         ge=1000,
@@ -63,7 +69,7 @@ class Settings(BaseSettings):
     max_report_tokens: int = Field(
         default=2500,
         ge=100,
-        description="Maximum allowed token estimate for generated reports",
+        description="Maximum output tokens requested from the LLM for a generated report",
     )
     snapshot_cache_dir: str = Field(
         default=".cache/issuelens/snapshots",
