@@ -82,6 +82,7 @@ class InvestigationService:
         target_or_url: str | IssueTarget,
         snapshot: RepoSnapshot | None = None,
         run_id: str | None = None,
+        commit_sha: str | None = None,
     ) -> InvestigationReport:
         """Run complete investigation flow for a target issue via LangGraph state machine.
 
@@ -89,6 +90,9 @@ class InvestigationService:
             target_or_url: GitHub issue URL string or parsed IssueTarget.
             snapshot: Optional pre-existing RepoSnapshot (e.g. for testing or local cache).
             run_id: Optional predetermined run identifier.
+            commit_sha: Commit to investigate. When a run was created earlier, pass the SHA
+                recorded then; otherwise the commit is resolved again now and may differ
+                (e.g. the default branch moved, possibly to a commit containing the fix).
 
         Returns:
             Validated InvestigationReport with pinned commit SHA and evidence citations.
@@ -110,6 +114,14 @@ class InvestigationService:
 
         # 1. Fetch issue context and pinned commit SHA
         context = await self.github_client.fetch_issue_context(target)
+        if commit_sha and commit_sha != context.commit_sha:
+            logger.info(
+                "Pinning investigation %s to recorded commit %s (resolver now returns %s)",
+                active_run_id,
+                commit_sha,
+                context.commit_sha,
+            )
+            context = context.model_copy(update={"commit_sha": commit_sha})
 
         # 2. Acquire repository snapshot if not supplied
         active_snapshot = snapshot
