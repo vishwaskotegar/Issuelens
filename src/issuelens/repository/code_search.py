@@ -839,6 +839,10 @@ def search_code(
                         context_lines=0,
                     )
                 except Exception:
+                    # Could not re-read the widened window: keep the original range so the
+                    # recorded lines still match the excerpt exactly.
+                    merged_start = existing["start_line"]
+                    merged_end = existing["end_line"]
                     merged_excerpt = existing["excerpt"]
             else:
                 merged_excerpt = existing["excerpt"]
@@ -932,7 +936,9 @@ def search_symbols(
         matched_symbols = find_symbols_by_name(symbols, symbol_name)
 
         for sym in matched_symbols:
-            _, _, excerpt = read_snippet_with_bounds(
+            # Record the window actually read: long symbols are truncated to the snippet
+            # line cap, and the citation must not claim lines its excerpt omits.
+            actual_start, actual_end, excerpt = read_snippet_with_bounds(
                 snapshot=repo_snapshot,
                 file_path=file_path,
                 start_line=sym.start_line,
@@ -942,8 +948,8 @@ def search_symbols(
             hits.append(
                 CodeHit(
                     path=file_path,
-                    start_line=sym.start_line,
-                    end_line=sym.end_line,
+                    start_line=actual_start,
+                    end_line=actual_end,
                     excerpt=excerpt,
                     matched_terms=[symbol_name],
                     commit_sha=repo_snapshot.commit_sha,

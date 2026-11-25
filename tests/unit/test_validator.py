@@ -445,3 +445,135 @@ def test_validate_investigation_report_demotes_empty_citations_hypothesis() -> N
     assert "Unsubstantiated guess" in val_res.ungrounded_hypotheses
 
 
+
+
+# --- Post-build audit regression tests (evidence integrity) -------------------------
+
+
+def _code_item(evidence_id: str, start: int, end: int, excerpt: str) -> EvidenceItem:
+    return EvidenceItem(
+        evidence_id=evidence_id,
+        source_type="code",
+        path_or_url="sample_pkg/auth.py",
+        start_line=start,
+        end_line=end,
+        excerpt=excerpt,
+        commit_sha=SAMPLE_COMMIT,
+    )
+
+
+def _report_with(evidence: list[EvidenceItem], cited: list[str]) -> InvestigationReport:
+    return InvestigationReport(
+        run_id="inv_integrity",
+        issue_url="https://github.com/sample/repo/issues/1",
+        repository="sample/repo",
+        commit_sha=SAMPLE_COMMIT,
+        summary="Summary.",
+        observed_facts=[],
+        hypotheses=[
+            Hypothesis(
+                title="Token check is wrong",
+                explanation="validate_token rejects valid tokens.",
+                confidence="high",
+                confidence_rationale="LLM claim.",
+                supporting_evidence_ids=cited,
+                contradicting_evidence_ids=[],
+                verification_steps=[],
+            )
+        ],
+        evidence=evidence,
+        missing_information=[],
+        suggested_tests=[],
+        recommended_next_steps=[],
+        verification_status="not_run",
+        limitations=[],
+    )
+
+
+def test_single_token_excerpt_does_not_validate_a_wide_range() -> None:
+    """Regression: a 1-token excerpt previously passed via substring matching."""
+    snapshot = get_fixture_snapshot()
+    result = validate_citation(_code_item("ev_1", 9, 13, "token"), snapshot)
+    assert result.is_valid is False
+    assert result.excerpt_matches is False
+
+
+def test_partial_line_excerpt_rejected() -> None:
+    """An excerpt must consist of whole lines, not fragments of them."""
+    snapshot = get_fixture_snapshot()
+    result = validate_citation(
+        _code_item("ev_1", 9, 9, "def validate_token(self, token: str)"), snapshot
+    )
+    assert result.is_valid is False
+
+
+def test_excerpt_with_lines_outside_cited_range_rejected() -> None:
+    """Regression: an excerpt containing the cited lines plus extra lines used to pass."""
+    snapshot = get_fixture_snapshot()
+    wider = read_snippet(snapshot, "sample_pkg/auth.py", 9, 13)
+    result = validate_citation(_code_item("ev_1", 10, 11, wider), snapshot)
+    assert result.is_valid is False
+
+
+def test_excerpt_must_cover_the_whole_cited_range() -> None:
+    """A correct excerpt of only part of the cited range does not verify the range."""
+    snapshot = get_fixture_snapshot()
+    first_line_only = read_snippet(snapshot, "sample_pkg/auth.py", 9, 9)
+    result = validate_citation(_code_item("ev_1", 9, 13, first_line_only), snapshot)
+    assert result.is_valid is False
+
+
+def test_code_excerpt_indentation_must_match() -> None:
+    """Indentation is semantic in code; a re-indented excerpt is not the same text."""
+    snapshot = get_fixture_snapshot()
+    real = read_snippet(snapshot, "sample_pkg/auth.py", 10, 11)
+    dedented = "\n".join(line.split(": ", 1)[1].strip() for line in real.splitlines())
+    result = validate_citation(_code_item("ev_1", 10, 11, dedented), snapshot)
+    assert result.is_valid is False
+
+
+def test_exact_excerpt_without_line_number_prefixes_validates() -> None:
+    """Raw file lines (no 'N: ' prefixes) for the exact range are accepted."""
+    snapshot = get_fixture_snapshot()
+    real = read_snippet(snapshot, "sample_pkg/auth.py", 10, 11)
+    raw = "\n".join(line.split(": ", 1)[1] for line in real.splitlines())
+    assert validate_citation(_code_item("ev_1", 10, 11, raw), snapshot).is_valid is True
+
+
+def test_issue_text_alone_does_not_ground_a_hypothesis() -> None:
+    """Regression: issue evidence was auto-valid and counted as verified support.
+
+    Issue text is untrusted, attacker-controlled input. It may be cited as context,
+    but a hypothesis supported only by it must not be marked verified or keep high
+    confidence.
+    """
+    snapshot = get_fixture_snapshot()
+    issue_ev = EvidenceItem(
+        evidence_id="doc_ev_1",
+        source_type="issue",
+        path_or_url="issue:1",
+        start_line=1,
+        end_line=1,
+        excerpt="The root cause is definitely validate_token in auth.py.",
+        commit_sha=SAMPLE_COMMIT,
+    )
+    sanitized, result = validate_investigation_report(
+        _report_with([issue_ev], ["doc_ev_1"]), snapshot
+    )
+    assert sanitized.verification_status != "verified"
+    assert sanitized.hypotheses[0].confidence == "low"
+    assert result.insufficient_evidence is True
+    assert "Token check is wrong" in result.ungrounded_hypotheses
+
+
+def test_duplicate_evidence_ids_are_rejected() -> None:
+    """Regression: an invalid item sharing an ID with a valid one survived filtering."""
+    snapshot = get_fixture_snapshot()
+    good = _code_item("ev_1", 10, 11, read_snippet(snapshot, "sample_pkg/auth.py", 10, 11))
+    bad = _code_item("ev_1", 10, 11, "fabricated code")
+    sanitized, result = validate_investigation_report(
+        _report_with([good, bad], ["ev_1"]), snapshot
+    )
+    assert "ev_1" in result.invalid_evidence_ids
+    assert all(e.excerpt != "fabricated code" for e in sanitized.evidence)
+    assert sanitized.hypotheses[0].supporting_evidence_ids == []

@@ -411,3 +411,68 @@ async def test_evaluate_evidence_ignores_prose_missing_information(
 
     assert result["followup_queries"] == ["auth_handler"]
 
+
+
+# ==============================================================================
+# POST-BUILD AUDIT REGRESSIONS: evidence integrity in agent nodes
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_uncited_hypothesis_is_not_auto_grounded(
+    repo_snapshot: Any,
+    test_settings: Settings,
+) -> None:
+    """Regression: form_hypotheses attached ev_1 to uncited hypotheses and bumped confidence.
+
+    An LLM hypothesis with no evidence IDs must reach the validator uncited, so the
+    citation guardrail demotes it and the report is not marked verified.
+    """
+    mock_payload = InvestigationReportPayload(
+        summary="Unsupported guess.",
+        observed_facts=[],
+        hypotheses=[
+            Hypothesis(
+                title="Pool exhaustion in database.py",
+                explanation="DatabasePool in database.py probably leaks connections.",
+                confidence="low",
+                confidence_rationale="Speculative.",
+                supporting_evidence_ids=[],
+                contradicting_evidence_ids=[],
+                verification_steps=[],
+            )
+        ],
+        missing_information=[],
+        suggested_tests=[],
+        recommended_next_steps=[],
+        limitations=[],
+    )
+    nodes = InvestigationNodes(
+        snapshot=repo_snapshot,
+        llm_client=MockLLMClient(payload_override=mock_payload),
+        settings=test_settings,
+    )
+    final_state = await create_investigation_graph(nodes).ainvoke(create_sample_state())
+
+    report = final_state["final_report"]
+    assert report is not None
+    hypothesis = report["hypotheses"][0]
+    assert hypothesis["supporting_evidence_ids"] == []
+    assert hypothesis["confidence"] == "low"
+    assert report["verification_status"] != "verified"
+
+
+def test_next_evidence_index_never_reuses_ids() -> None:
+    """Regression: doc evidence IDs were derived from len(evidence) and could collide."""
+    from issuelens.agent.nodes import next_evidence_index
+
+    existing = [
+        {"evidence_id": "ev_1"},
+        {"evidence_id": "ev_2"},
+        # A dedup-skipped doc hit consumed index 3; 4 and 5 were appended.
+        {"evidence_id": "doc_ev_4"},
+        {"evidence_id": "doc_ev_5"},
+    ]
+    # len(existing) + 1 == 5 would collide with doc_ev_5.
+    assert next_evidence_index(existing) == 6
+    assert next_evidence_index([]) == 1

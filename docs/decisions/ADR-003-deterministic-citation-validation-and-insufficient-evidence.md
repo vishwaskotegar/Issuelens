@@ -106,6 +106,18 @@ We implemented a deterministic post-generation validation and sanitation pipelin
 
 ---
 
+## 5a. Amendment (2026-11-25, post-build audit)
+
+An independent audit found three ways the original implementation let unverified claims pass as verified. The decision (deterministic validation against snapshot bytes) stands; its implementation was tightened:
+
+1. **Exact excerpts.** `excerpts_match()` previously accepted a two-way substring match after stripping all whitespace, so a one-token excerpt could validate a wide range. It now requires the excerpt to equal the entire cited range line-for-line (trailing whitespace, blank lines and `N: ` prefixes ignored; indentation ignored only for documentation).
+2. **Issue text does not ground hypotheses.** `issue`/`commit` evidence was auto-valid and counted toward `verified`. Because the issue body is indexed as a retrievable chunk, the reporter's own claims could ground a hypothesis. Such evidence is now context only.
+3. **No synthetic citations.** `form_hypotheses()` attached evidence to uncited hypotheses and raised their confidence, so the demotion path in this ADR never fired. That code was removed. Duplicate evidence IDs are now rejected.
+
+Consequence: more hypotheses will be reported as low confidence / insufficient evidence. That is the intended, honest outcome; earlier benchmark figures for citation validity and unsupported claims were produced under the looser rules and are not comparable.
+
+---
+
 ## 6. Implementation References
 
 - **Validator Implementation**: [`src/issuelens/agent/validator.py`](../../src/issuelens/agent/validator.py)
