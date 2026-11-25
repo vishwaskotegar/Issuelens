@@ -356,3 +356,72 @@ def test_production_requires_database_url() -> None:
     )
     with pytest.raises(ConfigurationError, match="DATABASE_URL"):
         get_default_database_url(prod)
+
+
+@pytest.mark.asyncio
+async def test_repository_saves_two_runs_with_same_evidence_ids(
+    sample_report: InvestigationReport,
+) -> None:
+    """Regression: evidence IDs (ev_1, ev_2, ...) restart per run.
+
+    They were the single-column primary key of evidence_items, so persisting a second
+    run's report raised IntegrityError. Evidence must be keyed by (run_id, id).
+    """
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    await create_all_tables(engine)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = SQLAlchemyInvestigationRepository(session)
+        for run_id in ("inv_first_run", "inv_second_run"):
+            await repo.create_run(
+                run_id=run_id,
+                issue_url=sample_report.issue_url,
+                repo_full_name=sample_report.repository,
+                issue_number=1234,
+                commit_sha=sample_report.commit_sha,
+                status="running",
+            )
+            report = sample_report.model_copy(update={"run_id": run_id})
+            await repo.save_report(run_id, report)
+            await repo.commit()
+
+        rows = (await session.execute(select(EvidenceItemRecord))).scalars().all()
+        assert sorted((r.run_id, r.id) for r in rows) == [
+            ("inv_first_run", "ev_1"),
+            ("inv_second_run", "ev_1"),
+        ]
+
+    await engine.dispose()
+
+
+def test_alembic_head_matches_orm_models(tmp_path: Path) -> None:
+    """Migrations at head must produce the same schema as the ORM models.
+
+    Guards against model changes shipped without a matching migration.
+    """
+    from alembic.autogenerate import compare_metadata
+    from alembic.runtime.migration import MigrationContext
+    from sqlalchemy import create_engine
+
+    from issuelens.persistence.models import Base
+
+    db_file = tmp_path / "parity.db"
+    sync_url = f"sqlite:///{db_file}"
+    alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
+    command.upgrade(alembic_cfg, "head")
+
+    from sqlalchemy import inspect as sa_inspect
+
+    engine = create_engine(sync_url)
+    with engine.connect() as conn:
+        diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+        # Autogenerate does not compare primary keys, so check them explicitly.
+        inspector = sa_inspect(conn)
+        for table in Base.metadata.sorted_tables:
+            migrated_pk = inspector.get_pk_constraint(table.name)["constrained_columns"]
+            model_pk = [col.name for col in table.primary_key.columns]
+            assert sorted(migrated_pk) == sorted(model_pk), table.name
+    engine.dispose()
+    assert diff == []
