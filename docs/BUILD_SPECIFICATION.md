@@ -293,7 +293,7 @@ Confidence must be accompanied by a rationale and should not be presented as a c
 | Table | Core fields | Purpose |
 | --- | --- | --- |
 | investigation_runs | id, issue_url, repo_full_name, issue_number, commit_sha, status, started_at, finished_at, error_code | Track lifecycle and reproducibility. |
-| evidence_items | id, run_id, source_type, path_or_url, start_line, end_line, commit_sha, excerpt, content_hash | Store cited evidence and provenance. |
+| evidence_items | id, run_id (primary key: run_id + id), source_type, path_or_url, start_line, end_line, commit_sha, excerpt, content_hash | Store cited evidence and provenance. |
 | hypotheses | id, run_id, title, explanation, confidence, support_status | Store structured hypotheses and their status. |
 | investigation_reports | run_id, report_json, schema_version, created_at | Persist validated final report. |
 | evaluation_cases | id, issue_url, repo_full_name, target_commit_sha, known_resolution, expected_files, notes | Curated test/evaluation cases. |
