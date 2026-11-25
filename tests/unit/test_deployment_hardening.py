@@ -295,3 +295,37 @@ def test_retry_after_header_reflects_computed_window() -> None:
     response = client.get("/v1/investigations/inv_1")
     assert response.status_code == 429
     assert response.headers["Retry-After"] == "17"
+
+
+def test_rate_limiter_evicts_idle_clients(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: one-off client IPs must not accumulate in memory forever."""
+    from issuelens.api import security
+
+    clock = [1000.0]
+    monkeypatch.setattr("issuelens.api.security.time.monotonic", lambda: clock[0])
+    limiter = security.RateLimiter()
+    for i in range(500):
+        limiter.check_rate_limit(f"10.0.{i // 256}.{i % 256}", limit=5, window_seconds=60)
+    assert limiter.tracked_clients() == 500
+
+    clock[0] += 61  # every earlier client is now idle for a full window
+    limiter.check_rate_limit("203.0.113.9", limit=5, window_seconds=60)
+    assert limiter.tracked_clients() == 1
+
+
+def test_rate_limiter_caps_tracked_clients(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Within one window, the least recently seen clients are dropped beyond the cap."""
+    from issuelens.api import security
+
+    clock = [1000.0]
+    monkeypatch.setattr("issuelens.api.security.time.monotonic", lambda: clock[0])
+    limiter = security.RateLimiter(max_clients=100)
+    for i in range(250):
+        clock[0] += 0.01
+        limiter.check_rate_limit(f"client-{i}", limit=5, window_seconds=60)
+    assert limiter.tracked_clients() <= 100
+    # The most recent client is still tracked and still limited.
+    for _ in range(4):
+        limiter.check_rate_limit("client-249", limit=5, window_seconds=60)
+    allowed, _, _ = limiter.check_rate_limit("client-249", limit=5, window_seconds=60)
+    assert allowed is False

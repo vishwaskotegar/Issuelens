@@ -21,9 +21,35 @@ logger = get_logger("issuelens.api.security")
 class RateLimiter:
     """Thread-safe sliding-window in-memory rate limiter per client identifier."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_clients: int = 10_000) -> None:
         self._lock = threading.Lock()
         self._requests: dict[str, list[float]] = {}
+        # Without eviction every distinct client IP stays in memory forever, so a stream
+        # of one-off addresses grows the dict without bound.
+        self._max_clients = max_clients
+        self._last_sweep = time.monotonic()
+
+    def _sweep(self, now: float, cutoff: float, window_seconds: float) -> None:
+        """Drop idle clients; if still over capacity, drop the least recently active.
+
+        Caller must hold the lock. Runs at most once per window unless over capacity, so
+        the amortised cost per request stays O(1).
+        """
+        if len(self._requests) <= self._max_clients and now - self._last_sweep < window_seconds:
+            return
+        self._last_sweep = now
+        for client_id in [c for c, ts in self._requests.items() if not ts or ts[-1] <= cutoff]:
+            del self._requests[client_id]
+        overflow = len(self._requests) - self._max_clients
+        if overflow > 0:
+            by_last_seen = sorted(self._requests, key=lambda c: self._requests[c][-1])
+            for client_id in by_last_seen[:overflow]:
+                del self._requests[client_id]
+
+    def tracked_clients(self) -> int:
+        """Number of client identifiers currently held in memory."""
+        with self._lock:
+            return len(self._requests)
 
     def check_rate_limit(
         self,
@@ -51,6 +77,7 @@ class RateLimiter:
 
             pruned.append(now)
             self._requests[client_id] = pruned
+            self._sweep(now, cutoff, window_seconds)
             return True, len(pruned), 0.0
 
     def reset(self) -> None:
