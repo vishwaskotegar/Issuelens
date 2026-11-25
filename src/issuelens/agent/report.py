@@ -90,6 +90,13 @@ class Hypothesis(BaseModel):
         default=None,
         description="Validator-computed support status (not produced by the LLM)",
     )
+    rejected_evidence_ids: SkipJsonSchema[list[str]] = Field(
+        default_factory=list,
+        description=(
+            "Evidence IDs the LLM cited as support that failed validation and were removed "
+            "(kept for transparency and for measuring citation validity)"
+        ),
+    )
 
 
 class InvestigationReportPayload(BaseModel):

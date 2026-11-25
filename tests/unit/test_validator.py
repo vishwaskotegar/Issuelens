@@ -595,3 +595,14 @@ def test_support_status_is_hidden_from_llm_output_schema() -> None:
 
     schema_text = str(InvestigationReportPayload.model_json_schema())
     assert "support_status" not in schema_text
+
+
+def test_validator_records_rejected_citations() -> None:
+    """Cited IDs that fail validation are kept on the hypothesis as rejected, not silently lost."""
+    snapshot = get_fixture_snapshot()
+    good = _code_item("ev_1", 10, 11, read_snippet(snapshot, "sample_pkg/auth.py", 10, 11))
+    sanitized, _ = validate_investigation_report(
+        _report_with([good], ["ev_1", "ev_404"]), snapshot
+    )
+    assert sanitized.hypotheses[0].supporting_evidence_ids == ["ev_1"]
+    assert sanitized.hypotheses[0].rejected_evidence_ids == ["ev_404"]
