@@ -76,38 +76,74 @@ class ReportValidationResult(BaseModel):
     )
 
 
+# Prefix emitted by ``read_snippet`` ("12: code"). Only this exact shape is stripped.
+_LINE_NUMBER_PREFIX = re.compile(r"^\d+: ?")
+# Heading label prepended to some documentation excerpts ("[Install]\n...").
+_HEADING_PREFIX = re.compile(r"^\[[^\]\n]+\]\r?\n")
+
+# Largest cited range the validator will read back in full. Anything wider is not a
+# meaningful citation and is rejected rather than silently truncated.
+MAX_VALIDATED_RANGE_LINES = 1000
+
+# Evidence types whose content is read from the pinned repository snapshot. Issue and
+# commit text is untrusted user-supplied context and never grounds a hypothesis.
+REPOSITORY_SOURCE_TYPES = frozenset({"code", "documentation"})
+
+
 def normalize_line_text(line: str) -> str:
-    """Normalize line by stripping line number prefixes (e.g. '10: ') and trailing whitespace."""
-    cleaned = re.sub(r"^\s*\d+:\s*", "", line)
-    return cleaned.rstrip()
+    """Strip a single ``read_snippet`` line-number prefix and trailing whitespace."""
+    return _LINE_NUMBER_PREFIX.sub("", line, count=1).rstrip()
 
 
-def excerpts_match(expected_snippet: str, candidate_excerpt: str) -> bool:
-    """Compare candidate excerpt against physical snippet using normalized line comparison."""
-    # Strip any potential heading prefix if present (e.g. '[Heading]\n')
-    cleaned_candidate = re.sub(r"^\[[^\]\n]+\]\r?\n", "", candidate_excerpt)
+def _comparable_lines(text: str, *, strip_prefixes: bool, ignore_indentation: bool) -> list[str]:
+    lines: list[str] = []
+    for raw in text.splitlines():
+        line = _LINE_NUMBER_PREFIX.sub("", raw, count=1) if strip_prefixes else raw
+        line = line.strip() if ignore_indentation else line.rstrip()
+        if line:
+            lines.append(line)
+    return lines
 
-    expected_lines = [
-        normalize_line_text(ln).strip()
-        for ln in expected_snippet.splitlines()
-        if normalize_line_text(ln).strip()
-    ]
-    candidate_lines = [
-        normalize_line_text(ln).strip()
-        for ln in cleaned_candidate.splitlines()
-        if normalize_line_text(ln).strip()
-    ]
+
+def excerpts_match(
+    expected_snippet: str,
+    candidate_excerpt: str,
+    *,
+    ignore_indentation: bool = False,
+) -> bool:
+    """Return True only if the excerpt is exactly the cited lines.
+
+    ``expected_snippet`` is the ``read_snippet`` output for the *whole* cited range.
+    The candidate may carry the same ``N: `` prefixes or be raw file text. Trailing
+    whitespace and blank lines are ignored; everything else must match line-for-line.
+    A fragment, a subset of the range, or text spilling outside the range is rejected:
+    any of those would let a citation claim lines it does not show.
+
+    Args:
+        expected_snippet: Line-numbered snapshot text for the cited range.
+        candidate_excerpt: Excerpt stored on the evidence item.
+        ignore_indentation: Also ignore leading whitespace (prose documentation only;
+            indentation is semantic in code).
+    """
+    candidate = _HEADING_PREFIX.sub("", candidate_excerpt, count=1)
+
+    candidate_raw_lines = [ln for ln in candidate.splitlines() if ln.strip()]
+    # Strip candidate prefixes only if *every* line carries one, so raw source lines
+    # that legitimately start with "200: ..." are left intact.
+    candidate_is_prefixed = bool(candidate_raw_lines) and all(
+        _LINE_NUMBER_PREFIX.match(ln) for ln in candidate_raw_lines
+    )
+
+    expected_lines = _comparable_lines(
+        expected_snippet, strip_prefixes=True, ignore_indentation=ignore_indentation
+    )
+    candidate_lines = _comparable_lines(
+        candidate, strip_prefixes=candidate_is_prefixed, ignore_indentation=ignore_indentation
+    )
 
     if not expected_lines or not candidate_lines:
         return False
-
-    if expected_lines == candidate_lines:
-        return True
-
-    # Allow candidate to be a contiguous subset of the expected lines
-    expected_text = "\n".join(expected_lines)
-    candidate_text = "\n".join(candidate_lines)
-    return candidate_text in expected_text or expected_text in candidate_text
+    return expected_lines == candidate_lines
 
 
 def validate_citation(
@@ -223,15 +259,36 @@ def validate_citation(
             ),
         )
 
-    # 4. Physical excerpt comparison
+    # 4. Physical excerpt comparison over the *entire* cited range
+    range_length = evidence.end_line - evidence.start_line + 1
+    if range_length > MAX_VALIDATED_RANGE_LINES:
+        return CitationValidationResult(
+            evidence_id=evidence.evidence_id,
+            is_valid=False,
+            source_type=evidence.source_type,
+            path_or_url=evidence.path_or_url,
+            commit_matches=commit_matches,
+            file_exists=True,
+            lines_valid=False,
+            error_reason=(
+                f"Cited range spans {range_length} lines; maximum verifiable range is "
+                f"{MAX_VALIDATED_RANGE_LINES}."
+            ),
+        )
+
     actual_snippet = read_snippet(
         snapshot=snapshot,
         file_path=evidence.path_or_url,
         start_line=evidence.start_line,
         end_line=evidence.end_line,
+        max_snippet_lines=range_length,
     )
 
-    matches = excerpts_match(actual_snippet, evidence.excerpt)
+    matches = excerpts_match(
+        actual_snippet,
+        evidence.excerpt,
+        ignore_indentation=evidence.source_type == "documentation",
+    )
     if not matches:
         return CitationValidationResult(
             evidence_id=evidence.evidence_id,
@@ -290,13 +347,33 @@ def validate_investigation_report(
     citation_results: list[CitationValidationResult] = []
     valid_ids: set[str] = set()
     invalid_ids: set[str] = set()
+    # Valid evidence read from the repository snapshot (excludes issue/commit text).
+    repository_ids: set[str] = set()
+
+    # Evidence IDs must be unambiguous: hypotheses reference evidence by ID, so if two
+    # items share one, a valid item could vouch for an invalid one.
+    id_counts: dict[str, int] = {}
+    for item in report.evidence:
+        id_counts[item.evidence_id] = id_counts.get(item.evidence_id, 0) + 1
+    duplicate_ids = {eid for eid, count in id_counts.items() if count > 1}
 
     # 1. Validate each evidence citation against snapshot
     for item in report.evidence:
-        res = validate_citation(item, snapshot)
+        if item.evidence_id in duplicate_ids:
+            res = CitationValidationResult(
+                evidence_id=item.evidence_id,
+                is_valid=False,
+                source_type=item.source_type,
+                path_or_url=item.path_or_url,
+                error_reason="Duplicate evidence_id; citation is ambiguous.",
+            )
+        else:
+            res = validate_citation(item, snapshot)
         citation_results.append(res)
         if res.is_valid:
             valid_ids.add(res.evidence_id)
+            if item.source_type in REPOSITORY_SOURCE_TYPES:
+                repository_ids.add(res.evidence_id)
         else:
             invalid_ids.add(res.evidence_id)
             logger.warning(
@@ -322,8 +399,19 @@ def validate_investigation_report(
 
         confidence = hyp.confidence
         rationale = hyp.confidence_rationale
+        repository_support = [eid for eid in verified_supporting_ids if eid in repository_ids]
 
-        if not verified_supporting_ids:
+        if verified_supporting_ids and not repository_support:
+            # Only issue/commit text supports this hypothesis. That text is untrusted
+            # input (and may simply restate the reporter's guess), so it cannot ground it.
+            ungrounded_titles.append(hyp.title)
+            confidence = "low"
+            rationale = (
+                rationale
+                + " [Citation Guardrail: Supported only by issue text, not by repository "
+                "evidence; confidence demoted to low.]"
+            ).strip()
+        elif not verified_supporting_ids:
             ungrounded_titles.append(hyp.title)
             confidence = "low"
             if bad_supporting_ids:
@@ -360,7 +448,7 @@ def validate_investigation_report(
     insufficient_evidence = False
     insufficient_reasons: list[str] = []
 
-    if len(valid_ids) == 0:
+    if not repository_ids:
         insufficient_evidence = True
         insufficient_reasons.append(
             "No verified source code evidence was retrieved from the repository snapshot."
@@ -379,9 +467,12 @@ def validate_investigation_report(
 
     # 4. Compute overall verification status
     computed_status: VerificationStatus
-    if len(invalid_ids) == 0 and len(valid_ids) > 0 and not ungrounded_titles:
+    grounded_any = any(
+        eid in repository_ids for h in sanitized_hypotheses for eid in h.supporting_evidence_ids
+    )
+    if len(invalid_ids) == 0 and repository_ids and not ungrounded_titles:
         computed_status = "verified"
-    elif len(valid_ids) > 0 and any(h.supporting_evidence_ids for h in sanitized_hypotheses):
+    elif repository_ids and grounded_any:
         computed_status = "partially_verified"
     else:
         computed_status = "not_run"
