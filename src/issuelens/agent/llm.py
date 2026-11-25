@@ -2,6 +2,7 @@
 
 from typing import Protocol
 
+import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from pydantic import SecretStr, ValidationError
@@ -13,7 +14,6 @@ from issuelens.core.errors import (
     IssueLensError,
     LLMOutputValidationError,
     RateLimitExceededError,
-    SafetyViolationError,
     UpstreamTimeoutError,
 )
 from issuelens.core.logging import get_logger
@@ -63,26 +63,38 @@ class LangChainLLMClient:
                 f"LangChain structured output failed Pydantic validation: {exc}"
             ) from exc
         except Exception as exc:
-            err_str = str(exc).lower()
-            if "rate limit" in err_str or "429" in err_str:
-                raise RateLimitExceededError(
-                    f"LLM provider rate limit exceeded: {exc}"
-                ) from exc
-            if "timeout" in err_str or "timed out" in err_str:
-                raise UpstreamTimeoutError(
-                    f"LLM request timed out: {exc}"
-                ) from exc
-            auth_markers = ("auth", "api_key", "api key", "401", "403", "unauthorized")
-            if any(marker in err_str for marker in auth_markers):
-                raise SafetyViolationError(
-                    "LLM provider authentication failed. Check LLM_API_KEY."
-                ) from exc
+            raise classify_llm_exception(exc) from exc
 
-            raise IssueLensError(
-                f"LangChain model invocation failed: {exc}",
-                code="LLM_INVOCATION_ERROR",
-                status_code=502,
-            ) from exc
+
+def _status_code(exc: BaseException) -> int | None:
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def classify_llm_exception(exc: BaseException) -> IssueLensError:
+    """Map a provider exception to a domain error by type and HTTP status, not message text.
+
+    Substring matching on messages misclassified errors (``"auth"`` matches ``"author"``,
+    ``"429"`` matches ``"4290"``). OpenAI and Anthropic SDK errors both expose
+    ``status_code`` and use the class names checked here; built-in and httpx timeouts are
+    recognised by type.
+    """
+    name = type(exc).__name__
+    status = _status_code(exc)
+
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException)) or name.endswith("TimeoutError"):
+        return UpstreamTimeoutError(f"LLM request timed out: {exc}")
+    if status == 429 or name == "RateLimitError":
+        return RateLimitExceededError(f"LLM provider rate limit exceeded: {exc}")
+    if status in (401, 403) or name in ("AuthenticationError", "PermissionDeniedError"):
+        return ConfigurationError("LLM provider authentication failed. Check LLM_API_KEY.")
+    return IssueLensError(
+        f"LangChain model invocation failed: {exc}",
+        code="LLM_INVOCATION_ERROR",
+        status_code=502,
+    )
 
 
 class MockLLMClient:
