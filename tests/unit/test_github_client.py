@@ -403,3 +403,31 @@ async def test_archive_download_error_body_is_read_before_classification() -> No
         client = GitHubClient(http_client=http)
         with pytest.raises(SafetyViolationError, match="forbidden"):
             await client.download_archive("owner", "repo", "abc123")
+
+
+@pytest.mark.asyncio
+async def test_version_tag_lookup_does_not_swallow_rate_limits() -> None:
+    """Regression: a rate-limited tag lookup silently fell back to the default branch."""
+    issue_payload = dict(SAMPLE_ISSUE_PAYLOAD)
+    issue_payload["title"] = "Bug in v8.0.0 when handling maxfail"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/repos/psf/requests/issues/1234":
+            return httpx.Response(200, json=issue_payload)
+        if path == "/repos/psf/requests/issues/1234/comments":
+            return httpx.Response(200, json=[])
+        if path == "/repos/psf/requests":
+            return httpx.Response(200, json=SAMPLE_REPO_PAYLOAD)
+        if path.startswith("/repos/psf/requests/commits/v8"):
+            return httpx.Response(429, json={"message": "rate limited"})
+        if path == "/repos/psf/requests/commits/main":
+            return httpx.Response(200, json=SAMPLE_COMMIT_PAYLOAD)
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as http:
+        client = GitHubClient(http_client=http)
+        target = IssueTarget(owner="psf", repo="requests", issue_number=1234)
+        with pytest.raises(RateLimitExceededError):
+            await client.fetch_issue_context(target)
