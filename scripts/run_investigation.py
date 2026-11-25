@@ -127,6 +127,8 @@ async def async_main(args: argparse.Namespace) -> int:
     except Exception as exc:
         print(f"\n[!] Unexpected Error: {exc}", file=sys.stderr)
         return 3
+    finally:
+        await github_client.close()
 
     if args.json:
         output_str = json.dumps(report.model_dump(), indent=2)

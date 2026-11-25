@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -36,14 +37,21 @@ v1_router = APIRouter(
 )
 
 
-def get_github_client(
+async def get_github_client(
     settings: Annotated[Settings, Depends(get_settings)],
-) -> GitHubClientProtocol:
-    """Dependency provider for GitHub client."""
-    return GitHubClient(
+) -> AsyncGenerator[GitHubClientProtocol, None]:
+    """Dependency provider for a per-request GitHub client, closed after the request.
+
+    Returning the client without closing it leaked one httpx connection pool per request.
+    """
+    client = GitHubClient(
         token=settings.github_token,
         timeout_seconds=float(settings.request_timeout_seconds),
     )
+    try:
+        yield client
+    finally:
+        await client.close()
 
 
 def get_llm_client_dep(

@@ -431,3 +431,18 @@ async def test_version_tag_lookup_does_not_swallow_rate_limits() -> None:
         target = IssueTarget(owner="psf", repo="requests", issue_number=1234)
         with pytest.raises(RateLimitExceededError):
             await client.fetch_issue_context(target)
+
+
+@pytest.mark.asyncio
+async def test_api_dependency_closes_github_client_after_request() -> None:
+    """Regression: the per-request GitHub client must close its httpx pool."""
+    from issuelens.api.routes import get_github_client
+    from issuelens.config import Settings
+
+    dependency = get_github_client(Settings(_env_file=None))  # type: ignore[call-arg]
+    client = await anext(dependency)
+    assert isinstance(client, GitHubClient)
+    pool = client._get_active_client()
+    with pytest.raises(StopAsyncIteration):
+        await anext(dependency)
+    assert pool.is_closed

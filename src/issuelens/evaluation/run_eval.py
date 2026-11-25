@@ -618,6 +618,7 @@ async def run_evaluation(
     if max_cases and max_cases > 0:
         cases = cases[:max_cases]
 
+    owned_client: GitHubClient | None = None
     if runner is None:
         session_factory = get_session_factory() if save_db else None
         if live:
@@ -626,6 +627,7 @@ async def run_evaluation(
                 token=settings.github_token,
                 timeout_seconds=float(settings.request_timeout_seconds),
             )
+            owned_client = raw_client
             github_client: Any = EvaluationGitHubClient(raw_client, cases=dataset.cases)
             llm_client = get_llm_client(settings)
             service: Any = InvestigationService(
@@ -659,7 +661,11 @@ async def run_evaluation(
                 k_values=k_values,
             )
 
-    report = await runner.run_benchmark(cases)
+    try:
+        report = await runner.run_benchmark(cases)
+    finally:
+        if owned_client is not None:
+            await owned_client.close()
 
     # Save machine-readable results JSON with provenance metadata. Mock results go to
     # a separate file so they can never overwrite a recorded live benchmark.
