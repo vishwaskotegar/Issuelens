@@ -9,22 +9,22 @@
 # ------------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS builder
 
-# Install uv from the official Astral binary
-COPY --from=ghcr.io/astral-sh/uv:0.4.29 /uv /uvx /bin/
+# Install uv from the official Astral binary (same minor version that wrote uv.lock;
+# older uv cannot read lockfile revision 3)
+COPY --from=ghcr.io/astral-sh/uv:0.11.8 /uv /uvx /bin/
 
 # Build directly in /app so virtualenv shebangs match the runtime path
 WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1     UV_LINK_MODE=copy     UV_PROJECT_ENVIRONMENT=/app/.venv
 
-# Copy project specification files for dependency resolution
-COPY pyproject.toml README.md ./
+# Install the exact locked dependency versions (no dev extra). --frozen fails the build
+# if uv.lock is missing instead of silently re-resolving to newer versions.
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --no-install-project --no-cache
 
-# Compile virtual environment at /app/.venv with pinned dependencies
-RUN uv venv /app/.venv && \
-    uv pip install --python /app/.venv --no-cache -r pyproject.toml
-
-# Copy application source code and install project into venv (standard non-editable)
+# Copy application source code and install the project itself (non-editable)
 COPY src/ /app/src/
-RUN uv pip install --python /app/.venv --no-cache --no-deps .
+RUN uv sync --frozen --no-dev --no-editable --no-cache
 
 # ------------------------------------------------------------------------------
 # Stage 2: Minimal hardened runtime image
