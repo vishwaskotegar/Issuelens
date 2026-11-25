@@ -1,7 +1,6 @@
 """Deterministic, relevance-ranked lexical code search over pinned snapshots."""
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -247,27 +246,10 @@ def find_ripgrep_executable() -> str | None:
     if rg_path:
         return rg_path
 
-    # 2. Known local IDE/editor install locations on Windows/Linux
-    local_app_data = Path(os.environ.get("LOCALAPPDATA", ""))
-    antigravity_rg = (
-        local_app_data
-        / "Programs"
-        / "Antigravity IDE"
-        / "resources"
-        / "app"
-        / "node_modules"
-        / "@vscode"
-        / "ripgrep"
-        / "bin"
-        / "rg.exe"
-    )
-    common_candidates = [
-        antigravity_rg,
-        Path(r"C:\Program Files\ripgrep\rg.exe"),
-    ]
-    for candidate in common_candidates:
-        if candidate.exists() and candidate.is_file():
-            return str(candidate)
+    # 2. Standard Windows install location (winget/choco may also place it on PATH)
+    candidate = Path(r"C:\Program Files\ripgrep\rg.exe")
+    if candidate.is_file():
+        return str(candidate)
 
     return None
 
