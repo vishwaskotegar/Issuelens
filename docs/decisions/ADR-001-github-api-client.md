@@ -21,12 +21,12 @@ Key constraints and requirements include:
 ---
 
 ## 2. Decision and Rationale
-We implemented a dedicated asynchronous adapter class, [`GitHubClient`](../../src/issuelens/github/client.py#L64), coupled with a typing protocol, [`GitHubClientProtocol`](../../src/issuelens/github/client.py#L32), using Python's `typing.Protocol` and `httpx.AsyncClient`.
+We implemented a dedicated asynchronous adapter class, [`GitHubClient`](../../src/issuelens/github/client.py), coupled with a typing protocol, [`GitHubClientProtocol`](../../src/issuelens/github/client.py), using Python's `typing.Protocol` and `httpx.AsyncClient`.
 
 The design provides:
 - **Structural Subtyping via Protocol**: Handlers and services depend on `GitHubClientProtocol`, allowing mock clients or alternate implementations in tests without monkeypatching or inheriting from concrete classes.
 - **Dependency Injection**: The client accepts an optional `http_client: httpx.AsyncClient` instance in its constructor, enabling callers to share connection pools or pass `httpx.MockTransport` in unit tests.
-- **Domain Exception Translation**: Upstream HTTP errors are immediately translated into typed domain exceptions ([`ResourceNotFoundError`](../../src/issuelens/core/errors.py#L35), [`RateLimitExceededError`](../../src/issuelens/core/errors.py#L51), [`SafetyViolationError`](../../src/issuelens/core/errors.py#L43), [`UpstreamTimeoutError`](../../src/issuelens/core/errors.py#L59)).
+- **Domain Exception Translation**: Upstream HTTP errors are immediately translated into typed domain exceptions ([`ResourceNotFoundError`](../../src/issuelens/core/errors.py), [`RateLimitExceededError`](../../src/issuelens/core/errors.py), [`SafetyViolationError`](../../src/issuelens/core/errors.py), [`UpstreamTimeoutError`](../../src/issuelens/core/errors.py)).
 - **Safety Enforcement**: Enforces that target repositories are not marked `private: true`, and that pull requests are rejected via explicit payload inspection.
 - **Pinned Commit Resolution**: Resolves default branch heads directly to 40-character commit SHAs via `/repos/{owner}/{repo}/commits/{ref}`.
 
@@ -73,7 +73,7 @@ The design provides:
 
 ### Trade-offs & Mitigations
 - *Trade-off*: Writing our own adapter requires manual payload validation.
-  *Mitigation*: Backed by strict Pydantic models ([`GitHubIssue`](../../src/issuelens/github/models.py#L12), [`GitHubRepo`](../../src/issuelens/github/models.py#L58)) and comprehensive unit test fixtures.
+  *Mitigation*: Backed by strict Pydantic models ([`GitHubIssue`](../../src/issuelens/github/models.py), [`GitHubRepo`](../../src/issuelens/github/models.py)) and comprehensive unit test fixtures.
 - *Trade-off*: Injected clients might omit default adapter headers.
   *Mitigation*: Documented and resolved in [`docs/BUILD_LOG.md: Entry 004`](../BUILD_LOG.md#entry-004-injected-http-client-headers-omission-in-githubclient); `_request()` explicitly merges adapter headers with injected request parameters.
 

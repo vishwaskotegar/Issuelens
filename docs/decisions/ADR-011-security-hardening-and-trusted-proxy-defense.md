@@ -43,7 +43,7 @@ We commit to the following architectural and security controls:
 4. **Production Authentication Enforcement (`issuelens.config.Settings`)**:
    - A Pydantic model validator strictly prevents the application from starting in `app_env == "production"` unless `auth_required=True` and a non-empty `api_key` are provided.
 
-5. **Prompt Injection Boundary Escaping (`issuelens.agent.prompts.escape_xml_enclave_tags`)**:
+5. **Prompt Injection Boundary Escaping (`issuelens.agent.prompts.sanitize_boundary_tags`)**:
    - All untrusted issue strings and evidence blocks escape literal XML boundary closing tags (`</untrusted_issue_data>`, `</untrusted_repository_evidence>`) before prompt interpolation.
 
 6. **Database Host Binding Restriction (`docker-compose.yml`)**:

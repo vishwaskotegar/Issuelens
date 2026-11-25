@@ -80,7 +80,7 @@ flowchart TD
         DocRetriever["Document Retriever<br/><code>DocumentRetriever</code><br/><code>src/issuelens/retrieval/documents.py</code>"]
         Chunker["Heading & Line Chunker<br/><code>chunk_markdown()</code><br/><code>src/issuelens/retrieval/chunking.py</code>"]
         BM25Engine["Okapi BM25 Lexical Engine<br/><code>BM25Index</code><br/><code>src/issuelens/retrieval/lexical.py</code>"]
-        HybridEngine["Hybrid Search & RRF<br/><code>HybridSearchEngine</code><br/><code>src/issuelens/retrieval/hybrid.py</code>"]
+        HybridEngine["BM25 Search<br/><code>HybridSearchEngine</code> (RRF/dense path inactive: no embedder)<br/><code>src/issuelens/retrieval/hybrid.py</code>"]
         DocRetriever --> Chunker
         DocRetriever --> HybridEngine
         HybridEngine --> BM25Engine
@@ -127,7 +127,7 @@ flowchart TD
 ### 2.1 API Entry Point
 - **Responsibility**: HTTP request ingress, correlation ID tracking, input schema validation, dependency injection, and centralized domain error handling.
 - **Key Modules**:
-  - [`src/issuelens/main.py`](../../src/issuelens/main.py): Application factory [`create_app()`](../../src/issuelens/main.py#L33), lifespan logging manager, and global exception handler [`issuelens_exception_handler()`](../../src/issuelens/main.py#L52).
+  - [`src/issuelens/main.py`](../../src/issuelens/main.py): Application factory [`create_app()`](../../src/issuelens/main.py), lifespan logging manager, and global exception handler [`issuelens_exception_handler()`](../../src/issuelens/main.py).
   - [`src/issuelens/api/routes.py`](../../src/issuelens/api/routes.py): Endpoint declarations (`/healthz`, `/readyz`, `POST /v1/investigations`, `GET /v1/investigations/{run_id}`).
   - [`src/issuelens/api/schemas.py`](../../src/issuelens/api/schemas.py): Pydantic request and response transfer schemas.
 - **Inputs**: HTTP REST requests (`issue_url`, execution flags).
@@ -136,38 +136,38 @@ flowchart TD
 ### 2.2 GitHub Target Ingestion
 - **Responsibility**: Parse issue coordinates, defend against SSRF by allowlisting `github.com`, reject pull requests, fetch issue title/body/comments, and resolve the default branch head to a stable 40-character commit SHA.
 - **Key Modules**:
-  - [`src/issuelens/github/url_parser.py`](../../src/issuelens/github/url_parser.py): Pure function [`parse_issue_target()`](../../src/issuelens/github/url_parser.py#L37) emitting immutable [`IssueTarget`](../../src/issuelens/github/url_parser.py#L18).
-  - [`src/issuelens/github/client.py`](../../src/issuelens/github/client.py): Asynchronous adapter [`GitHubClient`](../../src/issuelens/github/client.py#L64) satisfying structural protocol [`GitHubClientProtocol`](../../src/issuelens/github/client.py#L32).
-  - [`src/issuelens/github/models.py`](../../src/issuelens/github/models.py): Strongly-typed domain models [`GitHubIssueContext`](../../src/issuelens/github/models.py#L79), [`GitHubIssue`](../../src/issuelens/github/models.py#L12), [`GitHubRepo`](../../src/issuelens/github/models.py#L58).
+  - [`src/issuelens/github/url_parser.py`](../../src/issuelens/github/url_parser.py): Pure function [`parse_issue_target()`](../../src/issuelens/github/url_parser.py) emitting immutable [`IssueTarget`](../../src/issuelens/github/url_parser.py).
+  - [`src/issuelens/github/client.py`](../../src/issuelens/github/client.py): Asynchronous adapter [`GitHubClient`](../../src/issuelens/github/client.py) satisfying structural protocol [`GitHubClientProtocol`](../../src/issuelens/github/client.py).
+  - [`src/issuelens/github/models.py`](../../src/issuelens/github/models.py): Strongly-typed domain models [`GitHubIssueContext`](../../src/issuelens/github/models.py), [`GitHubIssue`](../../src/issuelens/github/models.py), [`GitHubRepo`](../../src/issuelens/github/models.py).
 - **Inputs**: Raw issue URL string or coordinate (`owner/repo#number`).
-- **Outputs**: Verified [`GitHubIssueContext`](../../src/issuelens/github/models.py#L79) containing pinned commit SHA and issue discussion comments.
+- **Outputs**: Verified [`GitHubIssueContext`](../../src/issuelens/github/models.py) containing pinned commit SHA and issue discussion comments.
 
 ### 2.3 Repository & Code Context Retrieval
 - **Responsibility**: Safely download and extract commit-pinned repository archives, maintain a content-addressed snapshot cache with atomic staging and bounded LRU pruning, perform deterministic lexical searches (via ripgrep with pure-Python fallback), parse Python AST symbol spans without code execution, and format line-numbered code snippets.
 - **Key Modules**:
-  - [`src/issuelens/repository/snapshot.py`](../../src/issuelens/repository/snapshot.py): [`RepoSnapshot`](../../src/issuelens/repository/snapshot.py#L74), containment checker [`safe_resolve()`](../../src/issuelens/repository/snapshot.py#L92), [`cache_and_create_snapshot_from_zip()`](../../src/issuelens/repository/snapshot.py#L305), and LRU cache pruner [`prune_snapshot_cache()`](../../src/issuelens/repository/snapshot.py#L250).
+  - [`src/issuelens/repository/snapshot.py`](../../src/issuelens/repository/snapshot.py): [`RepoSnapshot`](../../src/issuelens/repository/snapshot.py), containment checker [`safe_resolve()`](../../src/issuelens/repository/snapshot.py), [`cache_and_create_snapshot_from_zip()`](../../src/issuelens/repository/snapshot.py), and LRU cache pruner [`prune_snapshot_cache()`](../../src/issuelens/repository/snapshot.py).
   - [`src/issuelens/repository/code_search.py`](../../src/issuelens/repository/code_search.py): Lexical search engine [`search_code()`](../../src/issuelens/repository/code_search.py), [`find_ripgrep_executable()`](../../src/issuelens/repository/code_search.py), [`_search_with_python_fallback()`](../../src/issuelens/repository/code_search.py), and deterministic ranking helpers (`select_search_terms`, `term_weight`, `classify_path`).
-  - [`src/issuelens/repository/python_symbols.py`](../../src/issuelens/repository/python_symbols.py): AST visitor [`_SymbolVisitor`](../../src/issuelens/repository/python_symbols.py#L32) and symbol locator [`parse_python_symbols()`](../../src/issuelens/repository/python_symbols.py#L107).
-  - [`src/issuelens/repository/snippets.py`](../../src/issuelens/repository/snippets.py): Line-numbered excerpt extractor [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7).
+  - [`src/issuelens/repository/python_symbols.py`](../../src/issuelens/repository/python_symbols.py): AST visitor [`_SymbolVisitor`](../../src/issuelens/repository/python_symbols.py) and symbol locator [`parse_python_symbols()`](../../src/issuelens/repository/python_symbols.py).
+  - [`src/issuelens/repository/snippets.py`](../../src/issuelens/repository/snippets.py): Line-numbered excerpt extractor [`read_snippet()`](../../src/issuelens/repository/snippets.py).
 - **Inputs**: Pinned commit SHA, repository zipball archive, search query tokens.
-- **Outputs**: Bounded directory snapshot on disk, ranked [`CodeHit`](../../src/issuelens/repository/code_search.py#L23) list, enclosing AST symbols, and formatted line snippets.
+- **Outputs**: Bounded directory snapshot on disk, ranked [`CodeHit`](../../src/issuelens/repository/code_search.py) list, enclosing AST symbols, and formatted line snippets.
 
 ### 2.4 Agent Orchestration & LLM
 - **Responsibility**: Coordinate context ingestion, code search, prompt assembly inside XML boundary tags (prompt injection defense), and schema-enforced structured LLM completion.
 - **Key Modules**:
-  - [`src/issuelens/agent/service.py`](../../src/issuelens/agent/service.py): Core workflow manager [`InvestigationService`](../../src/issuelens/agent/service.py#L70).
-  - [`src/issuelens/agent/prompts.py`](../../src/issuelens/agent/prompts.py): System prompts and message enclave factory [`build_investigation_messages()`](../../src/issuelens/agent/prompts.py#L125).
-  - [`src/issuelens/agent/llm.py`](../../src/issuelens/agent/llm.py): [`LangChainLLMClient`](../../src/issuelens/agent/llm.py#L35) implementing [`LLMClientProtocol`](../../src/issuelens/agent/llm.py#L23) via LangChain's `.with_structured_output()`, and offline [`MockLLMClient`](../../src/issuelens/agent/llm.py#L87).
-- **Inputs**: [`GitHubIssueContext`](../../src/issuelens/github/models.py#L79) and retrieved [`EvidenceItem`](../../src/issuelens/agent/report.py#L12) list.
-- **Outputs**: Structured analytical payload [`InvestigationReportPayload`](../../src/issuelens/agent/report.py#L87).
+  - [`src/issuelens/agent/service.py`](../../src/issuelens/agent/service.py): Core workflow manager [`InvestigationService`](../../src/issuelens/agent/service.py).
+  - [`src/issuelens/agent/prompts.py`](../../src/issuelens/agent/prompts.py): System prompts and message enclave factory [`build_investigation_messages()`](../../src/issuelens/agent/prompts.py).
+  - [`src/issuelens/agent/llm.py`](../../src/issuelens/agent/llm.py): [`LangChainLLMClient`](../../src/issuelens/agent/llm.py) implementing [`LLMClientProtocol`](../../src/issuelens/agent/llm.py) via LangChain's `.with_structured_output()`, and offline [`MockLLMClient`](../../src/issuelens/agent/llm.py).
+- **Inputs**: [`GitHubIssueContext`](../../src/issuelens/github/models.py) and retrieved [`EvidenceItem`](../../src/issuelens/agent/report.py) list.
+- **Outputs**: Structured analytical payload [`InvestigationReportPayload`](../../src/issuelens/agent/report.py).
 
 ### 2.5 Evidence Validation & Citation Guardrails
 - **Responsibility**: Deterministically verify every code citation against the physical snapshot on disk, purge fabricated citations, demote ungrounded hypotheses to `"low"` confidence, and enforce `[INSUFFICIENT EVIDENCE]` fallbacks when evidence is lacking.
 - **Key Modules**:
-  - [`src/issuelens/agent/validator.py`](../../src/issuelens/agent/validator.py): Physical citation gate [`validate_citation()`](../../src/issuelens/agent/validator.py#L109) and report validator [`validate_investigation_report()`](../../src/issuelens/agent/validator.py#L257).
-  - [`src/issuelens/agent/report.py`](../../src/issuelens/agent/report.py): Core data models [`InvestigationReport`](../../src/issuelens/agent/report.py#L126), [`Hypothesis`](../../src/issuelens/agent/report.py#L51), and [`EvidenceItem`](../../src/issuelens/agent/report.py#L12).
-- **Inputs**: Unvalidated report and target [`RepoSnapshot`](../../src/issuelens/repository/snapshot.py#L74).
-- **Outputs**: Verified and sanitized [`InvestigationReport`](../../src/issuelens/agent/report.py#L126) with computed `verification_status` (`verified | partially_verified | not_run`).
+  - [`src/issuelens/agent/validator.py`](../../src/issuelens/agent/validator.py): Physical citation gate [`validate_citation()`](../../src/issuelens/agent/validator.py) and report validator [`validate_investigation_report()`](../../src/issuelens/agent/validator.py).
+  - [`src/issuelens/agent/report.py`](../../src/issuelens/agent/report.py): Core data models [`InvestigationReport`](../../src/issuelens/agent/report.py), [`Hypothesis`](../../src/issuelens/agent/report.py), and [`EvidenceItem`](../../src/issuelens/agent/report.py).
+- **Inputs**: Unvalidated report and target [`RepoSnapshot`](../../src/issuelens/repository/snapshot.py).
+- **Outputs**: Verified and sanitized [`InvestigationReport`](../../src/issuelens/agent/report.py) with computed `verification_status` (`verified | partially_verified | not_run`).
 
 ### 2.6 State & Persistence
 - **Implemented Persistence (Phase 6)**: Relational PostgreSQL persistence layer built on SQLAlchemy 2.0 with async engine support (`psycopg` / `aiosqlite`), repository abstraction pattern, and Alembic migrations.
