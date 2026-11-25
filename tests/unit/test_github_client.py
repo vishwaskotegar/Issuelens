@@ -385,3 +385,49 @@ async def test_get_issue_context_resolves_two_digit_version_tag() -> None:
         assert context.commit_sha == "a1b3be01aadc61c67edc09eed4f6cc1fcc3d3b8f"
 
 
+
+
+@pytest.mark.asyncio
+async def test_archive_download_error_body_is_read_before_classification() -> None:
+    """Regression: a streamed 403/422 archive response raised httpx.ResponseNotRead.
+
+    The error classifier reads ``response.text``; inside ``client.stream()`` the body has
+    not been read yet, so classification crashed instead of raising a domain error.
+    """
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, stream=httpx.ByteStream(b'{"message": "Forbidden"}'))
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as http:
+        client = GitHubClient(http_client=http)
+        with pytest.raises(SafetyViolationError, match="forbidden"):
+            await client.download_archive("owner", "repo", "abc123")
+
+
+@pytest.mark.asyncio
+async def test_version_tag_lookup_does_not_swallow_rate_limits() -> None:
+    """Regression: a rate-limited tag lookup silently fell back to the default branch."""
+    issue_payload = dict(SAMPLE_ISSUE_PAYLOAD)
+    issue_payload["title"] = "Bug in v8.0.0 when handling maxfail"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/repos/psf/requests/issues/1234":
+            return httpx.Response(200, json=issue_payload)
+        if path == "/repos/psf/requests/issues/1234/comments":
+            return httpx.Response(200, json=[])
+        if path == "/repos/psf/requests":
+            return httpx.Response(200, json=SAMPLE_REPO_PAYLOAD)
+        if path.startswith("/repos/psf/requests/commits/v8"):
+            return httpx.Response(429, json={"message": "rate limited"})
+        if path == "/repos/psf/requests/commits/main":
+            return httpx.Response(200, json=SAMPLE_COMMIT_PAYLOAD)
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as http:
+        client = GitHubClient(http_client=http)
+        target = IssueTarget(owner="psf", repo="requests", issue_number=1234)
+        with pytest.raises(RateLimitExceededError):
+            await client.fetch_issue_context(target)

@@ -105,6 +105,7 @@ class PreloadedInvestigationService(InvestigationService):
         target_or_url: str | IssueTarget,
         snapshot: RepoSnapshot | None = None,
         run_id: str | None = None,
+        commit_sha: str | None = None,
     ) -> InvestigationReport:
         active_snapshot = snapshot or RepoSnapshot(
             root_path=FIXTURES_DIR,
@@ -115,6 +116,7 @@ class PreloadedInvestigationService(InvestigationService):
             target_or_url=target_or_url,
             snapshot=active_snapshot,
             run_id=run_id,
+            commit_sha=commit_sha,
         )
 
 
@@ -249,3 +251,33 @@ def test_create_investigation_sync_failure_records_failed_status(
     assert status_resp.status_code == 200
     assert status_resp.json()["status"] == "failed"
     assert "Simulated execution failure" in str(status_resp.json()["error"])
+
+
+@pytest.mark.asyncio
+async def test_investigate_uses_recorded_commit_not_a_fresh_resolution() -> None:
+    """Regression: execute re-resolved the commit, so run.commit_sha and the report could differ.
+
+    For a closed issue the default branch may have moved to a commit containing the fix.
+    """
+    recorded_sha = "1111111111111111111111111111111111111111"
+    captured: dict[str, str] = {}
+
+    def fake_cached_snapshot(**kwargs: object) -> RepoSnapshot:
+        captured["commit_sha"] = str(kwargs["commit_sha"])
+        return RepoSnapshot(
+            root_path=FIXTURES_DIR, repo_full_name="sample/repo", commit_sha=recorded_sha
+        )
+
+    service = InvestigationService(
+        github_client=ApiTestGitHubClient(),  # resolves aabbcc... "now"
+        llm_client=MockLLMClient(),
+        settings=Settings(app_env="test"),
+    )
+    with patch("issuelens.agent.service.get_cached_snapshot", side_effect=fake_cached_snapshot):
+        report = await service.investigate(
+            target_or_url="https://github.com/sample/repo/issues/10",
+            commit_sha=recorded_sha,
+        )
+
+    assert captured["commit_sha"] == recorded_sha
+    assert report.commit_sha == recorded_sha

@@ -30,16 +30,21 @@ def create_investigation_graph(
       form_hypotheses
         │
         ▼
-      evaluate_evidence ◄────────┐
-        │                        │
-        ▼                        │
-      decide_next_step           │
-        ├── (queries remain &    │
-        │    round < max_rounds) │
-        │    ▼                   │
-        │   retrieve_followup ───┘
+      evaluate_evidence ◄──────────────┐
+        │                              │
+        ▼                              │
+      decide_next_step                 │
+        ├── (unconsumed queries &      │
+        │    round < max_rounds &      │
+        │    no stop_reason)           │
+        │    ▼                         │
+        │   retrieve_followup          │
+        │    ▼                         │
+        │   reevaluate_hypotheses ─────┘
+        │    (LLM re-call only if the round added evidence;
+        │     sets stop_reason on convergence or failure)
         │
-        └── (stop condition or loop cap reached)
+        └── (stop_reason set, loop cap, or no new queries)
              ▼
             validate_citations
              │
@@ -57,6 +62,7 @@ def create_investigation_graph(
     workflow.add_node("form_hypotheses", nodes.form_hypotheses)
     workflow.add_node("evaluate_evidence", nodes.evaluate_evidence)
     workflow.add_node("retrieve_followup", nodes.retrieve_followup)
+    workflow.add_node("reevaluate_hypotheses", nodes.reevaluate_hypotheses)
     workflow.add_node("validate_citations", nodes.validate_citations)
     workflow.add_node("build_report", nodes.build_report)
 
@@ -76,8 +82,9 @@ def create_investigation_graph(
         },
     )
 
-    # 4. Bounded loop back to evaluate_evidence
-    workflow.add_edge("retrieve_followup", "evaluate_evidence")
+    # 4. Bounded loop: retrieve more evidence, let the LLM re-evaluate, evaluate again
+    workflow.add_edge("retrieve_followup", "reevaluate_hypotheses")
+    workflow.add_edge("reevaluate_hypotheses", "evaluate_evidence")
 
     # 5. Citation validation and report synthesis terminal path
     workflow.add_edge("validate_citations", "build_report")

@@ -888,7 +888,9 @@ In complex bug reports, an initial search query often retrieves entrypoint metho
 6. **Conditional Routing (`decide_next_step`)**:
    - If `retrieval_round < max_retrieval_rounds` (default: 3) and `followup_queries` has queued items: routes to `retrieve_followup`.
    - If loop cap is reached, queries are exhausted, or evidence is empty: routes to `validate_citations`.
-7. **Follow-Up Retrieval (`retrieve_followup`)**: Pops the next query, searches the snapshot for new files, increments `retrieval_round`, appends new `EvidenceItem` records, and loops back to `evaluate_evidence`.
+7. **Follow-Up Retrieval (`retrieve_followup`)**: Pops the next query, records it in `consumed_queries`, searches the snapshot, increments `retrieval_round`, appends new `EvidenceItem` records, and records their IDs in `new_evidence_ids`.
+7b. **Re-evaluation (`reevaluate_hypotheses`)**: If the round added evidence, calls the LLM again with its prior hypotheses (in a `<prior_hypotheses>` enclave) and the full evidence list, new items marked `[NEW THIS ROUND]`, via `build_reevaluation_messages()` in [`prompts.py`](../src/issuelens/agent/prompts.py). The revised hypotheses replace the old ones. If nothing changed, `stop_reason="hypotheses_converged"`; if the call fails, the prior hypotheses are kept and `stop_reason="reevaluation_failed"`. Then it loops back to `evaluate_evidence`. See [ADR-012](decisions/ADR-012-llm-hypothesis-reevaluation-loop.md).
+   - *History*: before the 2026-11-25 audit this step did not exist. The LLM was called once, and because `evaluate_evidence` rebuilt the queue each round, every follow-up round re-ran the first query. The "multi-round" loop could not change the answer.
 8. **Physical Citation Validation (`validate_citations`)**: Compares referenced line ranges and excerpts against physical bytes on disk, pruning hallucinated citations, demoting ungrounded hypotheses, and propagating enriched `summary`, `missing_information`, and `limitations`.
 9. **Report Synthesis (`build_report`)**: Assembles the validated [`InvestigationReport`](../src/issuelens/agent/report.py) model, preserving the LLM's analytical `summary` and ensuring `[INSUFFICIENT EVIDENCE]` warnings are attached if verified evidence is absent.
 
@@ -910,13 +912,14 @@ In complex bug reports, an initial search query often retrieves entrypoint metho
   - *Trade-off*: Conflates business logic with graph state management and prevents visualizing or instrumenting execution nodes. LangGraph provides standard graph boundaries while remaining completely deterministic.
 
 #### 6. What can fail and how failures are handled
-- **Infinite Loop / Runaway Recursion**: Strictly prevented by checking `current_round >= max_rounds` in `decide_next_step()`. The loop terminates at the cap regardless of remaining queries.
+- **Infinite Loop / Runaway Recursion**: Strictly prevented by checking `current_round >= max_rounds` in `decide_next_step()`. The loop terminates at the cap regardless of remaining queries, and a query can only run once (`consumed_queries`).
+- **Re-evaluation failure**: a timeout or invalid output during `reevaluate_hypotheses` does not fail the run; the earlier hypotheses are kept and the loop stops (`reevaluation_failed`). Failures in the *initial* `form_hypotheses` call still propagate, because there is no answer to fall back to.
 - **Missing or Corrupted Snapshot**: If no snapshot is available, retrieval nodes gracefully record `status="skipped"` in the trace and set `verification_status="not_run"`.
 - **Fatal Domain Errors**: Domain exceptions (such as `LLMOutputValidationError` or `RateLimitExceededError`) are allowed to propagate to FastAPI exception handlers, returning clean 4xx/5xx responses.
 
 #### 7. How the feature is tested
 - **Test file**: [`tests/unit/test_graph.py`](../tests/unit/test_graph.py)
-- **Verifications**: End-to-end success flow (`test_graph_success_flow`), loop cap termination (`test_graph_loop_cap_enforcement`), conditional branch routing (`test_decide_next_step_routes`), and identifier-only follow-up queries (`test_evaluate_evidence_ignores_prose_missing_information`).
+- **Verifications**: End-to-end success flow (`test_graph_success_flow`), loop cap termination (`test_graph_loop_cap_enforcement`, `test_loop_cap_records_stop_reason`), conditional branch routing (`test_decide_next_step_routes`), identifier-only follow-up queries (`test_evaluate_evidence_ignores_prose_missing_information`), no repeated queries (`test_followup_rounds_never_repeat_a_query`), real re-evaluation (`test_reevaluation_sends_prior_hypotheses_and_new_evidence_to_llm`, `test_reevaluation_skipped_when_followup_finds_nothing_new`, `test_converged_hypotheses_stop_the_loop`, `test_failed_reevaluation_keeps_prior_hypotheses`), and non-blocking search (`test_code_search_does_not_block_the_event_loop`).
 - **Run command**:
   ```powershell
   uv run pytest tests/unit/test_graph.py

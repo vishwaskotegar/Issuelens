@@ -179,7 +179,9 @@ async def create_investigation(
     if payload.execute:
         try:
             await repo.update_run_status(run_id=run_id, status="running")
-            report = await service.investigate(target_or_url=target, run_id=run_id)
+            report = await service.investigate(
+                target_or_url=target, run_id=run_id, commit_sha=context.commit_sha
+            )
             await repo.save_report(run_id=run_id, report=report)
             current_status = "completed"
         except Exception as exc:
@@ -222,7 +224,10 @@ async def execute_investigation(
     target = parse_issue_target(run.issue_url)
     try:
         await repo.update_run_status(run_id=run_id, status="running")
-        report = await service.investigate(target_or_url=target, run_id=run_id)
+        # Investigate the commit recorded at ingestion, not whatever resolves now.
+        report = await service.investigate(
+            target_or_url=target, run_id=run_id, commit_sha=run.commit_sha
+        )
         await repo.save_report(run_id=run_id, report=report)
         status_str = "completed"
         error_msg = None

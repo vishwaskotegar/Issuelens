@@ -3,10 +3,12 @@
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.json_schema import SkipJsonSchema
 
 SourceType = Literal["code", "documentation", "issue", "commit"]
 ConfidenceLevel = Literal["low", "medium", "high"]
 VerificationStatus = Literal["not_run", "partially_verified", "verified"]
+SupportStatus = Literal["tentative", "supported", "unsupported"]
 
 
 class EvidenceItem(BaseModel):
@@ -81,6 +83,12 @@ class Hypothesis(BaseModel):
     verification_steps: list[str] = Field(
         default_factory=list,
         description="Actionable steps a developer can take to verify or falsify this hypothesis",
+    )
+    # Computed deterministically by the citation validator. Hidden from the JSON schema
+    # sent to the LLM so the model cannot assert its own support status.
+    support_status: SkipJsonSchema[SupportStatus | None] = Field(
+        default=None,
+        description="Validator-computed support status (not produced by the LLM)",
     )
 
 

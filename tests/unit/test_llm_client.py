@@ -18,10 +18,10 @@ from issuelens.agent.llm import (
 from issuelens.agent.report import Hypothesis, InvestigationReportPayload
 from issuelens.config import Settings
 from issuelens.core.errors import (
+    ConfigurationError,
     IssueLensError,
     LLMOutputValidationError,
     RateLimitExceededError,
-    SafetyViolationError,
     UpstreamTimeoutError,
 )
 
@@ -120,12 +120,18 @@ async def test_langchain_client_invalid_schema_error() -> None:
         await client.generate_report_payload([HumanMessage(content="hi")])
 
 
+class _ProviderError(Exception):
+    """Stand-in for an SDK APIStatusError exposing ``status_code``."""
+
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 @pytest.mark.asyncio
 async def test_langchain_client_rate_limit_translation() -> None:
     """Verify upstream rate limits translate to RateLimitExceededError."""
-    fake_model = FakeStructuredChatModel(
-        raise_on_invoke=Exception("Rate limit 429 reached")
-    )
+    fake_model = FakeStructuredChatModel(raise_on_invoke=_ProviderError(429, "Too many requests"))
     client = LangChainLLMClient(chat_model=fake_model)
 
     with pytest.raises(RateLimitExceededError):
@@ -147,12 +153,10 @@ async def test_langchain_client_timeout_translation() -> None:
 @pytest.mark.asyncio
 async def test_langchain_client_auth_error_translation() -> None:
     """Verify upstream authentication errors translate to SafetyViolationError."""
-    fake_model = FakeStructuredChatModel(
-        raise_on_invoke=Exception("Invalid API key provided: 401 Unauthorized")
-    )
+    fake_model = FakeStructuredChatModel(raise_on_invoke=_ProviderError(401, "Invalid API key"))
     client = LangChainLLMClient(chat_model=fake_model)
 
-    with pytest.raises(SafetyViolationError, match="Check LLM_API_KEY"):
+    with pytest.raises(ConfigurationError, match="Check LLM_API_KEY"):
         await client.generate_report_payload([HumanMessage(content="hi")])
 
 
@@ -246,3 +250,45 @@ def test_get_llm_client_allows_mock_outside_production() -> None:
     from issuelens.config import Settings
 
     assert isinstance(get_llm_client(Settings(app_env="local", llm_provider=None)), MockLLMClient)
+
+
+@pytest.mark.asyncio
+async def test_error_messages_mentioning_auth_or_429_are_not_misclassified() -> None:
+    """Regression: substring matching mapped 'author' to auth failures and '4290' to 429."""
+    for message in ("Output parse failed for field 'author'", "token count 4290 exceeded"):
+        fake_model = FakeStructuredChatModel(raise_on_invoke=RuntimeError(message))
+        client = LangChainLLMClient(chat_model=fake_model)
+        with pytest.raises(IssueLensError) as info:
+            await client.generate_report_payload([HumanMessage(content="hi")])
+        assert info.value.code == "LLM_INVOCATION_ERROR"
+
+
+def test_classify_llm_exception_by_type_names() -> None:
+    """SDK error classes are recognised by name even without a status code."""
+    from issuelens.agent.llm import classify_llm_exception
+
+    class RateLimitError(Exception):
+        pass
+
+    class APITimeoutError(Exception):
+        pass
+
+    assert isinstance(classify_llm_exception(RateLimitError("x")), RateLimitExceededError)
+    assert isinstance(classify_llm_exception(APITimeoutError("x")), UpstreamTimeoutError)
+
+
+def test_chat_models_use_llm_timeout_and_output_token_cap() -> None:
+    """LLM calls get their own timeout and an explicit output token cap."""
+    for provider in ("openai", "anthropic"):
+        settings = Settings(
+            llm_provider=provider,
+            llm_api_key=SecretStr("k"),
+            llm_timeout_seconds=99,
+            request_timeout_seconds=15,
+            max_report_tokens=3000,
+        )
+        model = create_langchain_chat_model(settings)
+        params = model.model_dump()
+        timeout = params.get("request_timeout", params.get("default_request_timeout"))
+        assert timeout == 99.0, provider
+        assert 3000 in (params.get("max_tokens"), params.get("max_completion_tokens")), provider

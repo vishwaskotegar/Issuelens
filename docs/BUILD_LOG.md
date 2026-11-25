@@ -1323,3 +1323,44 @@ A guardrail is only real if there is an input that makes it fire. When a metric 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: validate issue excerpts against the fetched issue body. *Trade-off*: proves the text is quoted correctly, but not that it is true; grounding still has to come from the repository, so it would add code without changing the outcome.
 - *Trade-off accepted*: reports will more often say "insufficient evidence". Prior benchmark numbers are not comparable and must be re-run.
+
+---
+
+### Entry 027: "Multi-Round" Agent Loop That Never Re-Asked the LLM, Plus Silent Commit Drift and Event-Loop Blocking
+- **Date**: 2026-11-25
+- **Phase**: Post-build audit remediation (branch `fix/agent-llm-reevaluation`)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+The README and ADR-005 described cyclic, multi-round hypothesis evaluation. Tracing the graph showed one LLM call and follow-up rounds that repeated the same query. Related findings in the same area: a stored run's commit could differ from its report's commit; tag-lookup failures (including rate limits) silently fell back to the default branch; `ResponseNotRead` on streamed archive errors; LLM errors classified by substring; LLM calls sharing the 15s GitHub timeout with no output token cap; blocking search on the event loop; and a prompt rule telling the model to cite "the primary affected component" when nothing demonstrated the root cause.
+
+#### 2. Root Cause
+- `evaluate_evidence` in [`nodes.py`](../src/issuelens/agent/nodes.py) rebuilt `followup_queries` from scratch each round, undoing `retrieve_followup`'s `pop(0)`; there was no node that sent new evidence back to the LLM.
+- `service.investigate()` always called `fetch_issue_context()` again and used its fresh `commit_sha`.
+- `fetch_issue_context()` caught `IssueLensError` (the base class of `RateLimitExceededError`) during tag resolution.
+- Inside `client.stream()`, `_handle_error_response()` read `response.text` before the body was read.
+- `classify` logic matched `"auth"`, `"429"`, `"timeout"` in message strings.
+- `create_langchain_chat_model()` passed `request_timeout_seconds` and no `max_tokens`.
+- `search_code()` (ripgrep `subprocess.run`) and snapshot extraction were called directly from `async def` code.
+
+#### 3. Fix
+`reevaluate_hypotheses` node + `consumed_queries`/`new_evidence_ids`/`stop_reason` ([ADR-012](decisions/ADR-012-llm-hypothesis-reevaluation-loop.md)); `commit_sha` parameter on `investigate()` used by both API routes; tag lookup only skips 404/422; `await response.aread()` before classification; `classify_llm_exception()` by type/status; `LLM_TIMEOUT_SECONDS` and `MAX_REPORT_TOKENS` wired; `asyncio.to_thread` for search, doc indexing and snapshot I/O; prompt rule rewritten so an empty citation list is the requested answer when nothing demonstrates the cause.
+
+#### 4. Verification
+- `uv run pytest`: 266 passed. `uv run ruff check .`: All checks passed. `uv run mypy src tests`: no issues in 76 files.
+- Each new regression test was observed failing before its fix. The event-loop test initially passed *without* the fix (it only checked that a ticker eventually finished); it was rewritten to assert the ticker finishes before the slow search returns, and then failed without the fix as intended.
+- One process issue: a commit was created while `mypy` reported an error because the check was piped through `tail` without `pipefail`; the follow-up commit `fix(llm): pass ChatAnthropic output cap via its declared field name` corrected it. Subsequent checks use `set -o pipefail`.
+
+#### 5. Engineering Lesson
+"The loop runs N times" is not the same as "the loop does N rounds of work". Test the property you care about (different query each round, the model sees new evidence), not the counter. And a concurrency test that cannot fail is worse than none: always run a new test against the unfixed code once.
+
+#### 6. Regression Tests
+- [`tests/unit/test_graph.py`](../tests/unit/test_graph.py): re-evaluation, no-repeat, convergence, loop-cap stop reason, failure fallback, event-loop tests
+- [`tests/unit/test_investigation_api.py`](../tests/unit/test_investigation_api.py): `test_investigate_uses_recorded_commit_not_a_fresh_resolution`
+- [`tests/unit/test_github_client.py`](../tests/unit/test_github_client.py): `test_archive_download_error_body_is_read_before_classification`, `test_version_tag_lookup_does_not_swallow_rate_limits`
+- [`tests/unit/test_llm_client.py`](../tests/unit/test_llm_client.py): typed error classification, timeout/token cap
+- [`tests/unit/test_prompts.py`](../tests/unit/test_prompts.py): fence breakout, truncation, re-evaluation enclave
+
+#### 7. Alternatives & Trade-offs
+- Relabelling the loop as single-pass was the cheaper option; the owner chose real re-evaluation (more LLM calls, bounded by the round cap).
+- Version-tag resolution was kept (investigating the reported release is useful) but now fails loudly on non-404 errors rather than being removed.

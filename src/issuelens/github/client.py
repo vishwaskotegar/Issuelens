@@ -358,6 +358,9 @@ class GitHubClient:
                             f"Repository archive for '{owner}/{repo}@{ref}' not found."
                         )
                     if response.status_code >= 400:
+                        # Error bodies are small JSON; read them so the classifier can
+                        # inspect response.text (unread streams raise ResponseNotRead).
+                        await response.aread()
                         self._handle_error_response(response, path)
 
                     chunks: list[bytes] = []
@@ -429,13 +432,15 @@ class GitHubClient:
                         target.issue_number,
                     )
                     break
-                except (
-                    ResourceNotFoundError,
-                    SafetyViolationError,
-                    UpstreamTimeoutError,
-                    IssueLensError,
-                ):
+                except ResourceNotFoundError:
                     continue
+                except IssueLensError as exc:
+                    # 422 = ref does not exist. Anything else (rate limit, timeout, auth)
+                    # must surface: silently falling back would investigate a different
+                    # commit than intended without telling anyone.
+                    if exc.status_code == 422:
+                        continue
+                    raise
             if commit_sha is not None:
                 break
 

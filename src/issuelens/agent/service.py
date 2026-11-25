@@ -1,5 +1,6 @@
 """Investigation service orchestrating issue ingestion, code search, and report generation."""
 
+import asyncio
 import json
 import re
 import uuid
@@ -82,6 +83,7 @@ class InvestigationService:
         target_or_url: str | IssueTarget,
         snapshot: RepoSnapshot | None = None,
         run_id: str | None = None,
+        commit_sha: str | None = None,
     ) -> InvestigationReport:
         """Run complete investigation flow for a target issue via LangGraph state machine.
 
@@ -89,6 +91,9 @@ class InvestigationService:
             target_or_url: GitHub issue URL string or parsed IssueTarget.
             snapshot: Optional pre-existing RepoSnapshot (e.g. for testing or local cache).
             run_id: Optional predetermined run identifier.
+            commit_sha: Commit to investigate. When a run was created earlier, pass the SHA
+                recorded then; otherwise the commit is resolved again now and may differ
+                (e.g. the default branch moved, possibly to a commit containing the fix).
 
         Returns:
             Validated InvestigationReport with pinned commit SHA and evidence citations.
@@ -110,12 +115,21 @@ class InvestigationService:
 
         # 1. Fetch issue context and pinned commit SHA
         context = await self.github_client.fetch_issue_context(target)
+        if commit_sha and commit_sha != context.commit_sha:
+            logger.info(
+                "Pinning investigation %s to recorded commit %s (resolver now returns %s)",
+                active_run_id,
+                commit_sha,
+                context.commit_sha,
+            )
+            context = context.model_copy(update={"commit_sha": commit_sha})
 
         # 2. Acquire repository snapshot if not supplied
         active_snapshot = snapshot
         if active_snapshot is None:
             cache_dir = Path(self.settings.snapshot_cache_dir)
-            active_snapshot = get_cached_snapshot(
+            active_snapshot = await asyncio.to_thread(
+                get_cached_snapshot,
                 cache_dir=cache_dir,
                 owner=target.owner,
                 repo=target.repo,
@@ -141,7 +155,8 @@ class InvestigationService:
                     ref=context.commit_sha,
                     max_bytes=self.settings.max_repository_bytes,
                 )
-                active_snapshot = cache_and_create_snapshot_from_zip(
+                active_snapshot = await asyncio.to_thread(
+                    cache_and_create_snapshot_from_zip,
                     cache_dir=cache_dir,
                     owner=target.owner,
                     repo=target.repo,
@@ -200,8 +215,11 @@ class InvestigationService:
             "tool_trace": [],
             "errors": [],
             "final_report": None,
-            "max_retrieval_rounds": 3,
+            "max_retrieval_rounds": self.settings.max_retrieval_rounds,
             "followup_queries": [],
+            "consumed_queries": [],
+            "new_evidence_ids": [],
+            "llm_calls": 0,
             "stop_reason": None,
             "observed_facts": [],
             "suggested_tests": [],
@@ -211,7 +229,10 @@ class InvestigationService:
         }
 
         # 4. Instantiate nodes and compile LangGraph state machine
-        nodes = InvestigationNodes(
+        # Node construction indexes repository documentation (filesystem walk + BM25),
+        # so build it off the event loop.
+        nodes = await asyncio.to_thread(
+            InvestigationNodes,
             snapshot=active_snapshot,
             llm_client=self.llm_client,
             settings=self.settings,
