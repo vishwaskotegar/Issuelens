@@ -4,7 +4,6 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-orange.svg)](https://langchain-ai.github.io/langgraph/)
 [![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **IssueLens** is an evidence-backed AI debugging assistant for public GitHub bug reports. It transforms public issue descriptions into structured bug investigations by combining deterministic lexical/AST code search, document retrieval, LangGraph cyclic reasoning, and byte-level citation validation against physical repository snapshots.
 
@@ -26,7 +25,7 @@ IssueLens executes a deterministic, multi-stage investigation pipeline:
 flowchart LR
     Target["1. Public GitHub Target<br/>(URL or owner/repo#123)"] --> Ingest["2. GitHub Ingestion<br/>(Pin commit SHA, fetch issue/comments)"]
     Ingest --> Snapshot["3. Snapshot Cache<br/>(Atomic zip extraction, LRU cache)"]
-    Snapshot --> Search["4. Dual Retrieval<br/>(Ripgrep AST search + Document BM25/RRF)"]
+    Snapshot --> Search["4. Retrieval<br/>(ripgrep/Python text search + AST snippet expansion;<br/>documentation BM25)"]
     Search --> Agent["5. LangGraph Cyclic Agent<br/>(Multi-round hypothesis evaluation)"]
     Agent --> Validator["6. Disk Citation Validator<br/>(Byte-level excerpt verification)"]
     Validator --> Report["7. Validated Report<br/>(Provenance-bound InvestigationReport)"]
@@ -130,10 +129,10 @@ IssueLens enforces strict security controls at every layer:
 | :--- | :--- | :--- |
 | **Code Execution** | **NEVER executed**. Untrusted repository code is inspected strictly via AST parsing and lexical text search. | Read-only Python AST parser & ripgrep |
 | **Repository Mutation** | **NEVER modified**. IssueLens never creates git branches, commits, or pull requests. | Read-only snapshot extraction |
-| **Prompt Injection** | Untrusted issue prose is quarantined in isolated XML enclaves; delimiter tags are escaped. | `escape_xml_enclave_tags`, `prompts.py` |
-| **SSRF Defenses** | Rejects private IP ranges, local networks, metadata endpoints, and non-public GitHub domains. | `url_parser.py` host validation |
-| **Client IP Spoofing** | Validates upstream proxy IPs against configurable `TRUSTED_PROXIES` CIDR ranges before trusting `X-Forwarded-For`. | `security.py`, `trusted_proxies.py` |
-| **HTTP Hardening** | Standard security headers (`CSP`, `nosniff`, `DENY`, `HSTS`) and constant-time API key verification. | `secrets.compare_digest`, Security middleware |
+| **Prompt Injection** | Untrusted issue prose is quarantined in isolated XML enclaves; delimiter tags are escaped. | `sanitize_boundary_tags`, `prompts.py` |
+| **SSRF Defenses** | Issue URLs are parsed, never fetched: only `github.com` / `www.github.com` hosts are accepted and all API calls go to `api.github.com`. | `url_parser.py` host allowlist |
+| **Client IP Spoofing** | `X-Forwarded-For` is only read from `TRUSTED_PROXIES` peers, and the right-most untrusted hop is used as the client. | `security.py` (`get_client_identifier`) |
+| **HTTP Hardening** | Security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS in production/HTTPS; no CSP) and constant-time API key verification. Note: headers are not added to unhandled-exception 500 responses. | `secrets.compare_digest`, `add_security_headers` in `main.py` |
 | **Citation Integrity** | 100% of code excerpts verified against snapshot bytes; ungrounded citations pruned. | `validate_investigation_report()`, `validator.py` |
 
 ---
@@ -163,7 +162,7 @@ IssueLens was built through disciplined, test-driven phases conforming to [`docs
 Execute all verification checks locally:
 
 ```bash
-# Run unit and integration tests (224 tests)
+# Run unit and integration tests
 uv run pytest
 
 # Run linter
@@ -223,7 +222,7 @@ issuelens/
       ├── github/                 # GitHub REST client, URL/SSRF parser, commit resolver
       ├── persistence/            # SQLAlchemy 2.0 ORM, migrations, and repository pattern
       ├── repository/             # Ripgrep code search, AST symbols, snapshot cache
-      └── retrieval/              # Heading-preserving chunker, BM25 index, hybrid RRF
+      └── retrieval/              # Heading-preserving chunker, BM25 index (RRF code present but inactive: no embedder)
 ```
 
 ---

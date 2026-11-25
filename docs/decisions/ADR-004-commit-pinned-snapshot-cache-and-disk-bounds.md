@@ -11,7 +11,7 @@
 ## 1. Context and Problem
 IssueLens investigates public GitHub issues by retrieving code snapshots pinned to verified commit SHAs. In Phase 2 and 3, snapshots were extracted via `tempfile.mkdtemp(prefix="issuelens_snapshot_")`.
 
-During code inspection and scalability review of [`InvestigationService.investigate()`](../../src/issuelens/agent/service.py#L83) and [`create_snapshot_from_zip()`](../../src/issuelens/repository/snapshot.py#L290), a critical production hazard was discovered:
+During code inspection and scalability review of [`InvestigationService.investigate()`](../../src/issuelens/agent/service.py) and [`create_snapshot_from_zip()`](../../src/issuelens/repository/snapshot.py), a critical production hazard was discovered:
 1. `tempfile.mkdtemp()` creates directories that are never cleaned up by the Python runtime or operating system.
 2. The service returned generated reports without a cleanup lifecycle.
 3. Every investigation downloaded and unpacked archives from scratch, even when querying multiple issues for the exact same repository and commit SHA.

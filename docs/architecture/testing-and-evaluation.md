@@ -12,9 +12,9 @@ IssueLens enforces a rigorous hermetic testing discipline. Automated tests never
 flowchart TD
     subgraph ImplementedPyramid["Implemented Automated Testing (Phases 0 - 6)"]
         direction TB
-        UnitTests["Unit Tests (153 tests)<br/>Isolated functions, parsers, models, filters, persistence, metrics<br/><code>test_url_parser.py</code>, <code>test_validator.py</code>, <code>test_eval_metrics.py</code>"]
-        IntegrationTests["Service Integration Tests (21 tests)<br/>Pipeline integration with hermetic mocks<br/><code>test_investigation_service.py</code>, <code>test_snapshot_cache.py</code>, <code>test_graph.py</code>"]
-        APITests["REST API Tests (12 tests)<br/>FastAPI HTTP endpoints via TestClient<br/><code>test_issue_api.py</code>, <code>test_investigation_api.py</code>, <code>test_health.py</code>"]
+        UnitTests["Unit Tests<br/>Isolated functions, parsers, models, filters, persistence, metrics<br/><code>test_url_parser.py</code>, <code>test_validator.py</code>, <code>test_eval_metrics.py</code>"]
+        IntegrationTests["Service Integration Tests<br/>Pipeline integration with hermetic mocks<br/><code>test_investigation_service.py</code>, <code>test_snapshot_cache.py</code>, <code>test_graph.py</code>"]
+        APITests["REST API Tests<br/>FastAPI HTTP endpoints via TestClient<br/><code>test_issue_api.py</code>, <code>test_investigation_api.py</code>, <code>test_health.py</code>"]
         APITests --> IntegrationTests
         IntegrationTests --> UnitTests
     end
@@ -22,8 +22,8 @@ flowchart TD
     subgraph ImplementedEvaluation["Implemented Benchmark Evaluation Harness (Phase 7)"]
         direction TB
         DatasetCurated["Curated Issue Benchmark Dataset<br/>20 real-world public bug reports<br/><code>evals/cases.jsonl</code>"]
-        LeakPrevention["Retrospective Leak-Proof Harness<br/>Withholds fix PRs, comments, and post-fix code<br/>Pins pre-fix commit SHA"]
-        MetricsEngine["Deterministic Metrics Evaluator<br/>Citation validity, Recall@k, Unsupported claims<br/><code>src/issuelens/evaluation/metrics.py</code>"]
+        LeakPrevention["Retrospective Leak-Prevention Harness<br/>Withholds fix PRs, comments, closed state<br/>Pins pre-fix commit SHA; no fallback"]
+        MetricsEngine["Deterministic Metrics Evaluator (v2)<br/>Root-cause alignment, LLM citation validity, Search/Diagnosis Hit@k<br/><code>src/issuelens/evaluation/metrics.py</code>"]
         DatasetCurated --> LeakPrevention
         LeakPrevention --> MetricsEngine
     end
@@ -35,60 +35,63 @@ flowchart TD
 
 ## 2. Implemented Test Organization & Boundaries
 
-The automated test suite resides in `tests/` and contains **186 automated tests** executing completely offline in under 8 seconds:
+The automated test suite resides in `tests/` and runs offline (no network, no paid LLM). Counts below were generated on 2026-11-25 with `uv run pytest --collect-only -q` (279 tests); re-run that command for current numbers rather than trusting this listing.
 
 ```text
 tests/
-├── __init__.py
 ├── conftest.py                              # Global hermetic test database setup and loop policy
-├── fixtures/                                # Hermetic test fixtures
-│   └── sample_repo/                         # Sample repository snapshot fixture
-│       ├── .env                             # Secret exclusion test fixture
-│       ├── README.md                        # Documentation fixture
-│       └── sample_pkg/
-│           ├── __init__.py
-│           ├── auth.py                      # Authentication symbol fixture
-│           ├── database.py                  # Database connection symbol fixture
-│           └── broken_syntax.py             # Intentionally invalid syntax fixture
-└── unit/                                    # Hermetic test suites (186 total tests)
-    ├── test_config.py                       # Configuration & secret masking (3 tests)
-    ├── test_logging.py                      # Logging setup & secret redaction (4 tests)
-    ├── test_health.py                       # Health & readiness probes (3 tests)
-    ├── test_url_parser.py                   # URL validation & SSRF defense (14 tests)
-    ├── test_github_models.py                # GitHub DTO parsing (3 tests)
-    ├── test_github_client.py                # GitHub REST API client adapter (16 tests)
-    ├── test_snapshot.py                     # Safe snapshot path containment (11 tests)
-    ├── test_snapshot_cache.py               # Atomic caching & LRU pruning (8 tests)
-    ├── test_code_search.py                  # Ripgrep & Python search engines (21 tests)
-    ├── test_python_symbols.py               # AST symbol parsing & enclosing logic (5 tests)
-    ├── test_snippets.py                     # Line-numbered snippet reader (6 tests)
-    ├── test_report_schema.py                # Pydantic report schemas & provenance (7 tests)
-    ├── test_llm_client.py                   # LangChain LLM client & error translation (11 tests)
-    ├── test_prompts.py                      # Prompt templates & XML enclaves (5 tests)
-    ├── test_validator.py                    # Citation validation & demotion (14 tests)
-    ├── test_graph.py                        # LangGraph workflow, nodes, and tool traces (7 tests)
-    ├── test_persistence.py                  # Models, migrations, repository, and restart (9 tests)
-    ├── test_eval_dataset.py                 # Evaluation case models & JSONL parser (8 tests)
-    ├── test_eval_metrics.py                 # Citation validity, recall@k & unsupported claims (9 tests)
-    ├── test_eval_runner.py                  # Evaluation runner, CLI & DB persistence (4 tests)
-    ├── test_issue_api.py                    # REST API issue endpoints (8 tests)
-    ├── test_investigation_service.py        # End-to-end investigation pipeline (6 tests)
-    └── test_investigation_api.py            # End-to-end REST API investigation flow (4 tests)
+├── fixtures/sample_repo/                    # Sample repository snapshot fixture
+│   ├── .env                                 # Secret-exclusion fixture (git-ignored: local only)
+│   ├── README.md
+│   └── sample_pkg/ (auth.py, database.py, broken_syntax.py)
+└── unit/
+    ├── agent/test_prompt_injection_defense.py   (4)
+    ├── test_build_eval_set.py                   (3)  dataset selection rules
+    ├── test_code_search.py                      (21)
+    ├── test_config.py                           (7)  incl. env/.env list parsing
+    ├── test_deployment_hardening.py             (13) auth, rate limits, Retry-After
+    ├── test_document_rag.py                     (11)
+    ├── test_eval_dataset.py                     (8)
+    ├── test_eval_metrics.py                     (16) metrics v2
+    ├── test_eval_runner.py                      (7)
+    ├── test_github_client.py                    (18)
+    ├── test_github_models.py                    (3)
+    ├── test_graph.py                            (16) LangGraph incl. re-evaluation loop
+    ├── test_health.py                           (3)
+    ├── test_investigation_api.py                (5)
+    ├── test_investigation_service.py            (6)
+    ├── test_issue_api.py                        (8)
+    ├── test_leak_prevention.py                  (3)
+    ├── test_llm_client.py                       (16)
+    ├── test_logging.py                          (4)
+    ├── test_persistence.py                      (12) incl. migration/model parity
+    ├── test_prompts.py                          (8)
+    ├── test_python_symbols.py                   (5)
+    ├── test_report_schema.py                    (7)
+    ├── test_security_headers.py                 (5)
+    ├── test_snapshot.py                         (11)
+    ├── test_snapshot_cache.py                   (8)
+    ├── test_snippets.py                         (6)
+    ├── test_trusted_proxies.py                  (6)
+    ├── test_url_parser.py                       (14)
+    └── test_validator.py                        (25)
 ```
+
+Known gaps (not covered by automated tests): the PostgreSQL branch of migration 002, PostgreSQL/JSONB behaviour in general (tests use SQLite), security headers on unhandled 500 responses, and rejected-origin CORS behaviour.
 
 ### Key Test Boundaries & Test Doubles
 
 1. **GitHub Network Boundary**:
-   - In [`tests/unit/test_github_client.py`](file:///c:/Projects/Issuelens/tests/unit/test_github_client.py), network requests are intercepted using `httpx.MockTransport`. No HTTP sockets are opened; tests provide synthetic responses for `/issues`, `/comments`, `/repos`, `/commits`, and zipball streaming.
-   - For higher-level route and service tests, `FakeGitHubClient` implements [`GitHubClientProtocol`](file:///c:/Projects/Issuelens/src/issuelens/github/client.py), returning predetermined [`GitHubIssueContext`](file:///c:/Projects/Issuelens/src/issuelens/github/models.py) structures without serialization overhead.
+   - In [`tests/unit/test_github_client.py`](../../tests/unit/test_github_client.py), network requests are intercepted using `httpx.MockTransport`. No HTTP sockets are opened; tests provide synthetic responses for `/issues`, `/comments`, `/repos`, `/commits`, and zipball streaming.
+   - For higher-level route and service tests, `FakeGitHubClient` implements [`GitHubClientProtocol`](../../src/issuelens/github/client.py), returning predetermined [`GitHubIssueContext`](../../src/issuelens/github/models.py) structures without serialization overhead.
 2. **LLM Provider Boundary**:
-   - In [`tests/unit/test_llm_client.py`](file:///c:/Projects/Issuelens/tests/unit/test_llm_client.py) and service tests, LLM interactions are decoupled via [`LLMClientProtocol`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py).
-   - Tests inject [`MockLLMClient`](file:///c:/Projects/Issuelens/src/issuelens/agent/llm.py), which records prompts and returns deterministic, valid (or deliberately malformed) [`InvestigationReportPayload`](file:///c:/Projects/Issuelens/src/issuelens/agent/report.py) objects.
+   - In [`tests/unit/test_llm_client.py`](../../tests/unit/test_llm_client.py) and service tests, LLM interactions are decoupled via [`LLMClientProtocol`](../../src/issuelens/agent/llm.py).
+   - Tests inject [`MockLLMClient`](../../src/issuelens/agent/llm.py), which records prompts and returns deterministic, valid (or deliberately malformed) [`InvestigationReportPayload`](../../src/issuelens/agent/report.py) objects.
 3. **Repository Filesystem Boundary**:
-   - Tests execute against a committed fixture repository at [`tests/fixtures/sample_repo/`](file:///c:/Projects/Issuelens/tests/fixtures/sample_repo).
-   - Includes edge case files: [`broken_syntax.py`](file:///c:/Projects/Issuelens/tests/fixtures/sample_repo/sample_pkg/broken_syntax.py) (verifies syntax tolerance) and fixture `.env` (verifies secret exclusion).
+   - Tests execute against a committed fixture repository at [`tests/fixtures/sample_repo/`](../../tests/fixtures/sample_repo).
+   - Includes edge case files: [`broken_syntax.py`](../../tests/fixtures/sample_repo/sample_pkg/broken_syntax.py) (verifies syntax tolerance) and fixture `.env` (verifies secret exclusion).
 4. **Database & Persistence Boundary**:
-   - In [`tests/unit/test_persistence.py`](file:///c:/Projects/Issuelens/tests/unit/test_persistence.py), [`tests/unit/test_eval_runner.py`](file:///c:/Projects/Issuelens/tests/unit/test_eval_runner.py), and across the API test suite via [`tests/conftest.py`](file:///c:/Projects/Issuelens/tests/conftest.py), persistence operations run against in-memory SQLite (`sqlite+aiosqlite:///:memory:`) using `StaticPool` and `check_same_thread=False`.
+   - In [`tests/unit/test_persistence.py`](../../tests/unit/test_persistence.py), [`tests/unit/test_eval_runner.py`](../../tests/unit/test_eval_runner.py), and across the API test suite via [`tests/conftest.py`](../../tests/conftest.py), persistence operations run against in-memory SQLite (`sqlite+aiosqlite:///:memory:`) using `StaticPool` and `check_same_thread=False`.
 
 ---
 

@@ -86,12 +86,12 @@ We commit to a **deterministic, leak-proof evaluation harness** with the followi
 
 ## 6. Implementation References
 
-- Dataset Models & Loader: [`src/issuelens/evaluation/dataset.py`](file:///c:/Projects/Issuelens/src/issuelens/evaluation/dataset.py)
-- Metrics Engine: [`src/issuelens/evaluation/metrics.py`](file:///c:/Projects/Issuelens/src/issuelens/evaluation/metrics.py)
-- Runner & CLI: [`src/issuelens/evaluation/run_eval.py`](file:///c:/Projects/Issuelens/src/issuelens/evaluation/run_eval.py)
-- Benchmark Cases: [`evals/cases.jsonl`](file:///c:/Projects/Issuelens/evals/cases.jsonl)
-- Benchmark Guide: [`evals/README.md`](file:///c:/Projects/Issuelens/evals/README.md)
-- Unit Test Suites: [`tests/unit/test_eval_dataset.py`](file:///c:/Projects/Issuelens/tests/unit/test_eval_dataset.py), [`tests/unit/test_eval_metrics.py`](file:///c:/Projects/Issuelens/tests/unit/test_eval_metrics.py), [`tests/unit/test_eval_runner.py`](file:///c:/Projects/Issuelens/tests/unit/test_eval_runner.py)
+- Dataset Models & Loader: [`src/issuelens/evaluation/dataset.py`](../../src/issuelens/evaluation/dataset.py)
+- Metrics Engine: [`src/issuelens/evaluation/metrics.py`](../../src/issuelens/evaluation/metrics.py)
+- Runner & CLI: [`src/issuelens/evaluation/run_eval.py`](../../src/issuelens/evaluation/run_eval.py)
+- Benchmark Cases: [`evals/cases.jsonl`](../../evals/cases.jsonl)
+- Benchmark Guide: [`evals/README.md`](../../evals/README.md)
+- Unit Test Suites: [`tests/unit/test_eval_dataset.py`](../../tests/unit/test_eval_dataset.py), [`tests/unit/test_eval_metrics.py`](../../tests/unit/test_eval_metrics.py), [`tests/unit/test_eval_runner.py`](../../tests/unit/test_eval_runner.py)
 
 ---
 

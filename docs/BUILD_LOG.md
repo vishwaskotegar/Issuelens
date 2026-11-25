@@ -1401,3 +1401,27 @@ Also from this branch: the first tightened symptom filter rejected 11 of 20 genu
 #### 7. Alternatives & Trade-offs
 - Keeping v1 metrics with caveats was rejected: the numbers carry no information.
 - Withholding *all* comments is conservative (some contain legitimate reproduction details); filtering by pre-fix timestamp is a possible refinement.
+
+---
+
+### Entry 029: Documentation Describing Code That Does Not Exist
+- **Date**: 2026-11-25
+- **Phase**: Post-build audit remediation (branch `docs/sync-with-code`)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+Docs referenced symbols, files and behaviour that do not exist: `escape_xml_enclave_tags` (real name `sanitize_boundary_tags`), `trusted_proxies.py`, a CSP header, a LICENSE file, error codes `RESOURCE_NOT_FOUND`/`UPSTREAM_TIMEOUT`/`LLM_VALIDATION_ERROR`, "private IP / metadata endpoint" SSRF blocking, active hybrid RRF retrieval, and per-file test counts from several phases ago. 234 `#Lnn` line anchors into `src/` (many pointing at the wrong lines) and 20 absolute `file:///c:/...` links (broken anywhere but the original machine).
+
+#### 2. Root Cause
+Documentation was written from intent rather than checked against the code, and line-number anchors and counts were hard-coded, so they rotted with every edit.
+
+#### 3. Fix
+Corrected each claim against the code; marked the RRF/dense path and the synchronous Phase 3–4 pipeline as inactive/historical; removed line anchors (links now name the symbol); converted absolute links to relative; replaced hard-coded test counts with a generated listing and the command that produces it. `BUILD_LOG.md` entries were left as historical records apart from the link fix.
+
+#### 4. Verification
+- A scratch link checker over `README.md`, `evals/README.md` and `docs/**/*.md` reports `broken: 0` relative links (was 20).
+- `grep` for each removed false symbol returns no matches outside this log.
+- A scan for stray control characters (introduced once by a shell-escaping mistake during these edits and then repaired) returns no files.
+
+#### 5. Engineering Lesson
+Docs that cite exact line numbers or test counts are wrong by the next commit. Link to files and name symbols; generate counts with a command. Any claim that a defence exists ("blocks private IPs", "sets CSP") should be checkable by grepping for the code that does it.

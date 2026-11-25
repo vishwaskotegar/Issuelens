@@ -8,6 +8,8 @@
 
 ---
 
+> **Implementation status (2026-11-25 audit):** BM25 retrieval is implemented and wired into the agent. The RRF/dense fusion path exists in `hybrid.py` but is inactive: no embedder implementation exists and `DocumentRetriever` is constructed without one. The Phase 8 "measured retrieval comparison" deliverable has not been produced.
+
 ## 1. Context and Problem
 
 In bug report investigation, not all relevant context resides in executable source code:
