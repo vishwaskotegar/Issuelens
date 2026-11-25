@@ -233,7 +233,7 @@ class SQLAlchemyInvestigationRepository:
                 title=hyp.title,
                 explanation=hyp.explanation,
                 confidence=hyp.confidence,
-                support_status="supported",
+                support_status=hyp.support_status or "untested",
                 rank=idx + 1,
                 supporting_evidence_ids=hyp.supporting_evidence_ids,
                 contradicting_evidence_ids=hyp.contradicting_evidence_ids,

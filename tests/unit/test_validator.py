@@ -577,3 +577,21 @@ def test_duplicate_evidence_ids_are_rejected() -> None:
     assert "ev_1" in result.invalid_evidence_ids
     assert all(e.excerpt != "fabricated code" for e in sanitized.evidence)
     assert sanitized.hypotheses[0].supporting_evidence_ids == []
+
+
+def test_validator_computes_support_status() -> None:
+    """support_status is set deterministically by the validator, not by the LLM."""
+    snapshot = get_fixture_snapshot()
+    good = _code_item("ev_1", 10, 11, read_snippet(snapshot, "sample_pkg/auth.py", 10, 11))
+    supported, _ = validate_investigation_report(_report_with([good], ["ev_1"]), snapshot)
+    unsupported, _ = validate_investigation_report(_report_with([good], []), snapshot)
+    assert supported.hypotheses[0].support_status == "supported"
+    assert unsupported.hypotheses[0].support_status == "unsupported"
+
+
+def test_support_status_is_hidden_from_llm_output_schema() -> None:
+    """The LLM must not be able to declare its own hypotheses supported."""
+    from issuelens.agent.report import InvestigationReportPayload
+
+    schema_text = str(InvestigationReportPayload.model_json_schema())
+    assert "support_status" not in schema_text
