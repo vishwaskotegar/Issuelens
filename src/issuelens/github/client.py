@@ -278,15 +278,30 @@ class GitHubClient:
     async def get_comments(
         self, owner: str, repo: str, issue_number: int, max_comments: int | None = None
     ) -> list[GitHubComment]:
-        """Fetch comments for an issue up to limit."""
+        """Fetch up to ``limit`` comments, oldest first, following pagination.
+
+        GitHub returns at most 100 comments per page; the loop stops at the limit, on a
+        short page, or after the number of pages the limit needs (bounded requests).
+        """
         limit = max_comments if max_comments is not None else self.max_comments
+        if limit <= 0:
+            return []
         path = f"/repos/{owner}/{repo}/issues/{issue_number}/comments"
-        params = {"per_page": min(limit, 100)}
-        data = await self._request("GET", path, params=params)
+        per_page = min(limit, 100)
+        max_pages = -(-limit // per_page)
+
+        items: list[dict[str, Any]] = []
+        for page in range(1, max_pages + 1):
+            data = await self._request("GET", path, params={"per_page": per_page, "page": page})
+            if not isinstance(data, list):
+                break
+            items.extend(item for item in data if isinstance(item, dict))
+            if len(data) < per_page or len(items) >= limit:
+                break
 
         comments: list[GitHubComment] = []
-        if isinstance(data, list):
-            for item in data[:limit]:
+        if items:
+            for item in items[:limit]:
                 user = item.get("user")
                 author = user.get("login") if isinstance(user, dict) else None
                 comments.append(

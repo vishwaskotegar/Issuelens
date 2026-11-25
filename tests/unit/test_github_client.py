@@ -446,3 +446,33 @@ async def test_api_dependency_closes_github_client_after_request() -> None:
     with pytest.raises(StopAsyncIteration):
         await anext(dependency)
     assert pool.is_closed
+
+
+@pytest.mark.asyncio
+async def test_get_comments_follows_pagination_up_to_limit() -> None:
+    """Regression: comments beyond the first page of 100 were silently dropped."""
+    total = 250
+    pages_requested: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        per_page = int(request.url.params["per_page"])
+        page = int(request.url.params["page"])
+        pages_requested.append(page)
+        start = (page - 1) * per_page
+        batch = [
+            {"id": i, "user": {"login": "u"}, "body": f"c{i}", "created_at": "2024-01-01T00:00:00Z"}
+            for i in range(start, min(start + per_page, total))
+        ]
+        return httpx.Response(200, json=batch)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as http:
+        client = GitHubClient(http_client=http)
+        everything = await client.get_comments("o", "r", 1, max_comments=1000)
+        assert [c.id for c in everything] == list(range(total))
+        assert pages_requested == [1, 2, 3]  # stops on the short page
+
+        pages_requested.clear()
+        capped = await client.get_comments("o", "r", 1, max_comments=150)
+        assert len(capped) == 150
+        assert pages_requested == [1, 2]  # never fetches more pages than the limit needs
