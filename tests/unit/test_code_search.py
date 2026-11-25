@@ -84,6 +84,8 @@ def test_search_code_ast_symbol_expansion() -> None:
 
 def test_search_code_excludes_secrets() -> None:
     """Verify secrets (.env) and excluded patterns are never returned."""
+    # Precondition: the fixture secret file must exist, or this test passes vacuously.
+    assert "supersecretfixture123" in (FIXTURE_ROOT / ".env").read_text(encoding="utf-8")
     snapshot = RepoSnapshot(
         root_path=FIXTURE_ROOT,
         repo_full_name="sample/repo",

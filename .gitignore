@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# Fake-secret fixture the secret-exclusion tests depend on (values are not real).
+!tests/fixtures/sample_repo/.env
 
 # Python
 __pycache__/
