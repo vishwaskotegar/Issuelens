@@ -385,3 +385,21 @@ async def test_get_issue_context_resolves_two_digit_version_tag() -> None:
         assert context.commit_sha == "a1b3be01aadc61c67edc09eed4f6cc1fcc3d3b8f"
 
 
+
+
+@pytest.mark.asyncio
+async def test_archive_download_error_body_is_read_before_classification() -> None:
+    """Regression: a streamed 403/422 archive response raised httpx.ResponseNotRead.
+
+    The error classifier reads ``response.text``; inside ``client.stream()`` the body has
+    not been read yet, so classification crashed instead of raising a domain error.
+    """
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, stream=httpx.ByteStream(b'{"message": "Forbidden"}'))
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.github.com") as http:
+        client = GitHubClient(http_client=http)
+        with pytest.raises(SafetyViolationError, match="forbidden"):
+            await client.download_archive("owner", "repo", "abc123")

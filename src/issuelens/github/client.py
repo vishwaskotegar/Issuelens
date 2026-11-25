@@ -358,6 +358,9 @@ class GitHubClient:
                             f"Repository archive for '{owner}/{repo}@{ref}' not found."
                         )
                     if response.status_code >= 400:
+                        # Error bodies are small JSON; read them so the classifier can
+                        # inspect response.text (unread streams raise ResponseNotRead).
+                        await response.aread()
                         self._handle_error_response(response, path)
 
                     chunks: list[bytes] = []
