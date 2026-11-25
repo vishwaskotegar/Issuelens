@@ -1209,3 +1209,49 @@ Never trust HTTP request headers supplied by arbitrary callers. Any client can s
 
 
 
+
+---
+
+### Entry 024: Post-Build Audit — Unauthenticated Execute Route, Crashing `.env.example`, and Left-Most X-Forwarded-For
+- **Date**: 2026-11-25
+- **Phase**: Post-build audit remediation (branch `fix/api-auth-and-config`)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+An independent read-only audit of the codebase found API/config defects that the green test suite (224 passed) did not catch:
+1. `POST /v1/investigations/{run_id}/execute` accepted requests with no API key and was not rate limited, even with `APP_ENV=production`.
+2. Following the README Quickstart (`cp .env.example .env`) crashed startup with `SettingsError: error parsing value for field "trusted_proxies" from source "DotEnvSettingsSource"`.
+3. Behind a trusted proxy, a client could still choose its rate-limit identity by sending its own `X-Forwarded-For` header.
+4. With `LLM_PROVIDER` unset, production silently served `MockLLMClient`'s canned report; with `DATABASE_URL` unset it silently used a local SQLite file.
+5. `Retry-After` was always `60` regardless of the limiter's computed window.
+
+#### 2. Root Cause
+1. The route was decorated with `@router.post("/v1/investigations/{run_id}/execute")` in [`src/issuelens/api/routes.py`](../src/issuelens/api/routes.py). Only `v1_router` carries the `verify_api_key`/`enforce_rate_limit` dependencies; the literal `/v1` prefix made the route *look* protected.
+2. pydantic-settings JSON-decodes `list[str]` fields from env sources **before** `mode="before"` field validators run, so `parse_string_list` in [`src/issuelens/config.py`](../src/issuelens/config.py) never saw the comma-separated string. Tests only passed list values directly to `Settings(...)`, bypassing the env source. Separately, `test_default_settings` read the developer's local `.env` and the shell environment, so it asserted `request_timeout_seconds in (15, 45)` instead of the real default.
+3. `get_client_identifier()` in [`src/issuelens/api/security.py`](../src/issuelens/api/security.py) took `forwarded.split(",")[0]`. Proxies *append* to the header, so the left-most entry is the one the client wrote.
+4. `get_llm_client()` defaulted to `"mock"` and `get_default_database_url()` defaulted to SQLite with no environment check.
+5. `main.py` hard-coded `headers["Retry-After"] = "60"`.
+
+#### 3. Fix
+1. Moved the route to `@v1_router.post("/investigations/{run_id}/execute")` and reordered router dependencies so `enforce_rate_limit` runs before `verify_api_key` (invalid-key guessing is throttled).
+2. Annotated `trusted_proxies` and `cors_allowed_origins` as `Annotated[list[str], NoDecode]`, letting the existing parser handle both comma and JSON forms. Made `test_default_settings` hermetic (`_env_file=None`, env vars cleared).
+3. `get_client_identifier()` now walks `X-Forwarded-For` right-to-left, skipping trusted hops, and returns the first untrusted address.
+4. `get_llm_client()` and `get_default_database_url()` raise `ConfigurationError` in production when the provider/URL is missing.
+5. `RateLimitExceededError` carries `retry_after_seconds`; the handler emits it.
+
+#### 4. Verification
+- `uv run ruff check .`: All checks passed.
+- `uv run mypy src tests`: Success: no issues found in 75 source files.
+- `uv run pytest`: 236 passed (each new regression test was run and observed failing before its fix).
+
+#### 5. Engineering Lesson
+A route's URL string is not its security boundary — the router it is attached to is. Test the *boundary* (call every mutating route without credentials), not just one representative route. Likewise, configuration tests must exercise the same source (env vars / `.env`) that production uses, or they test a code path nobody runs.
+
+#### 6. Regression Tests
+- [`tests/unit/test_deployment_hardening.py`](../tests/unit/test_deployment_hardening.py): `test_execute_endpoint_requires_api_key`, `test_execute_endpoint_is_rate_limited`, `test_invalid_api_key_attempts_are_rate_limited`, `test_retry_after_header_reflects_computed_window`
+- [`tests/unit/test_config.py`](../tests/unit/test_config.py): `test_comma_separated_list_settings_from_env`, `test_json_array_list_settings_from_env`, `test_env_example_file_loads`
+- [`tests/unit/test_trusted_proxies.py`](../tests/unit/test_trusted_proxies.py): `test_get_client_identifier_ignores_client_prepended_entries_behind_trusted_proxy`, `test_get_client_identifier_skips_chained_trusted_proxies`
+- [`tests/unit/test_llm_client.py`](../tests/unit/test_llm_client.py), [`tests/unit/test_persistence.py`](../tests/unit/test_persistence.py): production guard tests
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Enforce `LLM_PROVIDER`/`DATABASE_URL` in the `Settings` model validator. *Trade-off*: would break every test and tool that builds production-mode `Settings` only to exercise auth. Guarding at the factory keeps the failure at the point of use while still preventing silent fallbacks.
