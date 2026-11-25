@@ -31,7 +31,8 @@ from issuelens.persistence.repository import (
 router = APIRouter()
 v1_router = APIRouter(
     prefix="/v1",
-    dependencies=[Depends(verify_api_key), Depends(enforce_rate_limit)],
+    # Rate limiting runs before authentication so invalid-key guessing is throttled too.
+    dependencies=[Depends(enforce_rate_limit), Depends(verify_api_key)],
 )
 
 
@@ -201,8 +202,8 @@ async def create_investigation(
     )
 
 
-@router.post(
-    "/v1/investigations/{run_id}/execute",
+@v1_router.post(
+    "/investigations/{run_id}/execute",
     response_model=InvestigationStatusResponse,
     tags=["Investigations"],
     summary="Execute an investigation run",

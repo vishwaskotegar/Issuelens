@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from issuelens import __version__
 from issuelens.api.routes import router as operational_router
 from issuelens.config import Settings, get_settings
-from issuelens.core.errors import IssueLensError
+from issuelens.core.errors import IssueLensError, RateLimitExceededError
 from issuelens.core.logging import get_logger, setup_logging
 from issuelens.persistence.db import close_engine
 
@@ -93,8 +93,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             exc.status_code,
         )
         headers = {}
-        if exc.status_code == 429:
-            headers["Retry-After"] = "60"
+        if isinstance(exc, RateLimitExceededError):
+            retry_after = exc.retry_after_seconds if exc.retry_after_seconds else 60
+            headers["Retry-After"] = str(max(1, int(retry_after)))
         return JSONResponse(
             status_code=exc.status_code,
             content={

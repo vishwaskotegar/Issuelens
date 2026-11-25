@@ -341,3 +341,18 @@ def test_alembic_migrations_from_clean_database(tmp_path: Path) -> None:
 
     # Re-apply upgrade head
     command.upgrade(alembic_cfg, "head")
+
+
+def test_production_requires_database_url() -> None:
+    """Regression: production must not silently fall back to a local SQLite file."""
+    from pydantic import SecretStr
+
+    from issuelens.config import Settings
+    from issuelens.core.errors import ConfigurationError
+    from issuelens.persistence.db import get_default_database_url
+
+    prod = Settings(
+        app_env="production", auth_required=True, api_key=SecretStr("k"), database_url=None
+    )
+    with pytest.raises(ConfigurationError, match="DATABASE_URL"):
+        get_default_database_url(prod)
