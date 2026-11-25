@@ -121,7 +121,7 @@ async def test_evaluation_runner_case_failure() -> None:
 
     assert report is None
     assert metrics.status == "failed"
-    assert metrics.error_reason == "Rate limit exceeded"
+    assert metrics.error_reason == "RuntimeError: Rate limit exceeded"
     assert metrics.citation_validity_rate is None
 
 

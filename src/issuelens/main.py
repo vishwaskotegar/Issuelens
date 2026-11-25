@@ -12,7 +12,7 @@ from issuelens import __version__
 from issuelens.api.routes import router as operational_router
 from issuelens.config import Settings, get_settings
 from issuelens.core.errors import IssueLensError, RateLimitExceededError
-from issuelens.core.logging import get_logger, setup_logging
+from issuelens.core.logging import get_logger, redact_secrets, setup_logging
 from issuelens.persistence.db import close_engine
 
 logger = get_logger("issuelens.main")
@@ -99,7 +99,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "error": exc.message,
+                "error": redact_secrets(exc.message),
                 "code": exc.code,
             },
             headers=headers if headers else None,

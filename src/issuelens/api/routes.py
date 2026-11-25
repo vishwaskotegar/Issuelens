@@ -19,7 +19,7 @@ from issuelens.api.schemas import (
 )
 from issuelens.api.security import enforce_rate_limit, verify_api_key
 from issuelens.config import Settings, get_settings
-from issuelens.core.errors import ResourceNotFoundError
+from issuelens.core.errors import ResourceNotFoundError, public_error_message
 from issuelens.github.client import GitHubClient, GitHubClientProtocol
 from issuelens.github.url_parser import parse_issue_target
 from issuelens.persistence.db import check_database_health, get_db_session
@@ -188,7 +188,7 @@ async def create_investigation(
             await repo.update_run_status(
                 run_id=run_id,
                 status="failed",
-                error_message=str(exc),
+                error_message=public_error_message(exc),
             )
             await repo.commit()
             raise
@@ -235,7 +235,7 @@ async def execute_investigation(
         await repo.update_run_status(
             run_id=run_id,
             status="failed",
-            error_message=str(exc),
+            error_message=public_error_message(exc),
         )
         await repo.commit()
         raise

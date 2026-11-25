@@ -1,5 +1,7 @@
 """Core domain exceptions for IssueLens."""
 
+from issuelens.core.logging import redact_secrets
+
 
 class IssueLensError(Exception):
     """Base exception for all IssueLens domain errors."""
@@ -72,3 +74,35 @@ class LLMOutputValidationError(IssueLensError):
     def __init__(self, message: str) -> None:
         super().__init__(message, code="LLM_OUTPUT_VALIDATION_ERROR", status_code=502)
 
+
+MAX_PUBLIC_ERROR_CHARS = 500
+
+
+def public_error_message(exc: BaseException) -> str:
+    """Return an error string that is safe to persist and return to API clients.
+
+    Domain errors carry messages we wrote, but some embed upstream exception text (for
+    example LLM SDK errors), so they are secret-redacted and truncated. Any other exception
+    may contain internal paths, SQL or library state, so only a generic message is kept;
+    the full exception is in the server logs.
+    """
+    if isinstance(exc, IssueLensError):
+        text = f"{exc.code}: {redact_secrets(exc.message)}"
+    else:
+        text = "INTERNAL_ERROR: The investigation failed unexpectedly. See server logs."
+    return _truncate(text)
+
+
+def diagnostic_error_message(exc: BaseException) -> str:
+    """Return exception type and message, secret-redacted and truncated.
+
+    Used for per-node tool traces and evaluation failure notes, where the detail is needed
+    to debug a run but the text may still be stored or committed.
+    """
+    return _truncate(redact_secrets(f"{type(exc).__name__}: {exc}"))
+
+
+def _truncate(text: str) -> str:
+    if len(text) > MAX_PUBLIC_ERROR_CHARS:
+        return text[: MAX_PUBLIC_ERROR_CHARS - 3] + "..."
+    return text

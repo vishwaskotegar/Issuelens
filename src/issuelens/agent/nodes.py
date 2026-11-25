@@ -23,7 +23,7 @@ from issuelens.agent.report import (
 from issuelens.agent.state import InvestigationState, IssueSummary, ToolTraceItem
 from issuelens.agent.validator import validate_investigation_report
 from issuelens.config import Settings
-from issuelens.core.errors import IssueLensError
+from issuelens.core.errors import IssueLensError, diagnostic_error_message
 from issuelens.core.logging import get_logger
 from issuelens.github.models import (
     GitHubComment,
@@ -404,7 +404,7 @@ class InvestigationNodes:
                 status = "error"
                 error_msg = f"Initial code retrieval error: {exc}"
                 logger.warning(error_msg, exc_info=True)
-                errors.append({"node": "retrieve_initial", "error": str(exc)})
+                errors.append({"node": "retrieve_initial", "error": diagnostic_error_message(exc)})
                 output_summary = f"Code search failed: {exc}"
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
@@ -477,7 +477,7 @@ class InvestigationNodes:
             status = "error"
             error_msg = f"LLM hypothesis generation error: {exc}"
             logger.warning(error_msg, exc_info=True)
-            errors.append({"node": "form_hypotheses", "error": str(exc)})
+            errors.append({"node": "form_hypotheses", "error": diagnostic_error_message(exc)})
             output_summary = f"Hypothesis generation failed: {exc}"
             summary = f"Investigation inconclusive due to inference error: {exc}"
             # Fallback hypothesis to allow graceful recovery
@@ -671,7 +671,7 @@ class InvestigationNodes:
                 status = "error"
                 error_msg = f"Follow-up search error: {exc}"
                 logger.warning(error_msg, exc_info=True)
-                errors.append({"node": "retrieve_followup", "error": str(exc)})
+                errors.append({"node": "retrieve_followup", "error": diagnostic_error_message(exc)})
                 output_summary = f"Follow-up search failed: {exc}"
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
@@ -746,7 +746,7 @@ class InvestigationNodes:
             # Keep the hypotheses we already have; a failed revision is not a failed run.
             message = f"LLM re-evaluation error: {exc}"
             logger.warning(message)
-            errors.append({"node": "reevaluate_hypotheses", "error": str(exc)})
+            errors.append({"node": "reevaluate_hypotheses", "error": diagnostic_error_message(exc)})
             trace("error", "Re-evaluation failed; kept prior hypotheses.", message)
             return {
                 "llm_calls": state.get("llm_calls", 0) + 1,

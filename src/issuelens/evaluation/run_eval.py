@@ -15,6 +15,7 @@ from issuelens.agent.llm import get_llm_client
 from issuelens.agent.report import EvidenceItem, Hypothesis, InvestigationReport
 from issuelens.agent.service import InvestigationService
 from issuelens.config import get_settings
+from issuelens.core.errors import diagnostic_error_message
 from issuelens.core.logging import get_logger
 from issuelens.evaluation.dataset import (
     EvaluationCaseModel,
@@ -122,7 +123,8 @@ class EvaluationRunner:
                 )
             except Exception as exc:
                 logger.error("Investigation failed for case %s: %s", case.id, exc)
-                error_reason = str(exc)
+                # Results files are committed: never write raw secrets into them.
+                error_reason = diagnostic_error_message(exc)
         else:
             error_reason = "No investigation service provided to EvaluationRunner"
 
