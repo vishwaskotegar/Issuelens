@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -19,7 +20,7 @@ from issuelens.api.schemas import (
 )
 from issuelens.api.security import enforce_rate_limit, verify_api_key
 from issuelens.config import Settings, get_settings
-from issuelens.core.errors import ResourceNotFoundError
+from issuelens.core.errors import ResourceNotFoundError, public_error_message
 from issuelens.github.client import GitHubClient, GitHubClientProtocol
 from issuelens.github.url_parser import parse_issue_target
 from issuelens.persistence.db import check_database_health, get_db_session
@@ -36,14 +37,21 @@ v1_router = APIRouter(
 )
 
 
-def get_github_client(
+async def get_github_client(
     settings: Annotated[Settings, Depends(get_settings)],
-) -> GitHubClientProtocol:
-    """Dependency provider for GitHub client."""
-    return GitHubClient(
+) -> AsyncGenerator[GitHubClientProtocol, None]:
+    """Dependency provider for a per-request GitHub client, closed after the request.
+
+    Returning the client without closing it leaked one httpx connection pool per request.
+    """
+    client = GitHubClient(
         token=settings.github_token,
         timeout_seconds=float(settings.request_timeout_seconds),
     )
+    try:
+        yield client
+    finally:
+        await client.close()
 
 
 def get_llm_client_dep(
@@ -188,7 +196,7 @@ async def create_investigation(
             await repo.update_run_status(
                 run_id=run_id,
                 status="failed",
-                error_message=str(exc),
+                error_message=public_error_message(exc),
             )
             await repo.commit()
             raise
@@ -235,7 +243,7 @@ async def execute_investigation(
         await repo.update_run_status(
             run_id=run_id,
             status="failed",
-            error_message=str(exc),
+            error_message=public_error_message(exc),
         )
         await repo.commit()
         raise

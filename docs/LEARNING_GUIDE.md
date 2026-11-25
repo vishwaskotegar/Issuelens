@@ -1061,7 +1061,7 @@ Directly executing SQL queries in FastAPI route handlers creates tight coupling 
 
 #### 6. What can fail and how failures are handled
 - **Non-existent Run**: `get_run()` and `update_run_status()` return `None`; API routes convert this into a 404 [`ResourceNotFoundError`](../src/issuelens/core/errors.py).
-- **Execution Failure**: Caught by `try...except Exception as exc:` in `create_investigation` and `execute_investigation`, updating run status to `"failed"`, recording `error_message=str(exc)`, and committing.
+- **Execution Failure**: Caught by `try...except Exception as exc:` in `create_investigation` and `execute_investigation`, updating run status to `"failed"`, recording `error_message=public_error_message(exc)`, and committing. [`public_error_message`](../src/issuelens/core/errors.py) keeps `CODE: message` (secret-redacted, at most 500 characters) for domain `IssueLensError`s and a generic `INTERNAL_ERROR` text for anything else, because raw exception text can contain internal paths, SQL or keys and is returned by `GET /v1/investigations/{run_id}`. Per-node tool traces and evaluation failure notes use `diagnostic_error_message` (type + message, redacted, truncated) so they stay debuggable.
 
 #### 7. How the feature is tested
 - **Test file**: [`tests/unit/test_persistence.py`](../tests/unit/test_persistence.py), [`tests/unit/test_investigation_api.py`](../tests/unit/test_investigation_api.py)
@@ -1459,7 +1459,7 @@ Deploying Python applications with external tool dependencies (such as ripgrep) 
 
 #### 2. What happens from input to output
 1. The developer or CI system runs `docker compose build` or `docker build -t issuelens:latest .`.
-2. In Stage 1 (`builder`), `uv` compiles a dedicated virtual environment in `/build/.venv`, installing all project dependencies into a clean build layer.
+2. In Stage 1 (`builder`), `uv sync --frozen --no-dev` installs the exact versions pinned in `uv.lock` into `/app/.venv` (dependencies first for layer caching, then the project itself, non-editable). `--frozen` fails the build rather than re-resolving if the lockfile is missing; the uv image (0.11.8) must be new enough to read the lockfile format. (Before the 2026-11-25 audit fix, the build ran `uv pip install -r pyproject.toml`, which ignored the lockfile.)
 3. In Stage 2 (`runtime`), a clean Debian Bookworm slim image installs minimal system utilities: `curl` (for healthchecks), `ripgrep` (for fast deterministic lexical search), and CA certificates.
 4. The container creates a dedicated unprivileged system user and group `issuelens:issuelens` with UID/GID 1000.
 5. Application files, virtual environment, and snapshot cache directories are set up and owned by `issuelens`.
@@ -1558,6 +1558,7 @@ Preventing abusive clients, runaway CI loops, and malicious bots from flooding t
    - Raises [`RateLimitExceededError`](../src/issuelens/core/errors.py).
 5. The global exception handler returns HTTP 429 Too Many Requests with a `Retry-After` header.
 6. If under the limit, appends current monotonic time and allows request execution.
+7. Eviction: at most once per window (or whenever more than `max_clients`, default 10,000, are tracked) `_sweep()` drops clients with no request inside the window, then, if still over the cap, the least recently seen clients. Without this, every distinct IP stayed in memory for the life of the process.
 
 #### 3. Which files and functions participate
 - **Source files**: [`src/issuelens/api/security.py`](../src/issuelens/api/security.py), [`src/issuelens/main.py`](../src/issuelens/main.py).
@@ -1572,6 +1573,7 @@ Preventing abusive clients, runaway CI loops, and malicious bots from flooding t
   - *Trade-off*: Ideal for multi-container clusters, but adds an extra infrastructure dependency for single-container or pilot deployments.
 
 #### 6. What can fail and how failures are handled
+- **Memory growth from many client IPs**: bounded by the idle sweep and the `max_clients` cap. Trade-off: under a flood of more than `max_clients` distinct IPs inside one window, the least recently seen clients lose their history and get a fresh allowance; the limiter is per-process memory, not a distributed quota.
 - **Proxy Spoofing**: Adversaries attempting to bypass rate limits by rotating arbitrary `X-Forwarded-For` IPs are thwarted because `get_client_identifier()` ignores the header unless the socket IP matches `Settings.trusted_proxies`.
 
 #### 7. How the feature is tested

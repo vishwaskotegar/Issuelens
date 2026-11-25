@@ -12,7 +12,7 @@ from issuelens import __version__
 from issuelens.api.routes import router as operational_router
 from issuelens.config import Settings, get_settings
 from issuelens.core.errors import IssueLensError, RateLimitExceededError
-from issuelens.core.logging import get_logger, setup_logging
+from issuelens.core.logging import get_logger, redact_secrets, setup_logging
 from issuelens.persistence.db import close_engine
 
 logger = get_logger("issuelens.main")
@@ -31,6 +31,16 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     yield
     logger.info("IssueLens application shutting down")
     await close_engine()
+
+
+def apply_security_headers(request: Request, response: Response, settings: Settings) -> None:
+    """Set the standard security headers on a response."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+    if request.url.scheme == "https" or settings.app_env == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -60,12 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request, call_next: Callable[[Request], Any]
     ) -> Response:
         response: Response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
-        if request.url.scheme == "https" or app_settings.app_env == "production":
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        apply_security_headers(request, response, app_settings)
         return response
 
     # Register routers
@@ -99,7 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "error": exc.message,
+                "error": redact_secrets(exc.message),
                 "code": exc.code,
             },
             headers=headers if headers else None,
@@ -108,13 +113,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
         logger.error("Unhandled server exception: %s", str(exc), exc_info=True)
-        return JSONResponse(
+        response = JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": "An internal error occurred. Please check server logs.",
                 "code": "INTERNAL_SERVER_ERROR",
             },
         )
+        # Starlette serves this handler from ServerErrorMiddleware, which sits outside the
+        # HTTP middleware stack, so add_security_headers never sees 500 responses.
+        apply_security_headers(_request, response, app_settings)
+        return response
 
     return app
 

@@ -1425,3 +1425,50 @@ Corrected each claim against the code; marked the RRF/dense path and the synchro
 
 #### 5. Engineering Lesson
 Docs that cite exact line numbers or test counts are wrong by the next commit. Link to files and name symbols; generate counts with a command. Any claim that a defence exists ("blocks private IPs", "sets CSP") should be checkable by grepping for the code that does it.
+
+---
+
+### Entry 030: Runtime Hardening — Raw Error Text, Headerless 500s, Unbounded Limiter Memory, Leaked HTTP Pools
+- **Date**: 2026-11-25
+- **Phase**: Post-build audit remediation (branch `fix/runtime-hardening`)
+- **Status**: Resolved (Dockerfile change not verified by an image build; see 4)
+
+#### 1. Symptom & Objective
+Items the audit left open after entries 024–029:
+1. Failed runs stored `error_message=str(exc)` and `GET /v1/investigations/{run_id}` returned it. A test raising `RuntimeError("... C:/srv/app/db.py ... sk-...")` showed both the path and the key in the stored error.
+2. Unhandled-exception 500 responses had no security headers: the new regression test failed with `KeyError: 'X-Content-Type-Options'`.
+3. `RateLimiter._requests` only ever grew: one entry per distinct client IP for the life of the process.
+4. `get_github_client` built a new `GitHubClient` per request and nothing closed it (one leaked httpx pool per request); the live eval runner and `scripts/run_investigation.py` never closed theirs either.
+5. `get_comments` requested one page, so `max_comments > 100` still returned at most 100.
+6. `tests/fixtures/sample_repo/.env` matched the `.env` ignore rule, so on a fresh clone the secret-exclusion tests had nothing to exclude and passed vacuously.
+7. The Dockerfile ran `uv pip install -r pyproject.toml`, ignoring `uv.lock`.
+
+#### 2. Root Cause
+- (1) Exceptions were treated as user-facing text. Domain messages can also embed upstream SDK text (`classify_llm_exception` formats `{exc}` into them).
+- (2) Starlette serves the `Exception` handler from `ServerErrorMiddleware`, which wraps the whole user middleware stack, so the `add_security_headers` HTTP middleware never sees those responses.
+- (3) Pruning happened only for the client making the current request; idle clients were never visited.
+- (4) A plain-return FastAPI dependency has no teardown.
+- (5)–(7) Missing loop / over-broad ignore pattern / non-lockfile install command.
+
+#### 3. Fix
+- `public_error_message()` in `core/errors.py`: `CODE: redacted message` (500 chars max) for `IssueLensError`, a generic `INTERNAL_ERROR` text otherwise; used for persisted run errors. `diagnostic_error_message()` (type + message, redacted, truncated) for node traces and eval failure notes; the domain error handler redacts its response message.
+- `apply_security_headers()` in `main.py`, called from the middleware and the 500 handler.
+- `RateLimiter._sweep()`: at most once per window (or when over `max_clients`, default 10,000) drop idle clients, then the least recently seen beyond the cap.
+- `get_github_client` is a yield dependency that closes the client; eval runner and CLI script close in `finally`.
+- `get_comments` follows `page=` until the limit, a short page, or `ceil(limit/per_page)` pages.
+- `.gitignore` re-includes the fixture (fake values); both tests assert the fixture exists first.
+- Dockerfile: `uv sync --frozen --no-dev` (deps, then project non-editable) with uv 0.11.8, which reads lockfile revision 3 (0.4.29 predates it).
+
+#### 4. Verification
+- `uv run pytest -q`: `285 passed`. `uv run ruff check .`: `All checks passed!`. `uv run mypy src tests`: `Success: no issues found in 77 source files`.
+- Regression tests: `test_failed_run_stores_generic_error_for_unexpected_exceptions` (also asserts 500 headers; failed before the header fix), `test_failed_run_redacts_secrets_in_domain_errors`, `test_rate_limiter_evicts_idle_clients`, `test_rate_limiter_caps_tracked_clients`, `test_api_dependency_closes_github_client_after_request`, `test_get_comments_follows_pagination_up_to_limit`.
+- Dockerfile: `uv lock --check` passes. `docker build` could not run (Docker daemon not available on this machine), so the image build is **unverified**.
+
+#### 5. Engineering Lesson
+An exception message is debugging data, not an API response: decide explicitly what a client may see. Middleware ordering matters: anything that must apply to every response has to be applied where the response is created, including error handlers outside the middleware stack. Any per-key in-memory cache needs an eviction rule from day one. A test that depends on a file must assert the file exists, or an ignore rule can silently turn it into a no-op.
+
+#### 6. Alternatives & Trade-offs
+- Errors: storing full exception text behind an admin-only endpoint would keep more detail, but there is no admin role; full detail stays in server logs.
+- Rate limiter: Redis or a TTL cache would also bound memory; rejected to avoid a new dependency for a single-process limiter. Under a flood of more than 10,000 IPs in one window, evicted clients get a fresh allowance.
+- LLM HTTP clients (LangChain `ChatOpenAI`/`ChatAnthropic`) manage their own clients and are created per request; they were not changed.
+

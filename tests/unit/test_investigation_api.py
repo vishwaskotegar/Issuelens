@@ -253,6 +253,50 @@ def test_create_investigation_sync_failure_records_failed_status(
     assert "Simulated execution failure" in str(status_resp.json()["error"])
 
 
+def test_failed_run_stores_generic_error_for_unexpected_exceptions(
+    api_test_app: FastAPI,
+) -> None:
+    """Internal exception text (paths, SQL, keys) must not be stored or returned."""
+    client = TestClient(api_test_app, raise_server_exceptions=False)
+    resp = client.post(
+        "/v1/investigations",
+        json={"issue_url": "https://github.com/sample/repo/issues/10", "execute": False},
+    )
+    run_id = resp.json()["run_id"]
+
+    leaky = RuntimeError("boom at C:/srv/app/db.py with sk-abcdef1234567890abcdef1234567890")
+    with patch("issuelens.agent.service.InvestigationService.investigate", side_effect=leaky):
+        exec_resp = client.post(f"/v1/investigations/{run_id}/execute")
+    assert exec_resp.status_code == 500
+    assert exec_resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert exec_resp.headers["X-Frame-Options"] == "DENY"
+
+    error = client.get(f"/v1/investigations/{run_id}").json()["error"]
+    assert error.startswith("INTERNAL_ERROR:")
+    assert "sk-" not in error and "db.py" not in error
+
+
+def test_failed_run_redacts_secrets_in_domain_errors(api_test_app: FastAPI) -> None:
+    """Domain errors keep their message, minus secrets, in storage and in the response."""
+    client = TestClient(api_test_app)
+    resp = client.post(
+        "/v1/investigations",
+        json={"issue_url": "https://github.com/sample/repo/issues/10", "execute": False},
+    )
+    run_id = resp.json()["run_id"]
+    key = "sk-abcdef1234567890abcdef1234567890"
+    with patch(
+        "issuelens.agent.service.InvestigationService.investigate",
+        side_effect=LLMOutputValidationError(f"provider echoed {key}"),
+    ):
+        exec_resp = client.post(f"/v1/investigations/{run_id}/execute")
+    assert key not in exec_resp.text
+
+    error = client.get(f"/v1/investigations/{run_id}").json()["error"]
+    assert error.startswith("LLM_OUTPUT_VALIDATION_ERROR: provider echoed")
+    assert key not in error
+
+
 @pytest.mark.asyncio
 async def test_investigate_uses_recorded_commit_not_a_fresh_resolution() -> None:
     """Regression: execute re-resolved the commit, so run.commit_sha and the report could differ.

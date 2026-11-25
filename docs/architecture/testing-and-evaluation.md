@@ -35,13 +35,13 @@ flowchart TD
 
 ## 2. Implemented Test Organization & Boundaries
 
-The automated test suite resides in `tests/` and runs offline (no network, no paid LLM). Counts below were generated on 2026-11-25 with `uv run pytest --collect-only -q` (279 tests); re-run that command for current numbers rather than trusting this listing.
+The automated test suite resides in `tests/` and runs offline (no network, no paid LLM). Counts below were generated on 2026-11-25 with `uv run pytest --collect-only -q` (285 tests); re-run that command for current numbers rather than trusting this listing.
 
 ```text
 tests/
 ├── conftest.py                              # Global hermetic test database setup and loop policy
 ├── fixtures/sample_repo/                    # Sample repository snapshot fixture
-│   ├── .env                                 # Secret-exclusion fixture (git-ignored: local only)
+│   ├── .env                                 # Fake-secret fixture for secret-exclusion tests (tracked)
 │   ├── README.md
 │   └── sample_pkg/ (auth.py, database.py, broken_syntax.py)
 └── unit/
@@ -49,16 +49,16 @@ tests/
     ├── test_build_eval_set.py                   (3)  dataset selection rules
     ├── test_code_search.py                      (21)
     ├── test_config.py                           (7)  incl. env/.env list parsing
-    ├── test_deployment_hardening.py             (13) auth, rate limits, Retry-After
+    ├── test_deployment_hardening.py             (15) auth, rate limits, Retry-After, eviction
     ├── test_document_rag.py                     (11)
     ├── test_eval_dataset.py                     (8)
     ├── test_eval_metrics.py                     (16) metrics v2
     ├── test_eval_runner.py                      (7)
-    ├── test_github_client.py                    (18)
+    ├── test_github_client.py                    (20)
     ├── test_github_models.py                    (3)
     ├── test_graph.py                            (16) LangGraph incl. re-evaluation loop
     ├── test_health.py                           (3)
-    ├── test_investigation_api.py                (5)
+    ├── test_investigation_api.py                (7)  incl. error redaction, 500 headers
     ├── test_investigation_service.py            (6)
     ├── test_issue_api.py                        (8)
     ├── test_leak_prevention.py                  (3)
@@ -77,7 +77,7 @@ tests/
     └── test_validator.py                        (25)
 ```
 
-Known gaps (not covered by automated tests): the PostgreSQL branch of migration 002, PostgreSQL/JSONB behaviour in general (tests use SQLite), security headers on unhandled 500 responses, and rejected-origin CORS behaviour.
+Known gaps (not covered by automated tests): the PostgreSQL branch of migration 002, PostgreSQL/JSONB behaviour in general (tests use SQLite), rejected-origin CORS behaviour, and the Docker image build.
 
 ### Key Test Boundaries & Test Doubles
 

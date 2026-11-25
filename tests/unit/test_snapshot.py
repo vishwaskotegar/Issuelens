@@ -104,6 +104,8 @@ def test_safe_resolve_file_size_limit() -> None:
 
 def test_list_source_files_excludes_secrets_and_build() -> None:
     """Verify .env and excluded files are skipped when listing source files."""
+    # Precondition: the fixture secret file must exist, or this test passes vacuously.
+    assert (FIXTURE_ROOT / ".env").is_file()
     snapshot = RepoSnapshot(
         root_path=FIXTURE_ROOT,
         repo_full_name="org/sample",
