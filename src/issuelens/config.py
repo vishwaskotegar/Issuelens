@@ -1,10 +1,10 @@
 """Configuration management for IssueLens using Pydantic Settings."""
 
 from functools import lru_cache
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -118,11 +118,13 @@ class Settings(BaseSettings):
         le=10_000,
         description="Maximum allowed requests per minute per client IP or API key",
     )
-    trusted_proxies: list[str] = Field(
+    # NoDecode: pydantic-settings would otherwise JSON-decode list fields from env/.env
+    # *before* our validator runs, rejecting the documented comma-separated form.
+    trusted_proxies: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["127.0.0.1", "::1"],
         description="List of trusted reverse proxy IPs or CIDRs allowed to forward client IPs",
     )
-    cors_allowed_origins: list[str] = Field(
+    cors_allowed_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://localhost:8000"],
         description="List of allowed origins for Cross-Origin Resource Sharing (CORS)",
     )
