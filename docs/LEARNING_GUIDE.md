@@ -1170,13 +1170,13 @@ Connecting to PostgreSQL in modern async Python on Windows encounters OS-level e
 When evaluating an AI debugging assistant against historical bug reports, **data contamination (leakage)** is the most critical threat to validity. If the agent is provided the pull request that resolved the bug, the eventual fix commit, or comments discussing the solution, the evaluation is contaminated—the assistant merely copies the known answer. Furthermore, inspecting the codebase at `HEAD` tests a snapshot where the bug no longer exists!
 
 #### 2. What happens from input to output
-1. The harness loads [`evals/cases.jsonl`](../evals/cases.jsonl) containing 20 curated public Python bugs across Flask, Requests, HTTPX, Pytest, Pydantic, FastAPI, Werkzeug, Urllib3, Rich, etc.
+1. The harness loads [`evals/cases.jsonl`](../evals/cases.jsonl): 20 closed bug reports from `BerriAI/litellm` selected by [`scripts/build_eval_set.py`](../scripts/build_eval_set.py) (selection rules in [`evals/README.md`](../evals/README.md) Section 3). Each case also stores the issue title/body as they were collected, so later edits to the live issue cannot leak the fix.
 2. Each case is parsed into a strongly-typed [`EvaluationCaseModel`](../src/issuelens/evaluation/dataset.py#L22).
 3. The model strictly validates:
    - `target_commit_sha`: A 40-character hexadecimal commit SHA pinned strictly *before* the fix was merged.
    - `issue_url`: A canonical public GitHub issue URL.
    - `expected_files`: Repository-relative paths to the buggy source files without directory traversal.
-4. Ground truth answers (`known_resolution`, `expected_files`) remain isolated inside the evaluation harness. The agent is provided only the issue description and the pre-fix snapshot.
+4. Ground truth answers (`known_resolution`, `expected_files`) remain isolated inside the evaluation harness. In live mode, `EvaluationGitHubClient.withhold_post_report_information()` in [`run_eval.py`](../src/issuelens/evaluation/run_eval.py) also removes all issue comments, presents the issue as open, substitutes the frozen title/body, and pins the commit; `require_snapshot=True` fails a case rather than investigating any other commit. *(Before the 2026-11-25 audit, comments reached the agent and a failed snapshot download fell back to the post-fix default branch.)*
 
 #### 3. Which files and functions participate
 - **Source file**: [`src/issuelens/evaluation/dataset.py`](../src/issuelens/evaluation/dataset.py)
@@ -1187,7 +1187,7 @@ When evaluating an AI debugging assistant against historical bug reports, **data
 #### 4. Why the implementation is structured this way
 - **JSON Lines (`.jsonl`) Format**: Each benchmark case is a single JSON line. This allows stream loading, clean line-by-line git diffs, and precise line-number error reporting if a record is corrupted.
 - **Strict Pydantic Validators**: Enforces 40-character hex commit SHAs and relative path sanitization at model creation, rejecting path traversal (`..` or `/`) before snapshots are accessed.
-- **Offline Hermetic Fixture**: Case `CASE-020` maps directly to [`tests/fixtures/sample_repo`](../tests/fixtures/sample_repo), enabling full local verification without requiring live GitHub network connectivity.
+- **Offline Fixture Support**: the runner still maps `sample/repo` cases to [`tests/fixtures/sample_repo`](../tests/fixtures/sample_repo) for hermetic tests; the committed dataset itself contains only litellm cases.
 
 #### 5. What alternatives exist and their trade-offs
 - *Alternative: Comma-Separated Values (CSV)*:
@@ -1214,56 +1214,49 @@ When evaluating an AI debugging assistant against historical bug reports, **data
 
 ---
 
-### Feature 7.2: Deterministic Metrics Engine (Citation Validity, Recall@k, Unsupported Claims)
+### Feature 7.2: Metrics Engine (metrics version 2)
 
 #### 1. What problem it solves
-Evaluating LLM output using "LLM-as-a-judge" self-ratings is noisy, expensive, and susceptible to sycophancy. More critically, an LLM judge cannot verify whether a cited line range actually exists in a physical repository snapshot. We need deterministic, reproducible mathematical metrics to measure performance.
+A benchmark is only useful if its numbers *could* come out badly. The first version of this engine could not: citation validity re-checked a report the validator had already filtered (always 100%), unsupported claims were hidden because the agent auto-attached evidence to uncited hypotheses (always 0), and "root-cause alignment" measured keyword overlap with the fix PR title, under which simply restating the issue scored 20/20 "correct". Version 2 measures what the *agent* decides.
 
 #### 2. What happens from input to output
-1. Given an [`InvestigationReport`](../src/issuelens/agent/report.py#L126) and ground-truth [`EvaluationCaseModel`](../src/issuelens/evaluation/dataset.py#L22):
-2. **Citation Validity Rate** is computed via [`compute_citation_validity()`](../src/issuelens/evaluation/metrics.py#L23):
-   - Every code citation is verified against physical file bytes in the pinned [`RepoSnapshot`](../src/issuelens/repository/snapshot.py#L79) using [`validate_investigation_report()`](../src/issuelens/agent/validator.py#L257).
-   - Rate = $\frac{\text{valid code citations}}{\text{total code citations}}$ (Benchmark gate: $\ge 95\%$).
-3. **Retrieval Recall@k and Hit@k** are computed via [`compute_recall_at_k()`](../src/issuelens/evaluation/metrics.py#L76):
-   - Compares unique ordered retrieved files against `expected_files` across ranks $k \in \{1, 3, 5, 10\}$.
-   - Recall@k = $\frac{\lvert\text{retrieved files} \cap \text{expected files}\rvert}{\lvert\text{expected files}\rvert}$ (Benchmark gate: $\ge 80\%$ at $k=5$).
-   - Hit@k = $1.0$ if at least one expected buggy file appears in top $k$, else $0.0$.
-4. **Unsupported Claims Count** is computed via [`compute_unsupported_claims()`](../src/issuelens/evaluation/metrics.py#L123):
-   - Counts hypotheses with empty supporting evidence IDs, references to nonexistent evidence IDs, or unverified citations (Benchmark gate: $< 0.5$ per report).
-5. **Root-Cause Alignment** is scored via [`score_root_cause_alignment()`](../src/issuelens/evaluation/metrics.py#L164):
-   - Computes weighted token overlap against `known_resolution` to classify diagnosis into `correct`, `partially_useful`, or `incorrect`.
-6. [`aggregate_evaluation_metrics()`](../src/issuelens/evaluation/metrics.py#L351) aggregates results across all cases, calculates dataset means, evaluates benchmark gates, and compiles failure notes.
+Given an [`InvestigationReport`](../src/issuelens/agent/report.py) and an [`EvaluationCaseModel`](../src/issuelens/evaluation/dataset.py), [`compute_evaluation_metrics()`](../src/issuelens/evaluation/metrics.py) computes:
+1. **LLM citation validity** (`compute_citation_validity()`): of the evidence IDs the LLM cited as support, the share that survived validation (`supporting_evidence_ids` vs the validator's `rejected_evidence_ids`). If nothing was cited the rate is `None`, not 100%.
+2. **Search Recall@k / Hit@k** (`retrieved_files_in_search_order()` + `compute_recall_at_k()`): expected files among the files the search tools returned, in retrieval order. This measures retrieval.
+3. **Diagnosis Hit@k** (`cited_files_in_rank_order()`): expected files among the files the hypotheses cite, ordered by hypothesis rank. This measures where the agent points.
+4. **Unsupported claims** (`compute_unsupported_claims()`): hypotheses whose validator-computed `support_status` is not `supported`.
+5. **Root-cause alignment** (`score_root_cause_alignment()`): `correct` if the top hypothesis is supported and cites an expected file, `partially_useful` if a lower-ranked supported one does, `insufficient_evidence` if none is supported, else `incorrect`.
+6. **Keyword overlap (diagnostic only)** (`keyword_overlap_score()`): the old score, shown next to the same score for the raw issue text so readers can see why it is not used.
+
+[`aggregate_evaluation_metrics()`](../src/issuelens/evaluation/metrics.py) averages quality metrics over *scored* cases (those that produced a report), reports failures as `completion_rate`, and evaluates all five targets in `benchmark_targets_met`.
 
 #### 3. Which files and functions participate
-- **Source file**: [`src/issuelens/evaluation/metrics.py`](../src/issuelens/evaluation/metrics.py)
-- **Core classes & functions**: `CaseEvaluationMetrics`, `AggregatedEvaluationReport`, `compute_citation_validity()`, `compute_recall_at_k()`, `compute_unsupported_claims()`, `score_root_cause_alignment()`, `aggregate_evaluation_metrics()`.
+- [`src/issuelens/evaluation/metrics.py`](../src/issuelens/evaluation/metrics.py): the functions above, `CaseEvaluationMetrics`, `AggregatedEvaluationReport`.
+- [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py): sets `support_status` and `rejected_evidence_ids`, which the metrics read.
+- Decision record: [ADR-013](decisions/ADR-013-evaluation-metric-redesign-and-leak-closure.md).
 
 #### 4. Why the implementation is structured this way
-- **Pure Functional Design**: Metric calculations are deterministic pure functions taking inputs and returning immutable results without side effects or network calls.
-- **Snapshot Byte Verification**: Rather than assuming valid citations, `compute_citation_validity` executes physical byte comparisons against repository snapshots via `read_snippet()`.
-- **Rank-Discounted Alignment**: Evaluates top-ranked hypotheses with higher weight than lower-ranked alternatives.
+- **Measure decisions, not plumbing**: the LLM picks evidence IDs; the system writes paths, lines and excerpts. So validity is measured on the IDs the model chose.
+- **File-level ground truth**: "did the agent point at the code the fix changed?" is objective and cheap to compute; it does not judge the explanation.
+- **Separate failure from quality**: a timeout is a reliability problem, not a 0% citation validity.
 
 #### 5. What alternatives exist and their trade-offs
-- *Alternative: LLM-as-a-judge scoring*:
-  - *Trade-off*: Requires paid API tokens, fluctuates between runs, and cannot verify file existence or line spans.
-- *Alternative: Execution-based test suites (SWE-bench)*:
-  - *Trade-off*: Running untrusted repo code in dev environments violates safety boundaries. Deterministic retrieval recall provides safe, zero-execution ground truth.
+- *LLM-as-a-judge on explanations*: would score reasoning, but costs tokens, varies between runs, and must use a different model from the agent. Not implemented; a candidate next step.
+- *Execution-based checks (SWE-bench style)*: would require running repository code, which violates the IssueLens safety boundary.
 
 #### 6. What can fail and how failures are handled
-- **Zero code citations**: Defaults citation validity to `1.0` while recording `total_code_citations=0`.
-- **Empty expected files list**: Defaults Recall@k and Hit@k to `1.0`.
-- **Failed investigation reports**: `compute_evaluation_metrics` emits a failed `CaseEvaluationMetrics` record with zero recall, preserving the failure reason without throwing unhandled exceptions.
+- **No citations**: rate is `None`; the case is excluded from the citation mean and counted in `cases_with_citations`.
+- **No expected files**: Recall/Hit are `0.0` (such a case cannot measure retrieval). *(v1 returned a perfect 1.0.)*
+- **Failed run / missing snapshot**: status `failed` or `snapshot_unavailable`, alignment `failed`; excluded from quality means.
 
 #### 7. How the feature is tested
-- **Test file**: [`tests/unit/test_eval_metrics.py`](../tests/unit/test_eval_metrics.py)
-- **Verifications**: Citation validity with/without snapshot, Recall@k and Hit@k across ranks, unsupported claim detection, root-cause scoring, and aggregate metrics.
-- **Run command**:
+- [`tests/unit/test_eval_metrics.py`](../tests/unit/test_eval_metrics.py) tests each metric with an input that should score badly, e.g. `test_citation_validity_counts_rejected_llm_citations`, `test_root_cause_restating_the_issue_is_not_correct`, `test_aggregate_excludes_failed_runs_from_quality_means`, `test_aggregate_checks_all_five_documented_targets`.
   ```powershell
-  uv run --offline pytest tests/unit/test_eval_metrics.py
+  uv run pytest tests/unit/test_eval_metrics.py
   ```
 
 #### 8. What a junior developer should learn from the implementation
-- Always decouple the *scoring engine* from the *agent runtime*. By designing metric functions as pure, deterministic transformers, you can unit-test your evaluation harness thoroughly without running slow LLM workflows.
+- Before trusting a metric, construct the input that should make it fail and check that it does. If no such input exists, the metric is measuring your code, not the model.
 
 ---
 
@@ -1281,7 +1274,7 @@ Engineers need a single, reliable command to run evaluation benchmarks, inspect 
 3. [`EvaluationRunner`](../src/issuelens/evaluation/run_eval.py#L33) executes investigations sequentially, measuring latency and catching unexpected per-case exceptions.
 4. When `--save-db` is specified, each case and its outcome are persisted to the `evaluation_cases` and `evaluation_results` tables via SQLAlchemy.
 5. All results are aggregated into an [`AggregatedEvaluationReport`](../src/issuelens/evaluation/metrics.py#L236).
-6. The runner writes machine-readable results to `evals/results.json` and prints a structured ASCII summary table to stdout showing benchmark gate outcomes.
+6. The runner writes results to `evals/results.json` in `--live` mode or `evals/results.mock.json` (git-ignored) in mock mode, with provenance (`issuelens_commit_sha`, `issuelens_tree_dirty`, `metrics_version`, config), and prints a summary of all five gates. Mock mode echoes ground truth and is labelled as a harness check, not a measurement.
 
 #### 3. Which files and functions participate
 - **Source file**: [`src/issuelens/evaluation/run_eval.py`](../src/issuelens/evaluation/run_eval.py)
@@ -1301,6 +1294,7 @@ Engineers need a single, reliable command to run evaluation benchmarks, inspect 
 
 #### 6. What can fail and how failures are handled
 - **Investigation Exception**: If an investigation throws (e.g. rate limit or timeout), `evaluate_case` catches the error, sets `status="failed"`, records `error_reason`, and proceeds to the next case.
+- **Pinned snapshot unavailable** (live mode): the case is recorded as `snapshot_unavailable` and the agent is not run.
 - **Database Write Failure**: Database save failures are logged as warnings without aborting the benchmark summary.
 
 #### 7. How the feature is tested

@@ -40,13 +40,18 @@ The IssueLens evaluation framework assesses investigation quality against histor
 - **Pre-Fix Commit Pinning**: The repository snapshot provided to the investigation service is pinned to `target_commit_sha` (the pre-fix parent commit).
 - **Double-Blind Scoring**: Ground-truth fix files and resolutions are stored exclusively in the evaluation dataset and are never exposed to the agent or injected into prompts.
 
-The live evaluation suite is benchmarked against 20 real, closed bug reports from `BerriAI/litellm` generated via `scripts/build_eval_set.py`. Across the live benchmark run (`gpt-4o-mini`), 17 of 20 cases completed successfully with 100% citation validity on all completed cases (0 hallucinated line ranges) and 70.6% correct root-cause diagnoses, while revealing realistic retrieval recall bounds (36.7% Recall@5) on a 244MB codebase. Full per-case results and methodology are documented in [`evals/README.md`](evals/README.md).
+The benchmark uses 20 real, closed bug reports from `BerriAI/litellm` generated via `scripts/build_eval_set.py`.
 
-### Reproducing Benchmark Runs Offline
+**Current status: no live results are published for the current code.** A post-build audit (2026-11-25) found that the previously published figures ("100% citation validity", "0 unsupported claims", "70.6% correct root cause") could not have come out differently under the old metrics, and that issue comments leaked into the agent's context. The metrics and leak controls were rebuilt ([ADR-013](docs/decisions/ADR-013-evaluation-metric-redesign-and-leak-closure.md)); the old run is kept as [`evals/results.legacy-v1.json`](evals/results.legacy-v1.json) for reference only. Methodology and metric definitions: [`evals/README.md`](evals/README.md).
 
-Run the offline benchmark suite using test doubles with zero network or LLM API calls:
+### Running the Benchmark
 
 ```bash
+# Live benchmark (uses LLM + GitHub credentials from .env) -> evals/results.json
+uv run python -m issuelens.evaluation.run_eval --live
+
+# Offline harness check (no network). Echoes ground truth, so its scores are NOT a
+# quality measurement -> evals/results.mock.json
 uv run python -m issuelens.evaluation.run_eval
 ```
 
@@ -194,7 +199,7 @@ issuelens/
   ├── evals/
   │   ├── README.md               # Benchmark methodology, targets, and baseline results
   │   ├── cases.jsonl             # 20 curated public Python bug cases
-  │   └── results.json            # Machine-readable benchmark baseline results
+  │   └── results.legacy-v1.json  # Superseded pre-audit run (metrics v1; reference only)
   ├── docs/
   │   ├── BUILD_SPECIFICATION.md  # Master product & engineering build specification
   │   ├── BUILD_LOG.md            # Engineering journal & verified debugging lessons

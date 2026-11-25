@@ -1,197 +1,157 @@
 # IssueLens Evaluation Benchmark Suite
 
-This directory contains the curated evaluation benchmark dataset, evaluation documentation, and baseline results for **IssueLens**.
+This directory contains the benchmark dataset, its documentation, and recorded results for **IssueLens**.
+
+> **Status (2026-11-25):** the harness and metrics were rebuilt after a post-build audit found that the previously published numbers could not have come out differently (see [Section 7](#7-results) and [ADR-013](../docs/decisions/ADR-013-evaluation-metric-redesign-and-leak-closure.md)). **No live run has been recorded with the current code yet.** The earlier run is kept as [`results.legacy-v1.json`](results.legacy-v1.json) for reference only.
 
 ---
 
 ## 1. Purpose & Guiding Principles
 
-The IssueLens evaluation framework measures investigation quality against real-world bug reports under defined experimental controls:
-1. **Reproducibility**: Every evaluation case pins an exact pre-fix commit SHA (`target_commit_sha`).
-2. **Retrospective Leak Prevention**: Ground truth resolutions, fix pull requests, and solution commits are withheld from the agent.
-3. **Deterministic Verification**: Every cited code snippet is verified against physical file bytes in the pinned snapshot.
+1. **Reproducibility**: every case pins the pre-fix commit (`target_commit_sha`); results record the IssueLens commit, whether the working tree was dirty, the metrics version and key configuration.
+2. **Leak prevention**: the resolving PR, fix commit, issue comments and closed state are withheld from the agent (Section 2).
+3. **Metrics that can fail**: every metric is tested with an input that should score badly (Section 4).
 
 ---
 
 ## 2. Retrospective Leak-Prevention Protocol
 
-When testing an agent against historical bug reports, data leakage can invalidate results. If the agent accesses the resolving pull request, post-fix commits, or issue comments discussing the merged fix, it can copy the solution rather than investigating the issue from observed symptoms.
+If the agent can see the fix (the PR, the post-fix code, or comments discussing it), it can copy the answer instead of investigating.
 
 ```text
                +-------------------------------------------+
                | Historical GitHub Bug Report              |
-               | (e.g. BerriAI/litellm#...)                |
                +-------------------------------------------+
                                      |
                +---------------------+---------------------+
                |                                           |
                v                                           v
-    [VISIBLE TO AGENT]                        [WITHHELD GROUND TRUTH]
-    - Issue title & description               - Resolving Pull Request
-    - Pinned Pre-Fix Snapshot (Commit N-1)    - Bugfix Commit SHA
-    - Codebase in broken state                - Expected files & Known resolution
+    [VISIBLE TO AGENT]                        [WITHHELD]
+    - Issue title & body as frozen in         - Resolving PR and fix commit
+      cases.jsonl                             - All issue comments
+    - Issue presented as "open"               - Closed state / closed_at
+    - Pre-fix snapshot (parents[0] of merge)  - expected_files, known_resolution
 ```
 
-### Leakage Defense Rules:
-- **Pre-Fix Commit Pinning**: The repository snapshot provided to the investigation service is checked out strictly at `target_commit_sha` (the parent commit of the resolving pull request).
-- **PR Target Rejection**: The GitHub adapter validates that target inputs are issues and rejects pull request objects.
-- **Double-Blind Scoring**: Ground truth labels (`expected_files` and `known_resolution`) are kept exclusively in the evaluation harness and are never passed to the agent or injected into prompts.
+What the live runner actually does ([`run_eval.py`](../src/issuelens/evaluation/run_eval.py)):
+
+| Control | Implementation |
+| :--- | :--- |
+| Pre-fix snapshot | `create_live_snapshot_resolver()` loads/downloads the archive at `target_commit_sha`; the service is also called with `commit_sha=target_commit_sha`. |
+| No fallback to post-fix code | The live runner uses `require_snapshot=True`: if the pinned snapshot cannot be loaded, the case is recorded as `snapshot_unavailable` and the agent is not run. (Before the audit it silently investigated the default branch, which contains the fix.) |
+| Comments withheld | `EvaluationGitHubClient.withhold_post_report_information()` sets `comments=[]`. (Before the audit, up to 100 comments reached the prompt and the document index.) |
+| Issue text frozen | Title/body come from `cases.jsonl` (`issue_title`, `issue_body`, body truncated to 3,000 characters at collection time) rather than the live issue, which may have been edited after the fix. |
+| Closed state hidden | The issue is presented with `state="open"`, `closed_at=None`. |
+| PR targets rejected | The GitHub adapter rejects pull-request numbers as investigation targets. |
+| Ground truth never passed | `expected_files` and `known_resolution` are only used for scoring (`test_evaluation_runner_withholds_ground_truth_from_agent`). |
+
+Not controlled: the foundation model may have seen these public issues or fixes during pre-training (Section 8).
 
 ---
 
 ## 3. Benchmark Dataset (`evals/cases.jsonl`)
 
-The initial benchmark suite comprised 20 cases: 19 public GitHub issues across open-source libraries and 1 local fixture (`sample/repo`).
-
-The benchmark is refreshed to draw exclusively from real, closed bug reports in `BerriAI/litellm`. Cases are generated using `scripts/build_eval_set.py` via the GitHub API, applying strict qualification criteria:
-1. Issue is in `BerriAI/litellm`, closed, and labeled `bug`.
-2. A merged pull request links to the issue with resolution keywords (`fixes #N`, `closes #N`, `resolves #N`).
-3. The resolving PR modifies 1 to 3 non-test, non-documentation Python files.
-4. The issue body describes a concrete error message, crash, or unexpected behavior.
-5. The `target_commit_sha` is pinned to the immediate parent of the PR merge commit (`parents[0]["sha"]`).
-
-### Dataset Generation Procedure & Exact Queries
-
-The dataset is generated via the GitHub REST API using `scripts/build_eval_set.py`:
+20 closed bug reports from `BerriAI/litellm`, generated with [`scripts/build_eval_set.py`](../scripts/build_eval_set.py):
 
 ```bash
 uv run python scripts/build_eval_set.py --output evals/cases.jsonl --limit 20 --max-per-module 6
 ```
 
-**Exact GitHub API Queries:**
-1. **Candidate Bug Issues**:
-   `GET https://api.github.com/repos/BerriAI/litellm/issues?state=closed&labels=bug&sort=updated&direction=desc&per_page=100`
-   Filters out pull request items (`"pull_request" not in item`) and confirms that the issue description contains concrete failure symptoms (traceback, exception, crash, error message).
-2. **Linked Merged PR Discovery**:
-   `GET https://api.github.com/search/issues?q=repo:BerriAI/litellm+type:pr+is:merged+{issue_number}`
-   Verifies closing keyword patterns in PR body and commits.
-3. **Changed File Bounds**:
-   `GET https://api.github.com/repos/BerriAI/litellm/pulls/{pr_number}/files`
-   Filters out tests, docs, and configs, requiring 1 to 3 non-test Python files as `expected_files`.
-4. **Pre-Fix Target Commit Pinning**:
-   `GET https://api.github.com/repos/BerriAI/litellm/commits/{pr.merge_commit_sha}` -> extracts `parents[0]["sha"]` as `target_commit_sha`.
-   `GET https://api.github.com/repos/BerriAI/litellm/commits/{target_commit_sha}` -> confirms the pre-fix snapshot commit exists (HTTP 200).
+Selection rules as implemented (after the audit):
+
+1. **Candidates**: five keyword searches (`router`, `cache`, `caching`, `budget`, `cost`) over closed `bug` issues, then up to 6 pages of `GET /repos/BerriAI/litellm/issues?state=closed&labels=bug&sort=updated&direction=desc&per_page=100`. Pull requests are filtered out.
+2. **Concrete symptom** in the issue body: a traceback or named exception, an HTTP 4xx/5xx, crash/hang, dropped/missing/ignored value, or expected-vs-actual wording (`has_concrete_symptom()`).
+3. **Linked merged PR** found via `GET /search/issues?q=repo:BerriAI/litellm+type:pr+is:merged+{issue}` whose title or body uses a GitHub closing keyword (`fixes/closes/resolves #N`). A bare `#N` mention does not count (`pr_closes_issue()`).
+4. **Size**: the PR touches 1–3 non-test, non-docs Python files (all pages of `GET /pulls/{n}/files`).
+5. **Ground truth** `expected_files`: those files *as they exist at the pre-fix commit*. Files the PR added are excluded, renamed files use their previous name (`pre_fix_expected_files()`).
+6. **Pre-fix commit**: `parents[0]` of the PR merge commit, confirmed to exist.
+
+Audit of the committed cases against these rules (2026-11-25, read-only GitHub API calls): all 20 use a closing keyword and pass the symptom rule; CASE-017 and CASE-020 listed a file their fix created (`litellm/llms/sap/chat/reasoning.py`, `litellm/responses/instructions_length.py`, both absent at the pinned commit), which were removed from `expected_files`.
 
 ---
 
-## 4. Evaluation Metrics & Targets
+## 4. Evaluation Metrics & Targets (metrics version 2)
 
-IssueLens measures five primary quality metrics:
+Implemented in [`metrics.py`](../src/issuelens/evaluation/metrics.py). Quality means are computed over **scored cases** (runs that produced a report); failed runs are reported separately as the completion rate.
 
-| Metric | Computation | Target Benchmark |
+| Metric | Computation | Target |
 | :--- | :--- | :--- |
-| **Citation Validity Rate** | $\frac{\text{valid code citations}}{\text{total code citations}}$ verified against snapshot bytes | $\ge 95\%$ |
-| **Retrieval Recall@k** | $\frac{\lvert\text{retrieved files} \cap \text{expected files}\rvert}{\lvert\text{expected files}\rvert}$ at rank $k \in \{1, 3, 5\}$ | $\ge 80\%$ at $k=5$ |
-| **Retrieval Hit@k** | $1.0$ if at least one expected buggy file is in top $k$, else $0.0$ | $\ge 90\%$ at $k=5$ |
-| **Unsupported Claims** | Count of hypotheses with empty citations or dangling evidence IDs | $< 0.5$ per report |
-| **Root-Cause Alignment** | Heuristic rubric classification: `correct`, `partially_useful`, `incorrect` | $\ge 70\%$ correct/partial |
+| **Root-cause useful rate** | Share of scored cases where a supported hypothesis cites a file the fix changed: `correct` = the top hypothesis does, `partially_useful` = a lower-ranked one does, `incorrect` = none does, `insufficient_evidence` = no hypothesis is supported. | `>= 70%` correct + partial |
+| **LLM citation validity** | Of the evidence IDs the LLM cited as support, the share that passed validation (`supporting_evidence_ids` vs `rejected_evidence_ids`). Cases with no citations are excluded and counted separately. | `>= 95%` |
+| **Unsupported claims** | Hypotheses per report that the validator could not ground in repository evidence (`support_status != "supported"`). | `< 0.5` per report |
+| **Search Recall@k / Hit@k** | Expected files among the top *k* files the **search tools** returned (retrieval order). Measures retrieval, not the diagnosis. | Recall@5 `>= 80%`, Hit@5 `>= 90%` |
+| **Diagnosis Hit@k** | Expected file among the top *k* files the **hypotheses cite**, in hypothesis rank order. | reported, no target |
+| *Keyword overlap (diagnostic)* | Share of the fix PR title's keywords found in the hypotheses, shown next to the same score for the raw issue text ("issue echo baseline"). | not a quality metric |
+
+All five targets are computed in `benchmark_targets_met`.
+
+Limits of these metrics: file-level alignment says whether the agent pointed at the right code, not whether its explanation is right. An LLM-judge or human rubric for explanations is **not implemented**.
 
 ---
 
 ## 5. Running the Evaluation Harness
 
-### 1. Offline Hermetic Benchmark Run (Default)
-Run the benchmark suite offline using hermetic test doubles and local fixtures. This verifies metric calculations, citation checks, and benchmark target gates in milliseconds with zero API costs:
+### Live benchmark (`--live`)
+Uses the LLM provider and GitHub token configured in `.env` and writes `evals/results.json`:
 
 ```bash
-# Run all 20 cases in offline mock mode (default)
-uv run python -m issuelens.evaluation.run_eval
+uv run python -m issuelens.evaluation.run_eval --live --case-id CASE-001
+uv run python -m issuelens.evaluation.run_eval --live            # all 20 cases
+uv run python -m issuelens.evaluation.run_eval --live --save-db  # also persist to the database
+```
 
-# Limit to first 3 cases
+Cost/latency: each case makes 1 to `MAX_RETRIEVAL_ROUNDS` LLM calls (initial hypotheses + one re-evaluation per follow-up round that found new evidence; see [ADR-012](../docs/decisions/ADR-012-llm-hypothesis-reevaluation-loop.md)).
+
+### Mock mode (default, offline): harness check only
+```bash
 uv run python -m issuelens.evaluation.run_eval --max-cases 3
 ```
+`MockInvestigationService` returns each case's **own ground truth** as the report, so every quality metric is perfect by construction. It checks that loading, metrics, and serialization run end to end; it is **not** a measurement. Output goes to `evals/results.mock.json` (git-ignored) with a warning, so it cannot overwrite live results.
 
-### 2. Live Agent Benchmark Run (`--live`)
-Execute full LangGraph agent investigations against real repositories at pre-fix commit SHAs using the LLM provider and GitHub token configured in `.env`:
-
+### Options
 ```bash
-# Evaluate a single case (e.g. local fixture case CASE-020 or public case CASE-001)
-uv run python -m issuelens.evaluation.run_eval --live --case-id CASE-020
-
-# Evaluate a small live batch with database persistence
-uv run python -m issuelens.evaluation.run_eval --live --max-cases 2 --save-db
-```
-
-### 3. Common CLI Options
-
-```bash
-# Evaluate a specific case ID
-uv run python -m issuelens.evaluation.run_eval --case-id CASE-001
-
-# Limit to first N cases
-uv run python -m issuelens.evaluation.run_eval --max-cases 5
-
-# Custom input dataset and output report path
-uv run python -m issuelens.evaluation.run_eval --cases-path evals/cases.jsonl --output evals/my_results.json
-
-# Persist evaluation runs to PostgreSQL / SQLite database
-uv run python -m issuelens.evaluation.run_eval --save-db
-
-# Custom Recall@k rank cutoffs
-uv run python -m issuelens.evaluation.run_eval --k-values 1,3,5,10
+--case-id CASE-001        # single case
+--max-cases 5             # first N cases
+--cases-path PATH         # alternate dataset
+--output PATH             # alternate output file
+--k-values 1,3,5,10       # ranks for Recall/Hit@k
 ```
 
 ---
 
-## 6. Output Artifact (`evals/results.json`)
+## 6. Output Artifact
 
-The evaluation runner produces a structured JSON artifact containing:
-- `total_cases`, `completed_cases`, `failed_cases`, `insufficient_evidence_cases`
-- `mean_citation_validity`, `mean_recall_at_k`, `mean_hit_at_k`
-- `mean_unsupported_claims`, `mean_latency_seconds`
-- `root_cause_distribution`
-- `benchmark_targets_met`: dictionary indicating whether the run met the acceptance criteria
-- Per-case diagnostic records (`case_metrics`)
-- `failure_notes` highlighting regressions or invalid citations
+`evals/results.json` (live) contains:
+- Provenance: `mode`, `run_timestamp`, `model_name`, `issuelens_commit_sha`, `issuelens_tree_dirty`, `metrics_version`, `config` (provider, model, rounds, LLM timeout, token cap).
+- Aggregates: `total_cases`, `scored_cases`, `completion_rate`, `completed_cases`, `insufficient_evidence_cases`, `failed_cases`, `root_cause_useful_rate`, `mean_citation_validity`, `cases_with_citations`, `mean_unsupported_claims`, `mean_search_recall_at_k`, `mean_search_hit_at_k`, `mean_diagnosis_hit_at_k`, `mean_keyword_overlap`, `mean_issue_echo_keyword_overlap`, `root_cause_distribution`, `benchmark_targets_met`.
+- Per-case `case_metrics` and `failure_notes`.
+
+A result is reproducible only if `issuelens_tree_dirty` is `false`.
 
 ---
 
-## 7. Baseline Evaluation Results
+## 7. Results
 
-The live evaluation suite was executed across all 20 `BerriAI/litellm` benchmark cases using live GitHub API retrieval, commit-pinned local snapshots, and OpenAI `gpt-4o-mini`. Complete unedited results are persisted in [`evals/results.json`](results.json).
+**Current code: no live run recorded yet.** Run `--live` on a clean, committed tree and commit the resulting `evals/results.json` together with this section.
 
-### Execution Metadata
-- **Execution Mode**: `live`
-- **Run Timestamp**: `2026-11-24T10:05:11.594394+00:00`
-- **Model**: `gpt-4o-mini`
-- **IssueLens Commit SHA**: `8756e7491bd09fe942a43fc8446259c80a26f7a0`
-- **Total Cases**: 20
-- **Completed Cases**: 17 (85.0%)
-- **Failed Cases**: 3 (15.0% due to upstream OpenAI API request timeouts)
-- **Mean Case Latency**: 149.35s
+### Legacy run (metrics v1, superseded): `results.legacy-v1.json`
+Recorded 2026-11-24 with `gpt-4o-mini` and the code before the audit. Its headline numbers (17/20 completed, "100% citation validity on completed cases", "0.00 unsupported claims", "70.6% correct root cause", Recall@5 36.7%) **should not be cited as evidence of quality**:
 
-### Measured Performance vs Targets
+- **Citation validity 100% / unsupported claims 0.00** could not have been otherwise: the metric re-checked a report the validator had already filtered, the LLM never wrote paths or excerpts, and uncited hypotheses were auto-assigned evidence.
+- **Root-cause "correct"** was keyword overlap with the fix PR title. Scoring the raw issue text the same way gives 20/20 "correct", versus the agent's 12/20.
+- **Recall@k** scored the lexical search order, not the diagnosis. Recall@3 = Recall@5 was coincidental (no expected file ranked 4th or 5th).
+- **Leakage**: issue comments (often discussing the fix) were passed to the agent, and a failed snapshot download would have fallen back to the post-fix default branch.
+- **Provenance**: the recorded `issuelens_commit_sha` (`8756e74`) predates the committed dataset and generator; the run came from an uncommitted working tree (only `run_eval.py` differed in `src/`).
+- Two cases' ground truth included files that do not exist at the pre-fix commit.
 
-| Metric | Measured Baseline (20 Cases) | Benchmark Target | Target Status |
-| :--- | :--- | :--- | :--- |
-| **Citation Validity Rate** | **85.0%** (100.0% on completed cases) | $\ge 95\%$ | **FAIL** (Overall mean lowered by 3 API timeouts; 0 invalid citations on completed cases) |
-| **Unsupported Claims** | **0.00** per report | $< 0.50$ | **PASS** (Zero hallucinated citations or ungrounded claims) |
-| **Retrieval Recall@1** | **24.2%** | — | — |
-| **Retrieval Recall@3** | **36.7%** | — | — |
-| **Retrieval Recall@5** | **36.7%** | $\ge 80\%$ | **FAIL** (Reflects search complexity across 244MB codebase) |
-| **Retrieval Recall@10** | **41.7%** | — | — |
-| **Retrieval Hit@1** | **30.0%** | — | — |
-| **Retrieval Hit@3** | **45.0%** | — | — |
-| **Retrieval Hit@5** | **45.0%** | $\ge 90\%$ | **FAIL** |
-| **Retrieval Hit@10** | **50.0%** | — | — |
-
-### Root-Cause Alignment Distribution
-- **Correct**: 12 cases (60.0% of total, 70.6% of completed cases)
-- **Partially Useful**: 4 cases (20.0% of total, 23.5% of completed cases)
-- **Incorrect**: 4 cases (20.0% of total, including 3 API timeouts + CASE-009)
-
-### Failed Cases Breakdown
-Three cases failed due to upstream LLM request timeouts during complex cyclic investigation rounds:
-- **CASE-006** (`BerriAI/litellm#38816`): `LLM request timed out: Request timed out.`
-- **CASE-013** (`BerriAI/litellm#48729`): `LLM request timed out: Request timed out.`
-- **CASE-019** (`BerriAI/litellm#24659`): `LLM request timed out: Request timed out.`
+The file is kept unchanged as a historical record. Its field names follow metrics v1.
 
 ---
 
 ## 8. Limitations & Methodological Caveats
 
-1. **Dataset Scope**: The benchmark suite comprises 20 cases derived from a single repository (`BerriAI/litellm`). While covering multiple submodules (routing, proxy, caching, providers, and spend tracking), 20 cases form a small sample size that may not capture all real-world bug archetypes.
-2. **Selection Criteria**: Cases were filtered to closed bug reports with merged pull requests modifying 1 to 3 non-test, non-doc Python files and containing concrete symptom descriptions. Bugs spanning many files, architectural rewrites, documentation-only issues, or non-reproducible race conditions are excluded from this benchmark.
-3. **Potential Pre-training Data Contamination**: `BerriAI/litellm` is a widely known public repository. Although strict retrospective leak-prevention mechanisms withhold the resolving pull request, fix commit, and solution comments from the agent, the underlying foundation model (`gpt-4o-mini`) may have encountered aspects of these issues or discussions in its pre-training corpus. Results on private codebases or newly submitted issues may differ.
-4. **Upstream LLM Timeout Sensitivity**: Multi-round cyclic investigations on large codebases involve multiple LLM invocations and long contexts, which can be vulnerable to transient API timeouts without exponential backoff retry tiers across separate provider endpoints.
-
+1. **Small, single-repository sample**: 20 cases from `BerriAI/litellm`. Differences of a few cases are noise.
+2. **Selection bias**: only bugs fixed by PRs touching 1–3 Python files with a clear symptom.
+3. **Pre-training contamination**: the foundation model may have seen these public issues or fixes.
+4. **File-level ground truth**: a fix may touch files that are not the root cause (and vice versa); explanation quality is not scored.
+5. **Upstream timeouts**: multi-call investigations on a large repository can hit provider timeouts (`LLM_TIMEOUT_SECONDS`, default 120); those cases count against the completion rate, not quality.

@@ -103,7 +103,7 @@ When evaluating an AI debugging assistant against historical, resolved bug repor
 - If the agent inspects the repository at the `HEAD` commit (which already includes the fix), the bug will not exist in the inspected code.
 
 #### Leakage Protection Measures:
-1. **Withhold Fix Commit & PR**: The evaluation runner completely withholds all pull requests, fix commits, and subsequent issue comments containing references to the resolving PR or commit SHA.
+1. **Withhold Fix Commit, PR, Comments, and Closed State**: PR numbers are rejected as targets; in live mode `EvaluationGitHubClient` removes all issue comments, presents the issue as open, and uses the issue text frozen in `cases.jsonl`. A missing pinned snapshot fails the case (`snapshot_unavailable`) instead of falling back to the default branch. (Comments were passed to the agent until the 2026-11-25 audit.)
 2. **Pre-Fix Commit Pinning**: Every evaluation case in `evals/cases.jsonl` explicitly records the `target_commit_sha`: the commit immediately preceding the merged fix. The repository snapshot is pinned strictly to this pre-fix SHA.
 3. **Double-Blind Evaluation**: The agent operates strictly with the initial issue description and pre-fix snapshot. The known resolution and expected relevant files are stored exclusively in the evaluation harness as ground truth labels, completely invisible to the agent.
 
@@ -116,37 +116,30 @@ sequenceDiagram
     Note over EvalHarness: Load Case from evals/cases.jsonl<br/>(Issue #123, Pre-Fix SHA: 7f8a9b...)
     Note over EvalHarness: WITHHOLD ground truth:<br/>- resolving PR #125<br/>- fix commit 8e9f0a...<br/>- post-fix comments
     
-    EvalHarness->>Agent: investigate(target_or_url=issue_url, snapshot=pre_fix_snapshot)
+    EvalHarness->>Agent: investigate(issue_url, snapshot=pre_fix_snapshot, commit_sha=pre_fix_sha)
     Agent->>Repo: Bounded Search & AST Retrieval
     Repo-->>Agent: Code Evidence (Pre-Fix State)
     Agent-->>EvalHarness: Generated InvestigationReport
     
-    Note over EvalHarness: Compare Generated Report against Ground Truth:<br/>1. Are expected buggy files cited? (Recall@k)<br/>2. Did citations match snapshot? (Citation Validity)<br/>3. Are claims backed by evidence? (Unsupported Claims)
+    Note over EvalHarness: Compare against ground truth:<br/>1. Do supported hypotheses cite a fixed file? (Root-cause alignment)<br/>2. Did LLM-cited evidence IDs pass validation? (Citation validity)<br/>3. Are hypotheses grounded? (Unsupported claims)<br/>4. Did search return the fixed files? (Search Recall@k)
 ```
 
-### 3.2 Evaluation Metrics & Computation
+### 3.2 Evaluation Metrics & Computation (metrics version 2)
 
-The Phase 7 benchmark evaluates the following quantitative metrics:
-
-| Metric | Definition & Computation | Target Benchmark |
-| :--- | :--- | :--- |
-| **Citation Validity Rate** | `valid_code_citations / total_code_citations`. Fraction of citations whose path and line range exist and whose excerpt matches physical bytes in the snapshot. | `>= 95%` |
-| **Retrieval Recall@k** | $\frac{\lvert\text{retrieved files} \cap \text{expected files}\rvert}{\lvert\text{expected files}\rvert}$. Whether ground-truth buggy files appear in the top $k$ retrieved code hits ($k \in \{1, 3, 5, 10\}$). | `>= 80%` (at $k=5$) |
-| **Retrieval Hit@k** | $1.0$ if at least one expected buggy file appears in top $k$, else $0.0$. | `>= 90%` (at $k=5$) |
-| **Unsupported Claim Count** | Number of factual assertions in `observed_facts` or `hypotheses` not backed by valid retrieved evidence items. | `< 0.5` per report |
-| **Root-Cause Alignment** | Categorical rubric alignment (`correct`, `partially_useful`, `incorrect`, `insufficient_evidence`) scoring keyword overlap against `known_resolution`. | `>= 70%` correct/partial |
+Definitions and targets are maintained in [`evals/README.md` Section 4](../../evals/README.md#4-evaluation-metrics--targets-metrics-version-2) (single source of truth) and implemented in [`metrics.py`](../../src/issuelens/evaluation/metrics.py). Summary: root-cause useful rate (file-based, `>= 70%`), LLM citation validity over cited IDs (`>= 95%`), unsupported claims (`< 0.5`/report), Search Recall@5 (`>= 80%`) and Hit@5 (`>= 90%`), plus Diagnosis Hit@k and a keyword-overlap diagnostic with an issue-echo baseline. Quality means exclude failed runs, which are reported as the completion rate. See [ADR-013](../decisions/ADR-013-evaluation-metric-redesign-and-leak-closure.md) for why v1 metrics were replaced.
 
 ### 3.3 Evaluation Runner CLI & Machine-Readable Output
 
 The benchmark harness is executed via CLI:
 
 ```powershell
-uv run --offline python -m issuelens.evaluation.run_eval --cases-path evals/cases.jsonl --output evals/results.json
+uv run python -m issuelens.evaluation.run_eval --live            # writes evals/results.json
+uv run python -m issuelens.evaluation.run_eval                   # mock harness check -> evals/results.mock.json
 ```
 
 Outputs include:
 1. **Console Summary Table**: Displays total cases, status counts, citation validity rate, Recall@k breakdown, and failure notes.
-2. **Machine-Readable JSON Artifact (`evals/results.json`)**: Emits complete case-by-case metrics and aggregate summaries for regression tracking.
+2. **Machine-Readable JSON Artifact**: `evals/results.json` (live) or `evals/results.mock.json` (mock, git-ignored, carries a warning that its metrics echo ground truth). Includes provenance: commit SHA, dirty-tree flag, metrics version, config.
 3. **Database Records**: When `--save-db` is specified, records are persisted to `evaluation_cases` and `evaluation_results` tables.
 
 ---
