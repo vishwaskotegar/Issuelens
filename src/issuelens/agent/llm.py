@@ -177,7 +177,7 @@ def create_langchain_chat_model(settings: Settings) -> BaseChatModel:
             model_name=settings.llm_model or DEFAULT_ANTHROPIC_MODEL,
             api_key=api_key_secret,
             timeout=float(settings.llm_timeout_seconds),
-            max_tokens=settings.max_report_tokens,
+            max_tokens_to_sample=settings.max_report_tokens,
             max_retries=2,
             stop=None,
         )
