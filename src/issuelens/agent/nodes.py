@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -111,6 +111,24 @@ def get_context_from_state(state: InvestigationState) -> GitHubIssueContext:
         comments=comments,
         fetched_at=datetime.now(UTC),
     )
+
+
+_EVIDENCE_ID_SUFFIX = re.compile(r"_(\d+)$")
+
+
+def next_evidence_index(evidence: Sequence[Mapping[str, Any]]) -> int:
+    """Return the next unused numeric suffix across *all* evidence IDs.
+
+    Code (``ev_N``) and document (``doc_ev_N``) evidence share one counter. Deriving the
+    index from ``len(evidence)`` reissued existing IDs whenever a deduplicated hit had
+    already consumed a number, and the validator then could not tell the items apart.
+    """
+    highest = 0
+    for item in evidence:
+        match = _EVIDENCE_ID_SUFFIX.search(str(item.get("evidence_id", "")))
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return highest + 1
 
 
 def decide_next_step(
@@ -364,7 +382,7 @@ class InvestigationNodes:
                         doc_hits = self.doc_retriever.retrieve_documents(
                             query=query,
                             max_results=5,
-                            start_evidence_idx=len(evidence_items) + 1,
+                            start_evidence_idx=next_evidence_index(evidence_items),
                         )
                         for d_hit in doc_hits:
                             evidence_items.append(d_hit.model_dump())
@@ -431,34 +449,9 @@ class InvestigationNodes:
             for h in payload.hypotheses:
                 hd = h.model_dump()
                 hd["support_status"] = "tentative"
-                if not hd.get("supporting_evidence_ids"):
-                    # Auto-ground to matching evidence if LLM omitted citation
-                    expl_lower = f"{hd.get('title', '')} {hd.get('explanation', '')}".lower()
-                    matched = [
-                        e.evidence_id
-                        for e in evidence_items
-                        if e.source_type == "code"
-                        and (
-                            Path(e.path_or_url).stem.lower() in expl_lower
-                            or Path(e.path_or_url).name.lower() in expl_lower
-                        )
-                    ]
-                    if matched:
-                        hd["supporting_evidence_ids"] = matched[:2]
-                    elif evidence_items:
-                        code_evs = [
-                            e.evidence_id for e in evidence_items if e.source_type == "code"
-                        ]
-                        if code_evs:
-                            hd["supporting_evidence_ids"] = [code_evs[0]]
-                        else:
-                            hd["supporting_evidence_ids"] = [evidence_items[0].evidence_id]
-
-                # Ensure hypotheses grounded in code evidence are not marked low confidence
-                if hd.get("supporting_evidence_ids") and hd.get("confidence") == "low":
-                    hd["confidence"] = "medium"
-                    if not hd.get("confidence_rationale"):
-                        hd["confidence_rationale"] = "Grounded in retrieved repository code."
+                # Citations and confidence are kept exactly as the LLM produced them.
+                # Never attach evidence the model did not cite: the validator must see
+                # uncited hypotheses so the citation guardrail can demote them.
                 hypotheses_dicts.append(hd)
 
             missing_info = list(payload.missing_information)
@@ -614,7 +607,7 @@ class InvestigationNodes:
                 for hit in hits:
                     if (hit.path, hit.start_line) not in existing_keys:
                         new_item = EvidenceItem(
-                            evidence_id=f"ev_{len(evidence) + 1}",
+                            evidence_id=f"ev_{next_evidence_index(evidence)}",
                             source_type=classify_path(hit.path),
                             path_or_url=hit.path,
                             start_line=hit.start_line,
@@ -632,10 +625,11 @@ class InvestigationNodes:
                         doc_hits = self.doc_retriever.retrieve_documents(
                             query=executed_query,
                             max_results=3,
-                            start_evidence_idx=len(evidence) + 1,
                         )
                         for d_hit in doc_hits:
                             if (d_hit.path_or_url, d_hit.start_line) not in existing_keys:
+                                # Mint the ID only for hits we keep, from the shared counter.
+                                d_hit.evidence_id = f"doc_ev_{next_evidence_index(evidence)}"
                                 evidence.append(d_hit.model_dump())
                                 existing_keys.add((d_hit.path_or_url, d_hit.start_line))
                                 new_evidence_count += 1
