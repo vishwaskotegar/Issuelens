@@ -785,7 +785,8 @@ Large language models routinely hallucinate file paths, cite lines outside file 
 3. Verifies `commit_sha` matches the snapshot's pinned SHA.
 4. Verifies file exists in `snapshot.list_files()`.
 5. Verifies `1 <= start_line <= end_line <= total_file_lines`.
-6. Extracts physical bytes using [`read_snippet()`](../src/issuelens/repository/snippets.py#L7), normalizes whitespace, and verifies that the claimed excerpt matches disk bytes via [`excerpts_match()`](../src/issuelens/agent/validator.py#L84).
+6. Reads the *entire* cited range from disk using [`read_snippet()`](../src/issuelens/repository/snippets.py) (ranges over `MAX_VALIDATED_RANGE_LINES` = 1000 are rejected rather than truncated) and requires the excerpt to equal those lines exactly via `excerpts_match()`. Only trailing whitespace, blank lines, and `N: ` line-number prefixes are ignored; leading indentation is ignored only for `documentation` evidence. A fragment of a line, a subset of the range, or extra lines outside the range all fail. (Before the post-build audit this was a two-way substring check after stripping all whitespace, so a one-word excerpt could "verify" a 50-line range.)
+   - `issue` and `commit` evidence is not read from the snapshot. It is accepted as *context* but, being untrusted user input, can never ground a hypothesis (see the report-level rules below).
 7. Emits a [`CitationValidationResult`](../src/issuelens/agent/validator.py#L24) with boolean flags and failure explanations.
 
 #### 3. Which files and functions participate
@@ -826,13 +827,15 @@ When some citations in a report are valid while others are invalid, blindly fail
 
 #### 2. What happens from input to output
 1. [`validate_investigation_report()`](../src/issuelens/agent/validator.py#L257) validates all citations in `report.evidence`.
-2. Computes the set of verified evidence IDs (`valid_ids`).
+2. Rejects every evidence item whose `evidence_id` appears more than once (an ID must identify exactly one item, otherwise a valid item could vouch for an invalid twin), then computes the set of verified evidence IDs (`valid_ids`) and the subset read from the repository snapshot (`repository_ids`: `code` and `documentation` only).
 3. Invalid citations are pruned from `report.evidence`.
 4. For each hypothesis:
    - Purges ungrounded citation IDs from `supporting_evidence_ids`.
    - If 0 valid citations remain (or if citations were empty): demotes `confidence` to `"low"`, flags the hypothesis as ungrounded, and appends an explanatory warning to `confidence_rationale`.
+   - If its only valid citations are issue/commit text: same demotion. Issue text is attacker-controllable and often just restates the reporter's guess.
+   - The agent never adds citations on the LLM's behalf. (An earlier version of `form_hypotheses()` in [`nodes.py`](../src/issuelens/agent/nodes.py) attached `ev_1` to uncited hypotheses and bumped `low` to `medium`, which made this guardrail impossible to trigger; it was removed in the post-build audit.)
    - If partial citations remain: retains valid citations and notes pruned IDs.
-5. If zero code citations exist, all hypotheses lack supporting evidence, or all hypotheses carry low confidence:
+5. If no repository (code/documentation) citation verifies, all hypotheses lack supporting evidence, or all hypotheses carry low confidence:
    - Prepends `[INSUFFICIENT EVIDENCE]` to `summary`.
    - Appends warnings to `missing_information` and `limitations`.
    - Sets `verification_status="not_run"`.

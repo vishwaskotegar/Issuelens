@@ -126,7 +126,9 @@ flowchart TD
 - **Implemented Defenses**:
   - **Physical Byte Verification**: [`validate_citation()`](../../src/issuelens/agent/validator.py#L109) checks every code citation against the physical file on disk at the pinned commit SHA.
   - **Line Boundary Validation**: Asserts `1 <= start_line <= end_line <= total_file_lines`.
-  - **Normalized Excerpt Matching**: Excerpts are extracted directly from the snapshot via [`read_snippet()`](../../src/issuelens/repository/snippets.py#L7) and compared line-by-line using [`excerpts_match()`](../../src/issuelens/agent/validator.py#L84).
+  - **Exact Excerpt Matching**: The full cited range is read from the snapshot via [`read_snippet()`](../../src/issuelens/repository/snippets.py) and must equal the excerpt line-for-line (`excerpts_match()`); only trailing whitespace and blank lines are ignored (plus indentation for prose documentation).
+  - **Untrusted Issue Text Cannot Ground Claims**: `issue`/`commit` evidence is never treated as verified repository evidence, so a malicious issue body cannot make its own claims appear verified.
+  - **Unambiguous Evidence IDs**: Duplicate `evidence_id`s are rejected; the agent mints IDs from one shared counter (`next_evidence_index()` in [`nodes.py`](../../src/issuelens/agent/nodes.py)).
   - **Pruning & Demotion**: Citations failing verification are removed from the report. Hypotheses lacking verified citations are automatically demoted to `"low"` confidence with explicit explanatory notes in `confidence_rationale`.
   - **Insufficient Evidence Trigger**: If zero citations verify, `verification_status` is forced to `"not_run"` and `[INSUFFICIENT EVIDENCE]` is prepended to the report summary.
 

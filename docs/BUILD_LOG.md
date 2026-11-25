@@ -1287,3 +1287,39 @@ An identifier is only unique within the scope where it is generated. If IDs are 
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Make evidence IDs globally unique (e.g. prefix with `run_id`). *Trade-off*: leaks storage concerns into report IDs that the LLM and citations reference; the composite key keeps report IDs short and stable.
+
+---
+
+### Entry 026: Citation Guardrails That Could Not Fail — Substring Excerpts, Self-Grounding Issue Text, and Synthetic Citations
+- **Date**: 2026-11-25
+- **Phase**: Post-build audit remediation (branch `fix/evidence-integrity`)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+The live benchmark reported 100% citation validity and 0.00 unsupported claims. An audit asked whether those numbers *could* have been anything else, and found they could not.
+
+#### 2. Root Cause
+1. `excerpts_match()` in [`src/issuelens/agent/validator.py`](../src/issuelens/agent/validator.py) returned `candidate in expected or expected in candidate` after `.strip()`-ing every line. A one-word excerpt, a partial line, or an excerpt with extra lines all passed.
+2. `validate_citation()` returned `is_valid=True` for any `issue`/`commit` evidence, and [`DocumentRetriever`](../src/issuelens/retrieval/documents.py) indexes the issue body as a chunk — so the issue's own text could ground a hypothesis and mark the report `verified`.
+3. `form_hypotheses()` in [`src/issuelens/agent/nodes.py`](../src/issuelens/agent/nodes.py) attached `ev_1` (or a filename-matched item) to every hypothesis the LLM left uncited and raised `low` confidence to `medium`.
+4. Evidence IDs were minted as `len(evidence) + 1`, so a follow-up round could reissue an existing `doc_ev_N`; the validator filtered by an ID *set*, letting an invalid twin survive.
+5. `code_search.py` recorded a widened merged range even when re-reading it failed, and `search_symbols()` recorded the symbol's full range while the excerpt was truncated to 100 lines.
+
+#### 3. Fix
+Exact whole-range excerpt comparison (`MAX_VALIDATED_RANGE_LINES` cap instead of silent truncation); `repository_ids` (code/documentation only) required for grounding and for `verified`; duplicate IDs rejected; auto-grounding removed; `next_evidence_index()` shared counter; code search records the bounds actually read.
+
+#### 4. Verification
+- `uv run pytest`: 248 passed. `uv run ruff check .`: All checks passed. `uv run mypy src tests`: no issues in 76 files.
+- 9 new regression tests were each observed failing before the fix.
+- Real-data check (read-only, scratch script): every one of the 136 documentation chunks IssueLens indexes for the cached `BerriAI/litellm@0c8321ef` snapshot validates under the strict matcher (`TOTAL 136 invalid 0`), so the tighter rule does not reject the system's own document evidence. An equivalent full code-search pass over litellm did not finish within 10 minutes on this machine and was not completed; code excerpts are produced by the same `read_snippet_with_bounds()` the validator reads, and unit tests cover that path.
+
+#### 5. Engineering Lesson
+A guardrail is only real if there is an input that makes it fire. When a metric reads 100%, ask what input would make it read 99% — if nothing could, it measures the code, not the model. Also: never "help" a model by filling in its citations; that converts a model failure into a false success.
+
+#### 6. Regression Tests
+- [`tests/unit/test_validator.py`](../tests/unit/test_validator.py): `test_single_token_excerpt_does_not_validate_a_wide_range`, `test_partial_line_excerpt_rejected`, `test_excerpt_with_lines_outside_cited_range_rejected`, `test_excerpt_must_cover_the_whole_cited_range`, `test_code_excerpt_indentation_must_match`, `test_issue_text_alone_does_not_ground_a_hypothesis`, `test_duplicate_evidence_ids_are_rejected`
+- [`tests/unit/test_graph.py`](../tests/unit/test_graph.py): `test_uncited_hypothesis_is_not_auto_grounded`, `test_next_evidence_index_never_reuses_ids`
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: validate issue excerpts against the fetched issue body. *Trade-off*: proves the text is quoted correctly, but not that it is true; grounding still has to come from the repository, so it would add code without changing the outcome.
+- *Trade-off accepted*: reports will more often say "insufficient evidence". Prior benchmark numbers are not comparable and must be re-run.
