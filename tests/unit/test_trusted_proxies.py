@@ -85,3 +85,32 @@ def test_rate_limit_cannot_be_bypassed_by_spoofing_x_forwarded_for() -> None:
     r3 = client.get("/v1/investigations/inv_3", headers={"X-Forwarded-For": "3.3.3.3"})
     assert r3.status_code == 429
     assert r3.json()["code"] == "RATE_LIMIT_EXCEEDED"
+
+
+def test_get_client_identifier_ignores_client_prepended_entries_behind_trusted_proxy() -> None:
+    """Regression: proxies append to X-Forwarded-For, so left-most entries are client-controlled.
+
+    An attacker behind a trusted proxy sends ``X-Forwarded-For: 1.2.3.4``; the proxy appends
+    the real peer, producing ``1.2.3.4, 198.51.100.9``. The right-most untrusted hop is the
+    true client.
+    """
+    settings = Settings(trusted_proxies=["10.0.0.1"])
+
+    request = MagicMock(spec=Request)
+    request.client = MagicMock()
+    request.client.host = "10.0.0.1"
+    request.headers = {"X-Forwarded-For": "1.2.3.4, 198.51.100.9"}
+
+    assert get_client_identifier(request, settings) == "198.51.100.9"
+
+
+def test_get_client_identifier_skips_chained_trusted_proxies() -> None:
+    """Right-most-untrusted walk skips every trusted hop in a multi-proxy chain."""
+    settings = Settings(trusted_proxies=["10.0.0.0/8"])
+
+    request = MagicMock(spec=Request)
+    request.client = MagicMock()
+    request.client.host = "10.0.0.1"
+    request.headers = {"X-Forwarded-For": "6.6.6.6, 198.51.100.9, 10.0.0.2"}
+
+    assert get_client_identifier(request, settings) == "198.51.100.9"

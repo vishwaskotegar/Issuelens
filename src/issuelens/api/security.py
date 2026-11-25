@@ -97,14 +97,24 @@ def get_client_identifier(request: Request, settings: Settings | None = None) ->
     app_settings = settings or get_settings()
     direct_host = request.client.host if request.client and request.client.host else "127.0.0.1"
 
-    if is_trusted_proxy(direct_host, app_settings.trusted_proxies):
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            client_ip = forwarded.split(",")[0].strip()
-            if client_ip:
-                return client_ip
+    if not is_trusted_proxy(direct_host, app_settings.trusted_proxies):
+        return direct_host
 
-    return direct_host
+    forwarded = request.headers.get("X-Forwarded-For")
+    if not forwarded:
+        return direct_host
+
+    # Each proxy *appends* the address it received the request from, so only the
+    # right-hand entries were written by infrastructure we trust. Walk right-to-left,
+    # skipping trusted hops; the first untrusted address is the real client. Anything
+    # further left was supplied by that client and must not be believed.
+    hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
+    for hop in reversed(hops):
+        if not is_trusted_proxy(hop, app_settings.trusted_proxies):
+            return hop
+
+    # Every hop is a trusted proxy: the left-most is the closest thing to an origin.
+    return hops[0] if hops else direct_host
 
 
 def verify_api_key(
