@@ -50,6 +50,14 @@ class InvestigationState(TypedDict, total=False):
     # Auxiliary workflow control attributes
     max_retrieval_rounds: int
     followup_queries: list[str]
+    # Queries already executed by retrieve_followup; never re-queued.
+    consumed_queries: list[str]
+    # Evidence IDs added by the most recent follow-up round (input to re-evaluation).
+    new_evidence_ids: list[str]
+    # Number of LLM hypothesis calls made (initial formation + re-evaluations).
+    llm_calls: int
+    # Why the follow-up loop ended: loop_cap | no_followup_queries |
+    # hypotheses_converged | reevaluation_failed.
     stop_reason: str | None
     observed_facts: list[str]
     suggested_tests: list[str]

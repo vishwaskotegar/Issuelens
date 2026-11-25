@@ -476,3 +476,186 @@ def test_next_evidence_index_never_reuses_ids() -> None:
     # len(existing) + 1 == 5 would collide with doc_ev_5.
     assert next_evidence_index(existing) == 6
     assert next_evidence_index([]) == 1
+
+
+# ==============================================================================
+# LLM RE-EVALUATION LOOP (post-build audit: the loop previously never re-called the LLM)
+# ==============================================================================
+
+
+class RecordingLLM:
+    """Fake LLM returning scripted payloads in order and recording every prompt."""
+
+    def __init__(self, payloads: list[InvestigationReportPayload]) -> None:
+        self.payloads = payloads
+        self.calls: list[str] = []
+
+    async def generate_report_payload(self, messages: Any) -> InvestigationReportPayload:
+        self.calls.append("\n".join(str(m.content) for m in messages))
+        index = min(len(self.calls) - 1, len(self.payloads) - 1)
+        return self.payloads[index]
+
+
+def _payload(
+    title: str,
+    cited: list[str] | None = None,
+    missing: list[str] | None = None,
+    confidence: str = "low",
+) -> InvestigationReportPayload:
+    return InvestigationReportPayload(
+        summary=f"Summary for {title}.",
+        observed_facts=[],
+        hypotheses=[
+            Hypothesis(
+                title=title,
+                explanation="Mechanism.",
+                confidence=confidence,  # type: ignore[arg-type]
+                confidence_rationale="Rationale.",
+                supporting_evidence_ids=cited or [],
+                contradicting_evidence_ids=[],
+                verification_steps=[],
+            )
+        ],
+        missing_information=missing or [],
+        suggested_tests=[],
+        recommended_next_steps=[],
+        limitations=[],
+    )
+
+
+def _followup_queries(final_state: dict[str, Any]) -> list[str]:
+    return [
+        t["inputs"]["query"]
+        for t in final_state["tool_trace"]
+        if t["tool_name"] == "retrieve_followup"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_followup_rounds_never_repeat_a_query(
+    repo_snapshot: Any, test_settings: Settings
+) -> None:
+    """Regression: evaluate_evidence rebuilt the queue each round, re-running query #1."""
+    missing = ["`helper_hash_token` body", "`TokenAuthenticator` init"]
+    # Each revision differs so the loop does not stop early on convergence; the
+    # missing-information list stays the same, which is what used to cause repeats.
+    llm = RecordingLLM(
+        [_payload("Hash bug v1", missing=missing), _payload("Hash bug v2", missing=missing),
+         _payload("Hash bug v3", missing=missing)]
+    )
+    nodes = InvestigationNodes(snapshot=repo_snapshot, llm_client=llm, settings=test_settings)
+    final_state = await create_investigation_graph(nodes).ainvoke(
+        create_sample_state(max_rounds=3, comments=[])
+    )
+
+    queries = _followup_queries(final_state)
+    assert len(queries) >= 2
+    assert len(queries) == len(set(queries))
+
+
+@pytest.mark.asyncio
+async def test_reevaluation_sends_prior_hypotheses_and_new_evidence_to_llm(
+    repo_snapshot: Any, test_settings: Settings
+) -> None:
+    """After follow-up retrieval adds evidence, the LLM re-evaluates its hypotheses."""
+    llm = RecordingLLM(
+        [
+            _payload("Initial guess", missing=["`helper_hash_token` implementation"]),
+            _payload("Revised after reading helper_hash_token", confidence="medium"),
+        ]
+    )
+    nodes = InvestigationNodes(snapshot=repo_snapshot, llm_client=llm, settings=test_settings)
+    final_state = await create_investigation_graph(nodes).ainvoke(
+        create_sample_state(max_rounds=2, comments=[])
+    )
+
+    assert len(llm.calls) == 2
+    second_prompt = llm.calls[1]
+    assert "<prior_hypotheses>" in second_prompt
+    assert "Initial guess" in second_prompt
+    assert "helper_hash_token" in second_prompt  # the newly retrieved code
+    new_ids = final_state["new_evidence_ids"]
+    assert new_ids and all(eid in second_prompt for eid in new_ids)
+
+    report = final_state["final_report"]
+    assert report["hypotheses"][0]["title"] == "Revised after reading helper_hash_token"
+    assert any(t["tool_name"] == "reevaluate_hypotheses" for t in final_state["tool_trace"])
+
+
+@pytest.mark.asyncio
+async def test_reevaluation_skipped_when_followup_finds_nothing_new(
+    repo_snapshot: Any, test_settings: Settings
+) -> None:
+    """No new evidence means nothing to re-evaluate: the LLM must not be called again."""
+    llm = RecordingLLM([_payload("Guess", missing=["`zz_symbol_that_does_not_exist`"])])
+    nodes = InvestigationNodes(snapshot=repo_snapshot, llm_client=llm, settings=test_settings)
+    final_state = await create_investigation_graph(nodes).ainvoke(
+        create_sample_state(max_rounds=3, comments=[])
+    )
+
+    assert len(llm.calls) == 1
+    reeval = [t for t in final_state["tool_trace"] if t["tool_name"] == "reevaluate_hypotheses"]
+    assert reeval and all(t["status"] == "skipped" for t in reeval)
+
+
+@pytest.mark.asyncio
+async def test_converged_hypotheses_stop_the_loop(
+    repo_snapshot: Any, test_settings: Settings
+) -> None:
+    """If re-evaluation returns the same hypotheses, further rounds are pointless."""
+    same = _payload(
+        "Stable",
+        missing=["`helper_hash_token` body", "`TokenAuthenticator` init", "`validate_token`"],
+    )
+    llm = RecordingLLM([same, same, same])
+    nodes = InvestigationNodes(snapshot=repo_snapshot, llm_client=llm, settings=test_settings)
+    final_state = await create_investigation_graph(nodes).ainvoke(
+        create_sample_state(max_rounds=4, comments=[])
+    )
+
+    assert final_state["stop_reason"] == "hypotheses_converged"
+    assert len(_followup_queries(final_state)) == 1
+    assert len(llm.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_loop_cap_records_stop_reason(repo_snapshot: Any, test_settings: Settings) -> None:
+    """The loop cap is a real stop condition and is recorded on the state."""
+    llm = RecordingLLM(
+        [
+            _payload("A", missing=["`helper_hash_token`", "`TokenAuthenticator`"]),
+            _payload("B", missing=["`validate_token`", "`DatabasePool`"]),
+            _payload("C"),
+        ]
+    )
+    nodes = InvestigationNodes(snapshot=repo_snapshot, llm_client=llm, settings=test_settings)
+    final_state = await create_investigation_graph(nodes).ainvoke(
+        create_sample_state(max_rounds=2, comments=[])
+    )
+    assert final_state["retrieval_round"] == 2
+    assert final_state["stop_reason"] == "loop_cap"
+
+
+@pytest.mark.asyncio
+async def test_failed_reevaluation_keeps_prior_hypotheses(
+    repo_snapshot: Any, test_settings: Settings
+) -> None:
+    """A failing re-evaluation call must not discard the hypotheses already formed."""
+    from issuelens.core.errors import UpstreamTimeoutError
+
+    class FlakyLLM(RecordingLLM):
+        async def generate_report_payload(self, messages: Any) -> InvestigationReportPayload:
+            if self.calls:
+                self.calls.append("second")
+                raise UpstreamTimeoutError("LLM request timed out")
+            return await super().generate_report_payload(messages)
+
+    llm = FlakyLLM([_payload("Initial guess", missing=["`helper_hash_token` implementation"])])
+    nodes = InvestigationNodes(snapshot=repo_snapshot, llm_client=llm, settings=test_settings)
+    final_state = await create_investigation_graph(nodes).ainvoke(
+        create_sample_state(max_rounds=3, comments=[])
+    )
+
+    assert final_state["final_report"]["hypotheses"][0]["title"] == "Initial guess"
+    assert final_state["stop_reason"] == "reevaluation_failed"
+    assert any(e["node"] == "reevaluate_hypotheses" for e in final_state["errors"])

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from issuelens.retrieval.documents import DocumentRetriever
 
 from issuelens.agent.llm import LLMClientProtocol
-from issuelens.agent.prompts import build_investigation_messages
+from issuelens.agent.prompts import build_investigation_messages, build_reevaluation_messages
 from issuelens.agent.report import (
     EvidenceItem,
     Hypothesis,
@@ -144,6 +144,11 @@ def decide_next_step(
     max_rounds = state.get("max_retrieval_rounds", 3)
     current_round = state.get("retrieval_round", 1)
     followup_queries = state.get("followup_queries", [])
+
+    stop_reason = state.get("stop_reason")
+    if stop_reason:
+        logger.info("Workflow routing: stopping loop (%s); proceeding to validation", stop_reason)
+        return "validate_citations"
 
     if current_round >= max_rounds:
         logger.info(
@@ -498,6 +503,7 @@ class InvestigationNodes:
         tool_trace.append(trace_entry)
 
         return {
+            "llm_calls": state.get("llm_calls", 0) + 1,
             "summary": summary,
             "hypotheses": hypotheses_dicts,
             "missing_information": missing_info,
@@ -551,6 +557,19 @@ class InvestigationNodes:
                     if s not in followup_queries:
                         followup_queries.append(s)
 
+        # Never re-queue a query that already ran: the queue is rebuilt every round from
+        # the (possibly unchanged) missing-information list, which previously made every
+        # follow-up round repeat the first query.
+        consumed = set(state.get("consumed_queries", []))
+        followup_queries = [q for q in followup_queries if q not in consumed]
+
+        stop_reason = state.get("stop_reason")
+        if not stop_reason:
+            if state.get("retrieval_round", 1) >= state.get("max_retrieval_rounds", 3):
+                stop_reason = "loop_cap"
+            elif not followup_queries:
+                stop_reason = "no_followup_queries"
+
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
         trace_entry: ToolTraceItem = {
             "tool_name": "evaluate_evidence",
@@ -569,6 +588,7 @@ class InvestigationNodes:
         return {
             "hypotheses": hypotheses,
             "followup_queries": followup_queries,
+            "stop_reason": stop_reason,
             "tool_trace": tool_trace,
         }
 
@@ -579,7 +599,9 @@ class InvestigationNodes:
         errors = list(state.get("errors", []))
         evidence = list(state.get("evidence", []))
         followup_queries = list(state.get("followup_queries", []))
+        consumed_queries = list(state.get("consumed_queries", []))
         current_round = state.get("retrieval_round", 1) + 1
+        evidence_ids_before = {e.get("evidence_id") for e in evidence}
 
         status: Literal["success", "error", "skipped"] = "success"
         error_msg: str | None = None
@@ -594,6 +616,7 @@ class InvestigationNodes:
             output_summary = "Skipped follow-up retrieval: no queries queued."
         else:
             executed_query = followup_queries.pop(0)
+            consumed_queries.append(executed_query)
             try:
                 hits = search_code(
                     query=executed_query,
@@ -658,13 +681,116 @@ class InvestigationNodes:
         }
         tool_trace.append(trace_entry)
 
+        new_evidence_ids = [
+            str(e.get("evidence_id")) for e in evidence
+            if e.get("evidence_id") not in evidence_ids_before
+        ]
         return {
+            "consumed_queries": consumed_queries,
+            "new_evidence_ids": new_evidence_ids,
             "evidence": evidence,
             "retrieval_round": current_round,
             "followup_queries": followup_queries,
             "tool_trace": tool_trace,
             "errors": errors,
         }
+
+    async def reevaluate_hypotheses(self, state: InvestigationState) -> dict[str, Any]:
+        """Node 5b: Ask the LLM to revise its hypotheses in light of follow-up evidence.
+
+        Runs after every follow-up retrieval. The LLM is only called when that round added
+        evidence; otherwise there is nothing new to reason about. Sets ``stop_reason`` to
+        ``hypotheses_converged`` when the revision changes nothing, and to
+        ``reevaluation_failed`` when the call fails (prior hypotheses are kept).
+        """
+        start_time = time.perf_counter()
+        tool_trace = list(state.get("tool_trace", []))
+        errors = list(state.get("errors", []))
+        new_ids = list(state.get("new_evidence_ids", []))
+        prior_dicts = list(state.get("hypotheses", []))
+        current_round = state.get("retrieval_round", 1)
+
+        def trace(status: Literal["success", "error", "skipped"], summary: str,
+                  error: str | None = None) -> None:
+            tool_trace.append(
+                {
+                    "tool_name": "reevaluate_hypotheses",
+                    "round": current_round,
+                    "inputs": {"new_evidence_ids": new_ids[:20]},
+                    "output_summary": summary,
+                    "status": status,
+                    "duration_ms": (time.perf_counter() - start_time) * 1000.0,
+                    "error_message": error,
+                }
+            )
+
+        if not new_ids:
+            trace("skipped", "Skipped re-evaluation: follow-up round added no new evidence.")
+            return {"tool_trace": tool_trace}
+
+        context = get_context_from_state(state)
+        evidence_items = [EvidenceItem.model_validate(e) for e in state.get("evidence", [])]
+        prior = [Hypothesis.model_validate(h) for h in prior_dicts]
+        messages = build_reevaluation_messages(context, evidence_items, prior, new_ids)
+
+        try:
+            payload: InvestigationReportPayload = (
+                await self.llm_client.generate_report_payload(messages)
+            )
+        except Exception as exc:
+            # Keep the hypotheses we already have; a failed revision is not a failed run.
+            message = f"LLM re-evaluation error: {exc}"
+            logger.warning(message)
+            errors.append({"node": "reevaluate_hypotheses", "error": str(exc)})
+            trace("error", "Re-evaluation failed; kept prior hypotheses.", message)
+            return {
+                "llm_calls": state.get("llm_calls", 0) + 1,
+                "stop_reason": "reevaluation_failed",
+                "errors": errors,
+                "tool_trace": tool_trace,
+            }
+
+        revised = []
+        for h in payload.hypotheses:
+            hd = h.model_dump()
+            hd["support_status"] = "tentative"
+            revised.append(hd)
+
+        def signature(hyps: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
+            return [
+                (
+                    h.get("title"),
+                    h.get("confidence"),
+                    tuple(sorted(h.get("supporting_evidence_ids", []))),
+                    tuple(sorted(h.get("contradicting_evidence_ids", []))),
+                )
+                for h in hyps
+            ]
+
+        converged = signature(revised) == signature(prior_dicts)
+        trace(
+            "success",
+            (
+                f"Re-evaluated {len(prior)} hypotheses with {len(new_ids)} new evidence items: "
+                f"{len(revised)} hypotheses after revision"
+                + (" (unchanged; converged)." if converged else ".")
+            ),
+        )
+
+        update: dict[str, Any] = {
+            "llm_calls": state.get("llm_calls", 0) + 1,
+            "summary": payload.summary,
+            "hypotheses": revised,
+            "missing_information": list(payload.missing_information),
+            "observed_facts": list(payload.observed_facts),
+            "suggested_tests": list(payload.suggested_tests),
+            "recommended_next_steps": list(payload.recommended_next_steps),
+            "limitations": list(payload.limitations),
+            "tool_trace": tool_trace,
+        }
+        if converged:
+            update["stop_reason"] = "hypotheses_converged"
+        return update
 
     async def validate_citations(self, state: InvestigationState) -> dict[str, Any]:
         """Node 6: Validate code citations against physical repository snapshot on disk."""
