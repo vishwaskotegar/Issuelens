@@ -8,6 +8,8 @@
 
 ---
 
+> **Amended by [ADR-012](ADR-012-llm-hypothesis-reevaluation-loop.md) (2026-11-25):** the follow-up loop as originally implemented never re-called the LLM and repeated its first query. A `reevaluate_hypotheses` node and consumed-query tracking were added.
+
 ## 1. Context and Problem
 In Phases 3 and 4, IssueLens used a linear synchronous pipeline within `InvestigationService.investigate()`. While this established baseline end-to-end report generation and physical citation validation, real-world bug investigation is inherently non-linear and iterative:
 1. **Uncertainty & Incomplete Initial Evidence**: The initial query often identifies high-level entrypoints or stack frame locations, but lacks crucial secondary evidence such as caller functions, callee implementations, or internal configuration constants.

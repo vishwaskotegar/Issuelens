@@ -69,7 +69,7 @@ flowchart TD
 
 ## 2. Implemented Workflow: LangGraph Multi-Round State Machine (Phase 5)
 
-In Phase 5, the agent workflow is orchestrated via a multi-turn, stateful agent graph using **LangGraph** (`src/issuelens/agent/graph.py`). The state machine inspects initial evidence, forms tentative hypotheses, identifies missing information, and triggers bounded follow-up retrieval rounds (up to 3 rounds) to confirm or refute causes before finalizing the report.
+In Phase 5, the agent workflow is orchestrated via a multi-turn, stateful agent graph using **LangGraph** (`src/issuelens/agent/graph.py`). The state machine inspects initial evidence, forms tentative hypotheses, identifies missing information, and triggers bounded follow-up retrieval rounds (`MAX_RETRIEVAL_ROUNDS`, default 3). After each follow-up round that adds evidence, `reevaluate_hypotheses` re-calls the LLM with its prior hypotheses and the new evidence so it can keep, revise, or drop them ([ADR-012](../decisions/ADR-012-llm-hypothesis-reevaluation-loop.md)). Before the 2026-11-25 audit the LLM was called only once and follow-up rounds repeated the same query.
 
 ### State Machine Architecture
 
@@ -85,11 +85,13 @@ flowchart TD
     
     NodeEvaluate --> NodeDecide{"decide_next_step<br/>(Check stop conditions)"}
     
-    NodeDecide -- "Unresolved queries AND<br/>round &lt; max_rounds (3)" --> NodeFollowup["retrieve_followup<br/>(Targeted search for missing clues)"]
+    NodeDecide -- "Unconsumed queries AND<br/>round &lt; max_rounds AND<br/>no stop_reason" --> NodeFollowup["retrieve_followup<br/>(Run one new query; record new evidence IDs)"]
     
-    NodeFollowup --> NodeEvaluate
+    NodeFollowup --> NodeReevaluate["reevaluate_hypotheses<br/>(LLM re-call only if new evidence;<br/>sets stop_reason on convergence/failure)"]
     
-    NodeDecide -- "Sufficient evidence OR<br/>round &gt;= max_rounds (3) OR<br/>empty retrieval" --> NodeValidate["validate_citations<br/>(Physical disk validation)"]
+    NodeReevaluate --> NodeEvaluate
+    
+    NodeDecide -- "stop_reason set:<br/>loop_cap / no_followup_queries /<br/>hypotheses_converged / reevaluation_failed" --> NodeValidate["validate_citations<br/>(Physical disk validation)"]
     
     NodeValidate --> NodeBuildReport["build_report<br/>(Pydantic schema validation)"]
     
@@ -114,9 +116,13 @@ class InvestigationState(TypedDict, total=False):
     tool_trace: list[ToolTraceItem]  # Audit log of tools executed during investigation
     errors: list[dict[str, Any]]     # Non-fatal warnings and diagnostic events
     final_report: dict[str, Any] | None # Final validated InvestigationReport
-    max_retrieval_rounds: int        # Maximum loop iterations cap (default: 3)
+    max_retrieval_rounds: int        # Loop cap (MAX_RETRIEVAL_ROUNDS, default 3)
     followup_queries: list[str]      # Queued search queries for secondary retrieval
-    stop_reason: str | None          # Termination cause
+    consumed_queries: list[str]      # Queries already executed; never re-queued
+    new_evidence_ids: list[str]      # Evidence added by the latest follow-up round
+    llm_calls: int                   # Initial formation + re-evaluation calls
+    stop_reason: str | None          # loop_cap | no_followup_queries |
+                                     # hypotheses_converged | reevaluation_failed
 ```
 
 ### Implemented Node Responsibilities & Exit Conditions
@@ -126,10 +132,11 @@ class InvestigationState(TypedDict, total=False):
 | `parse_issue` | Parse raw issue body and comments; extract stack traces, exception types, module paths, and reproduction steps. | Structured summary populated in state. |
 | `retrieve_initial` | Query ripgrep and AST index using extracted error tokens and symbol names. | Initial evidence list populated in state (even if empty). |
 | `form_hypotheses` | Prompt LLM to propose up to 3 testable fault mechanisms grounded in initial evidence. | Hypotheses list conforms to schema with assigned confidence. |
-| `evaluate_evidence` | Compare accumulated evidence against each hypothesis, identifying supporting items, contradictions, and missing proof. | Each hypothesis has support status (`supported`, `contradicted`, `unproven`). |
-| `decide_next_step` | Conditional router. Decides whether to continue follow-up retrieval or finalize the report. | Evaluates loop bounds: `round < 3` and `has_unresolved_queries`. |
-| `retrieve_followup` | Execute bounded secondary search (e.g., inspect caller functions, check configuration constants, scan test fixtures). | Increments `retrieval_round`; appends new evidence. |
-| `validate_citations` | Verify all cited file paths, line ranges, and excerpts against physical snapshot on disk. | Prunes invalid citations; demotes ungrounded hypotheses. |
+| `evaluate_evidence` | Mark each hypothesis `supported`/`unsupported` (cited IDs exist) and build follow-up queries from identifier-like terms in `missing_information` and unsupported hypotheses, excluding `consumed_queries`. | Sets `stop_reason` to `loop_cap` or `no_followup_queries` when applicable (never overwrites an existing reason). |
+| `decide_next_step` | Conditional router. | Routes to validation if `stop_reason` is set, `retrieval_round >= max_retrieval_rounds`, or no queries remain. |
+| `retrieve_followup` | Run the next unconsumed query (code + documentation search). | Increments `retrieval_round`; appends evidence; records `consumed_queries` and `new_evidence_ids`. |
+| `reevaluate_hypotheses` | If the round added evidence, re-call the LLM with prior hypotheses and the full evidence list (new items marked). | Replaces hypotheses/missing info; sets `hypotheses_converged` if unchanged, `reevaluation_failed` (keeping prior hypotheses) on error; `skipped` without new evidence. |
+| `validate_citations` | Verify all cited file paths, line ranges, and excerpts against physical snapshot on disk. | Prunes invalid citations; demotes ungrounded hypotheses; sets final `support_status`. |
 | `build_report` | Construct final `InvestigationReport`, enforce insufficient evidence fallbacks if needed, and finalize output. | Complete Pydantic report generated. |
 
 ---
@@ -203,16 +210,17 @@ classDiagram
 
 To ensure system reliability, prevent infinite loops, and protect upstream quotas, the agent workflow enforces strict operational ceilings:
 
-1. **Retrieval Round Bound**: Maximum of 3 retrieval rounds in Phase 5; exactly 1 pass in current Phase 4.
-2. **Context Budgets**:
-   - Issue body capped to 1500 characters during query compilation.
-   - Issue comments capped to 3 comments (500 characters each).
-   - Maximum 10 evidence items passed to the LLM per run.
-   - Code snippets clamped to a maximum of 100 lines.
+1. **Retrieval Round Bound**: `retrieval_round` never exceeds `MAX_RETRIEVAL_ROUNDS` (default 3); each follow-up round runs one query that has not run before. LLM calls per run are at most `MAX_RETRIEVAL_ROUNDS` (1 initial + at most one re-evaluation per follow-up round that added evidence).
+2. **Context Budgets** (as implemented):
+   - Issue body truncated to `MAX_ISSUE_BODY_CHARS` (12,000) and at most `MAX_PROMPT_COMMENTS` (10) comments of `MAX_COMMENT_CHARS` (2,000) each in the prompt ([`prompts.py`](../../src/issuelens/agent/prompts.py)).
+   - Initial retrieval: up to 12 code hits (1 per file) + 5 documentation hits; each follow-up round adds up to 5 code + 3 documentation hits. All accumulated evidence is sent on re-evaluation.
+   - Code snippets clamped to 100 lines when retrieved; the validator rejects cited ranges over 1,000 lines.
+   - LLM output capped at `MAX_REPORT_TOKENS` (default 2,500).
 3. **Execution Timeouts**:
-   - GitHub API requests: 15 seconds (configured via `REQUEST_TIMEOUT_SECONDS`).
-   - Ripgrep subprocesses: 5 seconds timeout before triggering pure-Python fallback.
-   - LLM generation requests: 60 seconds provider timeout.
+   - GitHub API requests: `REQUEST_TIMEOUT_SECONDS` (default 15).
+   - LLM calls: `LLM_TIMEOUT_SECONDS` (default 120), with the provider SDK's `max_retries=2`.
+   - Ripgrep: 10 seconds per search term; on timeout, hits found so far are returned (no fallback re-run). The pure-Python search is used only when ripgrep is not installed.
+   - Search, document indexing, and snapshot extraction run in worker threads (`asyncio.to_thread`) so they do not block the API event loop.
 4. **Crash-Free Degradation**:
    - Missing ripgrep binary -> Automatically falls back to pure-Python regex search.
    - Broken Python syntax in investigated repos -> AST parser catches `SyntaxError` and returns empty symbol list.
