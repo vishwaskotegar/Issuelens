@@ -268,6 +268,8 @@ def test_failed_run_stores_generic_error_for_unexpected_exceptions(
     with patch("issuelens.agent.service.InvestigationService.investigate", side_effect=leaky):
         exec_resp = client.post(f"/v1/investigations/{run_id}/execute")
     assert exec_resp.status_code == 500
+    assert exec_resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert exec_resp.headers["X-Frame-Options"] == "DENY"
 
     error = client.get(f"/v1/investigations/{run_id}").json()["error"]
     assert error.startswith("INTERNAL_ERROR:")
