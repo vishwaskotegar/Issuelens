@@ -132,7 +132,7 @@ IssueLens enforces strict security controls at every layer:
 | **Prompt Injection** | Untrusted issue prose is quarantined in isolated XML enclaves; delimiter tags are escaped. | `sanitize_boundary_tags`, `prompts.py` |
 | **SSRF Defenses** | Issue URLs are parsed, never fetched: only `github.com` / `www.github.com` hosts are accepted and all API calls go to `api.github.com`. | `url_parser.py` host allowlist |
 | **Client IP Spoofing** | `X-Forwarded-For` is only read from `TRUSTED_PROXIES` peers, and the right-most untrusted hop is used as the client. | `security.py` (`get_client_identifier`) |
-| **HTTP Hardening** | Security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS in production/HTTPS; no CSP) and constant-time API key verification. Note: headers are not added to unhandled-exception 500 responses. | `secrets.compare_digest`, `add_security_headers` in `main.py` |
+| **HTTP Hardening** | Security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS in production/HTTPS; no CSP) and constant-time API key verification. Also applied to unhandled-exception 500 responses. | `secrets.compare_digest`, `apply_security_headers` in `main.py` |
 | **Citation Integrity** | 100% of code excerpts verified against snapshot bytes; ungrounded citations pruned. | `validate_investigation_report()`, `validator.py` |
 
 ---
