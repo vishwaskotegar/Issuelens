@@ -3,9 +3,15 @@
 
 Queries the GitHub REST API for closed bug issues in BerriAI/litellm that:
 1. Are closed issues labeled 'bug' (not pull requests).
-2. Are linked to a merged pull request fixing the issue ('fixes #N', 'closes #N', etc.).
-3. The resolving PR modifies 1 to 3 non-test, non-documentation Python files (expected_files).
-4. The issue body describes a concrete error symptom (traceback, exception, crash, error message).
+2. Are linked to a merged pull request whose title/body uses a GitHub closing keyword
+   for the issue ('fixes #N', 'closes #N', 'resolves #N'); bare '#N' mentions do not count.
+3. The resolving PR touches 1 to 3 non-test, non-documentation Python files. expected_files
+   are the ones that already existed at the pre-fix commit (files the PR added are excluded).
+4. The issue body describes a concrete symptom (traceback, named exception, HTTP 4xx/5xx,
+   crash/hang, or expected-vs-actual statement).
+
+Candidate issues come from five keyword searches (router, cache, caching, budget, cost)
+followed by up to six pages of the closed-bug issue listing.
 5. Are distributed across diverse modules (providers, router, proxy, caching, core).
 6. Derives pre-fix target_commit_sha strictly from parents[0] of the PR merge commit.
 """
@@ -25,11 +31,47 @@ from dotenv import load_dotenv
 # Try loading .env from repo root
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+# A concrete, observable failure: a traceback, a named exception, an HTTP status code,
+# a crash/hang, or an explicit expected-vs-actual statement. Generic words such as "bug",
+# "returns" or "failed" matched almost every issue and are not accepted on their own.
 SYMPTOM_REGEX = re.compile(
-    r"(?:error|exception|traceback|crash|failed|failure|unexpected|reproduce|"
-    r"typeerror|valueerror|keyerror|attributeerror|status code|returns|raised|assert|bug)",
+    r"(?:traceback \(most recent call last\)|\b\w+(?:Error|Exception)\b|"
+    r"\bstatus(?: code)?:? ?[45]\d\d\b|\b[45]\d\d (?:error|bad request|internal)|"
+    r"\bcrash(?:es|ed)?\b|\bhangs?\b|\bexpected\b[\s\S]{0,200}\b(?:actual|instead|but)\b)",
     re.IGNORECASE,
 )
+
+# GitHub closing keywords (https://docs.github.com/en/issues/tracking-your-work-with-issues/
+# using-issues/linking-a-pull-request-to-an-issue). A bare "#N" mention does not close an
+# issue and is not accepted as a link.
+CLOSING_KEYWORDS = r"(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)"
+
+
+def pr_closes_issue(pr_title: str, pr_body: str, issue_num: int) -> bool:
+    """True if the PR title or body uses a GitHub closing keyword for this issue."""
+    pattern = re.compile(
+        rf"\b{CLOSING_KEYWORDS}:?\s+(?:#|https://github\.com/BerriAI/litellm/issues/)"
+        rf"{issue_num}\b",
+        re.IGNORECASE,
+    )
+    return bool(pattern.search(pr_title) or pattern.search(pr_body))
+
+
+def pre_fix_expected_files(pr_files: list[dict[str, Any]]) -> list[str]:
+    """Qualifying files the fix touched, as they are named at the pre-fix commit.
+
+    Files the PR *added* did not exist before the fix and can never be retrieved from the
+    pre-fix snapshot, so they are excluded. Renamed files use their previous name.
+    """
+    files: list[str] = []
+    for f in pr_files:
+        status = f.get("status")
+        if status == "added":
+            continue
+        name = f.get("previous_filename") if status == "renamed" else f.get("filename")
+        if name and is_qualifying_python_file(name):
+            files.append(name)
+    return files
 
 
 def is_qualifying_python_file(filename: str) -> bool:
@@ -90,12 +132,6 @@ def find_linked_pr(
     except Exception:
         return None
 
-    close_pattern = re.compile(
-        rf"(?:fixes|fixed|close|closes|closed|resolve|resolves|resolved|backport of)"
-        rf"\s*(?:#|https://github\.com/BerriAI/litellm/(?:issues|pull)/){issue_num}\b",
-        re.IGNORECASE,
-    )
-
     for pr_summary in prs:
         pr_num = pr_summary["number"]
         try:
@@ -108,15 +144,7 @@ def find_linked_pr(
         if not pr_data.get("merged_at"):
             continue
 
-        pr_body = pr_data.get("body") or ""
-        pr_title = pr_data.get("title") or ""
-
-        has_ref = (
-            close_pattern.search(pr_body)
-            or f"#{issue_num}" in pr_title
-            or f"#{issue_num}" in pr_body
-        )
-        if has_ref:
+        if pr_closes_issue(pr_data.get("title") or "", pr_data.get("body") or "", issue_num):
             return cast(dict[str, Any], pr_data)
 
     return None
@@ -229,19 +257,32 @@ def fetch_and_build_dataset(
         if not merge_sha:
             continue
 
-        # Fetch PR changed files
+        # Fetch PR changed files (paginated: the endpoint returns 30 per page by default)
+        pr_files: list[dict[str, Any]] = []
         try:
-            f_resp = client.get(
-                f"https://api.github.com/repos/BerriAI/litellm/pulls/{pr_num}/files"
-            )
-            if f_resp.status_code != 200:
-                continue
-            pr_files = f_resp.json()
+            for page in range(1, 31):  # GitHub caps this endpoint at 3000 files
+                f_resp = client.get(
+                    f"https://api.github.com/repos/BerriAI/litellm/pulls/{pr_num}/files",
+                    params={"per_page": 100, "page": page},
+                )
+                if f_resp.status_code != 200:
+                    break
+                batch = f_resp.json()
+                if not batch:
+                    break
+                pr_files.extend(batch)
+                if len(batch) < 100:
+                    break
         except Exception:
             continue
 
-        qual_files = [f["filename"] for f in pr_files if is_qualifying_python_file(f["filename"])]
-        if not (1 <= len(qual_files) <= 3):
+        # Size filter on all qualifying files the PR touched (including new ones)...
+        touched = [f["filename"] for f in pr_files if is_qualifying_python_file(f["filename"])]
+        if not (1 <= len(touched) <= 3):
+            continue
+        # ...but ground truth only includes files that exist at the pre-fix commit.
+        qual_files = pre_fix_expected_files(pr_files)
+        if not qual_files:
             continue
 
         # Extract parent commit (pre-fix snapshot)
