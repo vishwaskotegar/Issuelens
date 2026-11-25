@@ -659,3 +659,41 @@ async def test_failed_reevaluation_keeps_prior_hypotheses(
     assert final_state["final_report"]["hypotheses"][0]["title"] == "Initial guess"
     assert final_state["stop_reason"] == "reevaluation_failed"
     assert any(e["node"] == "reevaluate_hypotheses" for e in final_state["errors"])
+
+
+@pytest.mark.asyncio
+async def test_code_search_does_not_block_the_event_loop(
+    repo_snapshot: Any, test_settings: Settings
+) -> None:
+    """Regression: synchronous ripgrep/filesystem search ran on the event loop.
+
+    While a slow search runs, other coroutines (e.g. other API requests) must progress.
+    """
+    import asyncio
+    import time as time_module
+
+    from issuelens.repository import code_search
+
+    real_search = code_search.search_code
+    finished: dict[str, float] = {}
+
+    def slow_search(*args: Any, **kwargs: Any) -> Any:
+        time_module.sleep(0.3)
+        result = real_search(*args, **kwargs)
+        finished["search"] = time_module.perf_counter()
+        return result
+
+    async def ticker() -> None:
+        for _ in range(5):
+            await asyncio.sleep(0.01)
+        finished["ticker"] = time_module.perf_counter()
+
+    nodes = InvestigationNodes(
+        snapshot=repo_snapshot, llm_client=MockLLMClient(), settings=test_settings
+    )
+    with patch("issuelens.agent.nodes.search_code", side_effect=slow_search):
+        await asyncio.gather(nodes.retrieve_initial(create_sample_state()), ticker())
+
+    # A ~50ms ticker must finish while the 300ms search is still running. If the search
+    # blocked the event loop, the ticker could only finish after the search returned.
+    assert finished["ticker"] < finished["search"]

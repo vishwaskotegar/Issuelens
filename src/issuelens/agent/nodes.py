@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from collections.abc import Mapping, Sequence
@@ -362,7 +363,8 @@ class InvestigationNodes:
             output_summary = "Skipped initial retrieval: no repository snapshot available."
         else:
             try:
-                code_hits = search_code(
+                code_hits = await asyncio.to_thread(
+                    search_code,
                     query=query,
                     repo_snapshot=self.snapshot,
                     max_results=12,
@@ -384,7 +386,8 @@ class InvestigationNodes:
                 # Document RAG: retrieve complementary documentation passages
                 if self.doc_retriever is not None:
                     try:
-                        doc_hits = self.doc_retriever.retrieve_documents(
+                        doc_hits = await asyncio.to_thread(
+                            self.doc_retriever.retrieve_documents,
                             query=query,
                             max_results=5,
                             start_evidence_idx=next_evidence_index(evidence_items),
@@ -618,7 +621,8 @@ class InvestigationNodes:
             executed_query = followup_queries.pop(0)
             consumed_queries.append(executed_query)
             try:
-                hits = search_code(
+                hits = await asyncio.to_thread(
+                    search_code,
                     query=executed_query,
                     repo_snapshot=self.snapshot,
                     max_results=5,
@@ -645,7 +649,8 @@ class InvestigationNodes:
                 # Search documentation for follow-up query if retriever is available
                 if self.doc_retriever is not None:
                     try:
-                        doc_hits = self.doc_retriever.retrieve_documents(
+                        doc_hits = await asyncio.to_thread(
+                            self.doc_retriever.retrieve_documents,
                             query=executed_query,
                             max_results=3,
                         )

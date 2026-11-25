@@ -1,5 +1,6 @@
 """Investigation service orchestrating issue ingestion, code search, and report generation."""
 
+import asyncio
 import json
 import re
 import uuid
@@ -127,7 +128,8 @@ class InvestigationService:
         active_snapshot = snapshot
         if active_snapshot is None:
             cache_dir = Path(self.settings.snapshot_cache_dir)
-            active_snapshot = get_cached_snapshot(
+            active_snapshot = await asyncio.to_thread(
+                get_cached_snapshot,
                 cache_dir=cache_dir,
                 owner=target.owner,
                 repo=target.repo,
@@ -153,7 +155,8 @@ class InvestigationService:
                     ref=context.commit_sha,
                     max_bytes=self.settings.max_repository_bytes,
                 )
-                active_snapshot = cache_and_create_snapshot_from_zip(
+                active_snapshot = await asyncio.to_thread(
+                    cache_and_create_snapshot_from_zip,
                     cache_dir=cache_dir,
                     owner=target.owner,
                     repo=target.repo,
@@ -226,7 +229,10 @@ class InvestigationService:
         }
 
         # 4. Instantiate nodes and compile LangGraph state machine
-        nodes = InvestigationNodes(
+        # Node construction indexes repository documentation (filesystem walk + BM25),
+        # so build it off the event loop.
+        nodes = await asyncio.to_thread(
+            InvestigationNodes,
             snapshot=active_snapshot,
             llm_client=self.llm_client,
             settings=self.settings,
