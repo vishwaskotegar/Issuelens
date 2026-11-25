@@ -223,3 +223,26 @@ def test_get_llm_client_factory() -> None:
     client = get_llm_client(openai_settings)
     assert isinstance(client, LangChainLLMClient)
     assert isinstance(client.chat_model, ChatOpenAI)
+
+
+def test_get_llm_client_refuses_mock_in_production() -> None:
+    """Regression: an unset LLM_PROVIDER must not silently serve canned reports in production."""
+    from pydantic import SecretStr
+
+    from issuelens.agent.llm import get_llm_client
+    from issuelens.config import Settings
+    from issuelens.core.errors import ConfigurationError
+
+    prod = Settings(
+        app_env="production", auth_required=True, api_key=SecretStr("k"), llm_provider=""
+    )
+    with pytest.raises(ConfigurationError, match="LLM_PROVIDER"):
+        get_llm_client(prod)
+
+
+def test_get_llm_client_allows_mock_outside_production() -> None:
+    """Local and test environments may still use the mock LLM."""
+    from issuelens.agent.llm import MockLLMClient, get_llm_client
+    from issuelens.config import Settings
+
+    assert isinstance(get_llm_client(Settings(app_env="local", llm_provider=None)), MockLLMClient)

@@ -9,6 +9,7 @@ from pydantic import SecretStr, ValidationError
 from issuelens.agent.report import Hypothesis, InvestigationReportPayload
 from issuelens.config import Settings
 from issuelens.core.errors import (
+    ConfigurationError,
     IssueLensError,
     LLMOutputValidationError,
     RateLimitExceededError,
@@ -181,8 +182,16 @@ def get_llm_client(
     if chat_model is not None:
         return LangChainLLMClient(chat_model)
 
-    provider = (settings.llm_provider or "mock").lower()
+    provider = (settings.llm_provider or "mock").strip().lower() or "mock"
     if provider == "mock":
+        if settings.app_env == "production":
+            # The mock returns a canned high-confidence report; serving it in production
+            # would present fabricated root causes as real investigation output.
+            raise ConfigurationError(
+                "LLM_PROVIDER must be set to a real provider (e.g. 'openai', 'anthropic') "
+                "when APP_ENV=production; the mock LLM is not allowed in production."
+            )
+        logger.warning("LLM_PROVIDER not configured; using MockLLMClient (canned output).")
         return MockLLMClient()
 
     model = create_langchain_chat_model(settings)

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import StaticPool
 
 from issuelens.config import Settings, get_settings
+from issuelens.core.errors import ConfigurationError
 from issuelens.core.logging import get_logger
 from issuelens.persistence.models import Base
 
@@ -68,6 +69,11 @@ def get_default_database_url(settings: Settings) -> str:
 
     if settings.database_url:
         return normalize_database_url(settings.database_url)
+    if settings.app_env == "production":
+        raise ConfigurationError(
+            "DATABASE_URL must be configured when APP_ENV=production; "
+            "refusing to fall back to local SQLite storage."
+        )
     return "sqlite+aiosqlite:///.cache/issuelens/issuelens.db"
 
 
