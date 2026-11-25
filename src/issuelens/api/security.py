@@ -179,5 +179,6 @@ def enforce_rate_limit(
         )
         raise RateLimitExceededError(
             f"Rate limit exceeded: maximum {settings.rate_limit_per_minute} requests per minute. "
-            f"Please retry after {int(retry_after)} seconds."
+            f"Please retry after {int(retry_after)} seconds.",
+            retry_after_seconds=int(retry_after),
         )

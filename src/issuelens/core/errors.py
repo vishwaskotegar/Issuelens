@@ -40,8 +40,9 @@ class ResourceNotFoundError(IssueLensError):
 class RateLimitExceededError(IssueLensError):
     """Raised when GitHub or LLM API rate limits are encountered."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, retry_after_seconds: int | None = None) -> None:
         super().__init__(message, code="RATE_LIMIT_EXCEEDED", status_code=429)
+        self.retry_after_seconds = retry_after_seconds
 
 
 class UpstreamTimeoutError(IssueLensError):

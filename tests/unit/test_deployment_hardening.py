@@ -275,3 +275,23 @@ def test_invalid_api_key_attempts_are_rate_limited() -> None:
     assert client.get("/v1/investigations/a", headers=bad).status_code == 401
     assert client.get("/v1/investigations/b", headers=bad).status_code == 401
     assert client.get("/v1/investigations/c", headers=bad).status_code == 429
+
+
+def test_retry_after_header_reflects_computed_window() -> None:
+    """Regression: Retry-After must come from the limiter, not a hard-coded 60."""
+    from unittest.mock import MagicMock
+
+    from issuelens.api.security import RateLimiter
+
+    custom_settings = Settings(rate_limit_per_minute=1)
+    stub = MagicMock(spec=RateLimiter)
+    stub.check_rate_limit.return_value = (False, 1, 17.0)
+
+    app = create_app()
+    app.dependency_overrides[get_settings] = lambda: custom_settings
+    app.dependency_overrides[get_rate_limiter] = lambda: stub
+    client = TestClient(app)
+
+    response = client.get("/v1/investigations/inv_1")
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "17"
