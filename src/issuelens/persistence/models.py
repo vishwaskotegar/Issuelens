@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, PrimaryKeyConstraint, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
@@ -80,8 +80,11 @@ class EvidenceItem(Base):
     """Persisted source evidence cited during an investigation."""
 
     __tablename__ = "evidence_items"
+    # Evidence IDs (ev_1, doc_ev_1, ...) are only unique within a run, so the key is
+    # composite. A single-column key on ``id`` made the second persisted run collide.
+    __table_args__ = (PrimaryKeyConstraint("run_id", "id", name="pk_evidence_items"),)
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    id: Mapped[str] = mapped_column(String(64))
     run_id: Mapped[str] = mapped_column(
         String(64),
         ForeignKey("investigation_runs.id", ondelete="CASCADE"),

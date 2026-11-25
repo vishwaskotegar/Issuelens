@@ -63,7 +63,7 @@ flowchart TD
     subgraph StateStorage["6. Relational Persistence & State (Implemented Phase 6)"]
         PostgresDB[("PostgreSQL Database<br/>Runs, Reports, Evidence, Hypotheses<br/><code>src/issuelens/persistence/</code>")]
         RepoLayer["Investigation Repository<br/><code>SQLAlchemyInvestigationRepository</code><br/><code>src/issuelens/persistence/repository.py</code>"]
-        AlembicMigrations["Alembic Migrations<br/><code>001_initial_schema</code><br/><code>src/issuelens/persistence/migrations/</code>"]
+        AlembicMigrations["Alembic Migrations<br/><code>001_initial_schema, 002_evidence_composite_key</code><br/><code>src/issuelens/persistence/migrations/</code>"]
         PostgresDB --> RepoLayer
         RepoLayer --> AlembicMigrations
     end
@@ -175,7 +175,7 @@ flowchart TD
   - [`src/issuelens/persistence/models.py`](../../src/issuelens/persistence/models.py): Declarative ORM models (`InvestigationRun`, `EvidenceItem`, `Hypothesis`, `InvestigationReportRecord`, `EvaluationCase`, `EvaluationResult`).
   - [`src/issuelens/persistence/db.py`](../../src/issuelens/persistence/db.py): Async engine lifecycle, connection normalization, credential redaction, and `/readyz` health check probe.
   - [`src/issuelens/persistence/repository.py`](../../src/issuelens/persistence/repository.py): `InvestigationRepositoryProtocol` and `SQLAlchemyInvestigationRepository` handling transactional persistence and retrieval.
-  - [`src/issuelens/persistence/migrations/`](../../src/issuelens/persistence/migrations/): Alembic migration revisions (`001_initial_schema.py`) supporting clean database initialization and rollbacks.
+  - [`src/issuelens/persistence/migrations/`](../../src/issuelens/persistence/migrations/): Alembic migration revisions (`001_initial_schema.py`, `002_evidence_composite_key.py`) supporting clean database initialization and rollbacks.
 
 ---
 

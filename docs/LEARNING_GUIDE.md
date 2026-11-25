@@ -1079,12 +1079,15 @@ Database schemas evolve over time as new columns and tables are added. Manually 
 1. Alembic is configured via [`alembic.ini`](../alembic.ini) and an asynchronous runner in [`src/issuelens/persistence/migrations/env.py`](../src/issuelens/persistence/migrations/env.py).
 2. During deployment or testing, `alembic upgrade head` is invoked.
 3. Revision [`001_initial_schema.py`](../src/issuelens/persistence/migrations/versions/001_initial_schema.py) executes, applying all table structures, indexes, foreign keys, and defaults.
-4. If a deployment needs to be reverted, `alembic downgrade base` cleanly drops tables in foreign-key dependency order.
+4. Revision [`002_evidence_composite_key.py`](../src/issuelens/persistence/migrations/versions/002_evidence_composite_key.py) re-keys `evidence_items` by `(run_id, id)`. Evidence IDs such as `ev_1` restart in every run, so the original single-column key on `id` made the *second* saved report fail. On SQLite the migration rebuilds the table in Alembic batch mode (SQLite cannot alter a primary key in place); on PostgreSQL it drops and recreates the constraint.
+5. If a deployment needs to be reverted, `alembic downgrade base` cleanly drops tables in foreign-key dependency order.
 
 #### 3. Which files and functions participate
 - **Config**: [`alembic.ini`](../alembic.ini)
 - **Environment**: [`src/issuelens/persistence/migrations/env.py`](../src/issuelens/persistence/migrations/env.py)
 - **Initial Revision**: [`src/issuelens/persistence/migrations/versions/001_initial_schema.py`](../src/issuelens/persistence/migrations/versions/001_initial_schema.py)
+- **Evidence Key Revision**: [`src/issuelens/persistence/migrations/versions/002_evidence_composite_key.py`](../src/issuelens/persistence/migrations/versions/002_evidence_composite_key.py)
+- **Parity Test**: `test_alembic_head_matches_orm_models` in [`tests/unit/test_persistence.py`](../tests/unit/test_persistence.py) migrates a clean SQLite file to head and diffs it against the ORM models, including primary keys (which Alembic autogenerate does not compare). It is SQLite-only; the PostgreSQL branch of revision 002 is not exercised by automated tests.
 
 #### 4. Why the implementation is structured this way
 - **Async Engine Support**: Standard Alembic templates use synchronous DBAPIs. Our `env.py` uses `async_engine_from_config` and `connection.run_sync()`, allowing Alembic to run with async PostgreSQL drivers (`psycopg`).

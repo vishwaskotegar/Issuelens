@@ -1255,3 +1255,35 @@ A route's URL string is not its security boundary — the router it is attached 
 
 #### 7. Alternatives & Trade-offs
 - *Alternative*: Enforce `LLM_PROVIDER`/`DATABASE_URL` in the `Settings` model validator. *Trade-off*: would break every test and tool that builds production-mode `Settings` only to exercise auth. Guarding at the factory keeps the failure at the point of use while still preventing silent fallbacks.
+
+---
+
+### Entry 025: Second Persisted Investigation Fails on Evidence Primary Key Collision
+- **Date**: 2026-11-25
+- **Phase**: Post-build audit remediation (branch `fix/persistence-evidence-keys`)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+Saving a second investigation report raised `sqlite3.IntegrityError: UNIQUE constraint failed: evidence_items.id`. The existing suite never saved two runs, so it stayed green.
+
+#### 2. Root Cause
+The agent numbers evidence per run (`ev_1`, `ev_2`, ... in [`src/issuelens/agent/nodes.py`](../src/issuelens/agent/nodes.py)), but `EvidenceItem.id` in [`src/issuelens/persistence/models.py`](../src/issuelens/persistence/models.py) was the table's only primary key, and `save_report()` in [`src/issuelens/persistence/repository.py`](../src/issuelens/persistence/repository.py) writes `id=item.evidence_id` directly.
+
+#### 3. Fix
+- Model: `PrimaryKeyConstraint("run_id", "id", name="pk_evidence_items")`.
+- Migration [`002_evidence_composite_key.py`](../src/issuelens/persistence/migrations/versions/002_evidence_composite_key.py): PostgreSQL drops `evidence_items_pkey` and creates the composite key; SQLite rebuilds the table via batch mode with an explicit `copy_from` definition (reflecting the old key and then overriding it emitted `SAWarning: ... may become an exception in a future release`).
+
+#### 4. Verification
+- `uv run pytest tests/unit/test_persistence.py -rw`: 12 passed, no warnings.
+- `uv run pytest`: 238 passed. `uv run ruff check .`: All checks passed. `uv run mypy src tests`: no issues in 76 files.
+- The parity test was observed failing with revision 002 removed, confirming it detects model/migration drift in primary keys.
+- Not verified: the PostgreSQL branch of revision 002 (no PostgreSQL in the automated test environment).
+
+#### 5. Engineering Lesson
+An identifier is only unique within the scope where it is generated. If IDs are minted per run, the database key must include the run. Also, "migrations apply cleanly" is not the same as "migrations produce the schema the code expects" — test the latter directly.
+
+#### 6. Regression Tests
+- `test_repository_saves_two_runs_with_same_evidence_ids` and `test_alembic_head_matches_orm_models` in [`tests/unit/test_persistence.py`](../tests/unit/test_persistence.py).
+
+#### 7. Alternatives & Trade-offs
+- *Alternative*: Make evidence IDs globally unique (e.g. prefix with `run_id`). *Trade-off*: leaks storage concerns into report IDs that the LLM and citations reference; the composite key keeps report IDs short and stable.
