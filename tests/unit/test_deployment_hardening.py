@@ -226,3 +226,52 @@ def test_dockerfile_and_compose_configuration() -> None:
     assert "postgres:16-alpine" in compose_content
     assert "pg_isready" in compose_content
     assert "127.0.0.1:5432:5432" in compose_content
+
+
+def test_execute_endpoint_requires_api_key() -> None:
+    """Regression: POST /v1/investigations/{id}/execute must be behind API key auth.
+
+    Previously registered on the unauthenticated operational router, allowing anyone
+    to trigger archive downloads and paid LLM calls.
+    """
+    custom_settings = Settings(
+        app_env="production",
+        auth_required=True,
+        api_key=SecretStr("production_super_secret"),
+    )
+    app = create_app()
+    app.dependency_overrides[get_settings] = lambda: custom_settings
+    client = TestClient(app)
+
+    response = client.post("/v1/investigations/inv_nonexistent/execute")
+    assert response.status_code == 401
+    assert response.json()["code"] == "UNAUTHORIZED"
+
+
+def test_execute_endpoint_is_rate_limited() -> None:
+    """Regression: /execute must count against the per-client rate limit."""
+    custom_settings = Settings(rate_limit_per_minute=1)
+    app = create_app()
+    app.dependency_overrides[get_settings] = lambda: custom_settings
+    client = TestClient(app)
+
+    assert client.post("/v1/investigations/inv_1/execute").status_code == 404
+    assert client.post("/v1/investigations/inv_2/execute").status_code == 429
+
+
+def test_invalid_api_key_attempts_are_rate_limited() -> None:
+    """Regression: rate limiting must run before auth so key guessing is throttled."""
+    custom_settings = Settings(
+        app_env="production",
+        auth_required=True,
+        api_key=SecretStr("production_super_secret"),
+        rate_limit_per_minute=2,
+    )
+    app = create_app()
+    app.dependency_overrides[get_settings] = lambda: custom_settings
+    client = TestClient(app)
+
+    bad = {"X-API-Key": "guess"}
+    assert client.get("/v1/investigations/a", headers=bad).status_code == 401
+    assert client.get("/v1/investigations/b", headers=bad).status_code == 401
+    assert client.get("/v1/investigations/c", headers=bad).status_code == 429
