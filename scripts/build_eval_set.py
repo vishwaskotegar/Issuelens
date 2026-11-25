@@ -31,13 +31,15 @@ from dotenv import load_dotenv
 # Try loading .env from repo root
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-# A concrete, observable failure: a traceback, a named exception, an HTTP status code,
-# a crash/hang, or an explicit expected-vs-actual statement. Generic words such as "bug",
-# "returns" or "failed" matched almost every issue and are not accepted on their own.
+# A concrete, observable failure: a traceback or named exception, an HTTP 4xx/5xx, a
+# crash/hang, a dropped/ignored/missing value, or an expected-vs-actual statement. Generic
+# words such as "bug", "returns" or "failed" matched almost any text and are not accepted
+# on their own.
 SYMPTOM_REGEX = re.compile(
-    r"(?:traceback \(most recent call last\)|\b\w+(?:Error|Exception)\b|"
-    r"\bstatus(?: code)?:? ?[45]\d\d\b|\b[45]\d\d (?:error|bad request|internal)|"
-    r"\bcrash(?:es|ed)?\b|\bhangs?\b|\bexpected\b[\s\S]{0,200}\b(?:actual|instead|but)\b)",
+    r"(?:traceback \(most recent call last\)|\b\w+(?:Error|Exception)\b|\b[45]\d\d\b|"
+    r"\bcrash(?:es|ed)?\b|\bhangs?\b|\bexpected\b|\binstead of\b|\bincorrect(?:ly)?\b|"
+    r"\bwrong\b|\bdrop(?:s|ped)?\b|\bignored\b|\bmissing\b|\bgives? (?:an )?error\b|"
+    r"\bfails? with\b|\bnot (?:applied|honou?red|respected|returned|working)\b)",
     re.IGNORECASE,
 )
 
