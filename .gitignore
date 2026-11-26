@@ -55,3 +55,6 @@ Thumbs.db
 
 # Mock-mode evaluation output (harness check only, not a benchmark result)
 evals/results.mock.json
+
+# Private interview preparation notes (local only)
+interview-prep/
