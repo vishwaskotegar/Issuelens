@@ -1,0 +1,1322 @@
+{
+  "mode": "live",
+  "run_timestamp": "2026-11-26T20:09:30.520007+00:00",
+  "model_name": "gpt-4o-mini",
+  "issuelens_commit_sha": "fea26603e93259cac295c7a541d8f46445a40950",
+  "issuelens_tree_dirty": false,
+  "metrics_version": "2",
+  "config": {
+    "llm_provider": "openai",
+    "llm_model": "gpt-4o-mini",
+    "max_retrieval_rounds": 3,
+    "llm_timeout_seconds": 120,
+    "max_report_tokens": 2500
+  },
+  "total_cases": 20,
+  "completed_cases": 14,
+  "insufficient_evidence_cases": 6,
+  "failed_cases": 0,
+  "scored_cases": 20,
+  "completion_rate": 1.0,
+  "cases_with_citations": 17,
+  "mean_citation_validity": 1.0,
+  "mean_search_recall_at_k": {
+    "1": 0.2917,
+    "3": 0.3917,
+    "5": 0.5083,
+    "10": 0.5583
+  },
+  "mean_search_hit_at_k": {
+    "1": 0.35,
+    "3": 0.5,
+    "5": 0.6,
+    "10": 0.65
+  },
+  "mean_diagnosis_hit_at_k": {
+    "1": 0.45,
+    "3": 0.5,
+    "5": 0.5,
+    "10": 0.5
+  },
+  "mean_unsupported_claims": 0.35,
+  "root_cause_useful_rate": 0.5,
+  "mean_keyword_overlap": 0.3268,
+  "mean_issue_echo_keyword_overlap": 0.7063,
+  "mean_latency_seconds": 130.738,
+  "root_cause_distribution": {
+    "correct": 10,
+    "insufficient_evidence": 6,
+    "incorrect": 4
+  },
+  "benchmark_targets_met": {
+    "citation_validity_ge_95": true,
+    "search_recall_at_5_ge_80": false,
+    "search_hit_at_5_ge_90": false,
+    "unsupported_claims_lt_0_5": true,
+    "root_cause_useful_ge_70": false
+  },
+  "case_metrics": [
+    {
+      "case_id": "CASE-001",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 46095,
+      "target_commit_sha": "ae8666b9d1a568db03f6aecfcd48de337381487e",
+      "status": "completed",
+      "cited_evidence_total": 2,
+      "cited_evidence_valid": 2,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "search_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/litellm_core_utils/streaming_handler.py",
+        "litellm/main.py",
+        "tests/unit/test_main.py",
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm/llms/azure_ai/agents/handler.py",
+        "litellm/llms/azure_ai/chat/transformation.py",
+        "litellm/llms/oci/chat/transformation.py",
+        "litellm/llms/openrouter/chat/transformation.py",
+        "litellm/llms/openrouter/image_edit/transformation.py",
+        "litellm/llms/openrouter/image_generation/transformation.py",
+        "litellm/proxy/guardrails/guardrail_hooks/bedrock_guardrails.py",
+        "README.md",
+        "CONTRIBUTING.md",
+        "litellm/llms/bytez/chat/transformation.py"
+      ],
+      "cited_files": [
+        "litellm/litellm_core_utils/streaming_handler.py"
+      ],
+      "expected_files": [
+        "litellm/litellm_core_utils/streaming_handler.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.1429,
+      "issue_echo_keyword_overlap": 0.5714,
+      "latency_seconds": 53.427,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-002",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 51666,
+      "target_commit_sha": "8ef451a1879d20135c374d61ae09a4fee24969c9",
+      "status": "completed",
+      "cited_evidence_total": 3,
+      "cited_evidence_valid": 3,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/a2a_protocol/providers/watsonx_orchestrate/transformation.py",
+        "litellm/llms/anthropic/chat/transformation.py",
+        "litellm/llms/anthropic/files/transformation.py",
+        "litellm/a2a_protocol/providers/bedrock_agentcore/transformation.py",
+        "litellm/a2a_protocol/providers/pydantic_ai_agents/transformation.py",
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/exceptions.py",
+        "litellm/litellm_core_utils/token_counter.py",
+        "litellm/litellm_core_utils/prompt_templates/factory.py",
+        "litellm/llms/gemini/count_tokens/handler.py",
+        "litellm/router_rust/core.py",
+        "litellm/a2a_protocol/litellm_completion_bridge/transformation.py",
+        "README.md",
+        "litellm/llms/opencode/chat/transformation.py",
+        "tests/unit/llms/opencode/chat/test_transformation.py"
+      ],
+      "cited_files": [
+        "litellm/llms/opencode/chat/transformation.py"
+      ],
+      "expected_files": [
+        "litellm/llms/opencode/chat/transformation.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.2222,
+      "issue_echo_keyword_overlap": 0.8889,
+      "latency_seconds": 111.681,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-003",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 51931,
+      "target_commit_sha": "e6b673e6e077d0c98f74ddddfcf1d466f609e529",
+      "status": "insufficient_evidence",
+      "cited_evidence_total": 1,
+      "cited_evidence_valid": 1,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/exceptions.py",
+        "litellm/litellm_core_utils/error_normalization.py",
+        "litellm/proxy/common_utils/responses_stream_errors.py",
+        "litellm/responses/streaming_iterator.py",
+        "litellm/proxy/common_utils/proxy_rate_limit_error.py",
+        "litellm/types/router.py",
+        "tests/integration/_support/responses_stream.py",
+        "litellm/integrations/websearch_interception/transformation.py",
+        "litellm/proxy/response_api_endpoints/endpoints.py",
+        "litellm/router_utils/cooldown_handlers.py",
+        "tests/integration/observability/test_bedrock_error_request_id.py",
+        "tests/integration/sdk/test_responses_bridge_stream_errors_sdk.py",
+        "README.md"
+      ],
+      "cited_files": [],
+      "expected_files": [
+        "litellm/router_rust/invoke/streaming.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 1,
+      "unsupported_claim_reasons": [
+        "Hypothesis #1 ('Mid-stream errors are not retried in the') is not supported by verified repository evidence"
+      ],
+      "root_cause_alignment": "insufficient_evidence",
+      "keyword_overlap_score": 0.3636,
+      "issue_echo_keyword_overlap": 0.7273,
+      "latency_seconds": 35.182,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-004",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 43059,
+      "target_commit_sha": "fdb1ce8d782474be6541e061912be9859054a1f5",
+      "status": "completed",
+      "cited_evidence_total": 1,
+      "cited_evidence_valid": 1,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.5,
+        "5": 0.5,
+        "10": 0.5
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/types/router.py",
+        "litellm/scheduler.py",
+        "litellm/types/scheduler.py",
+        "litellm/proxy/common_request_processing.py",
+        "litellm/router_strategy/complexity_router/complexity_router.py",
+        "tests/unit/proxy/proxy_server/test_background_health.py",
+        "tests/unit/proxy/test_proxy_server.py",
+        "tests/unit/test_router_per_deployment_num_retries.py",
+        "enterprise/litellm_enterprise/enterprise_callbacks/send_emails/base_email.py",
+        "litellm-rust/crates/callbacks-legacy-python/src/logger.rs",
+        "litellm-rust/crates/host-python/src/driver.rs",
+        "litellm-rust/crates/host-python/src/file_reader.rs",
+        "CONTRIBUTING.md",
+        "ARCHITECTURE.md",
+        "README.md",
+        "tests/unit/test_scheduler.py"
+      ],
+      "cited_files": [
+        "litellm/scheduler.py"
+      ],
+      "expected_files": [
+        "litellm/router.py",
+        "litellm/scheduler.py"
+      ],
+      "hypotheses_count": 2,
+      "unsupported_claims_count": 1,
+      "unsupported_claim_reasons": [
+        "Hypothesis #2 ('TypeError when adding requests due to st') is not supported by verified repository evidence"
+      ],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.3333,
+      "issue_echo_keyword_overlap": 0.8889,
+      "latency_seconds": 100.354,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-005",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 38811,
+      "target_commit_sha": "9dbfb060bd84b2d4c2fc1ec3a8705f98f5f96856",
+      "status": "insufficient_evidence",
+      "cited_evidence_total": 1,
+      "cited_evidence_valid": 1,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "search_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/spend_tracking/savings.py",
+        "tests/test_litellm/proxy/db/test_db_spend_update_writer.py",
+        "tests/test_litellm/proxy/hooks/test_proxy_track_cost_callback.py",
+        "tests/test_litellm/responses/litellm_completion_transformation/test_session_handler_with_cold_storage.py",
+        "tests/test_litellm/test_main.py",
+        "litellm/integrations/SlackAlerting/slack_alerting.py",
+        "litellm/integrations/cloudzero/database.py",
+        "litellm/integrations/datadog/datadog_llm_obs.py",
+        "litellm/integrations/focus/database.py",
+        "litellm/integrations/gcs_pubsub/pub_sub.py",
+        "litellm/interactions/background_cost_polling.py",
+        "litellm/litellm_core_utils/core_helpers.py",
+        "ARCHITECTURE.md",
+        "README.md"
+      ],
+      "cited_files": [],
+      "expected_files": [
+        "litellm/proxy/spend_tracking/savings.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 1,
+      "unsupported_claim_reasons": [
+        "Hypothesis #1 ('Comparison Logic Uses Incorrect Identity') is not supported by verified repository evidence"
+      ],
+      "root_cause_alignment": "insufficient_evidence",
+      "keyword_overlap_score": 0.5,
+      "issue_echo_keyword_overlap": 0.875,
+      "latency_seconds": 81.887,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-006",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 38816,
+      "target_commit_sha": "0c8321efc3cb725a619d8d768b82db1a46d32f52",
+      "status": "completed",
+      "cited_evidence_total": 3,
+      "cited_evidence_valid": 3,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.3333,
+        "3": 0.3333,
+        "5": 0.6667,
+        "10": 0.6667
+      },
+      "search_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/db/autorouter_session_rollup.py",
+        "litellm/router_strategy/complexity_router/complexity_router.py",
+        "litellm/proxy/management_endpoints/auto_router_endpoints.py",
+        "litellm/integrations/shadow_eval_logger.py",
+        "litellm/proxy/common_request_processing.py",
+        "litellm/proxy/management_endpoints/model_management_endpoints.py",
+        "litellm/router_strategy/auto_router/auto_router.py",
+        "litellm/proxy/_experimental/out/_next/static/chunks/42rhdw-kqdpki.js",
+        "litellm/proxy/db/db_spend_update_writer.py",
+        "litellm/types/management_endpoints/auto_router_endpoints.py",
+        "litellm/types/utils.py",
+        "ui/litellm-dashboard/src/app/(dashboard)/cost-optimization/_components/TierTurnsChart.test.tsx",
+        "ARCHITECTURE.md"
+      ],
+      "cited_files": [
+        "litellm/proxy/db/autorouter_session_rollup.py",
+        "litellm/proxy/management_endpoints/auto_router_endpoints.py"
+      ],
+      "expected_files": [
+        "litellm/proxy/common_request_processing.py",
+        "litellm/proxy/db/autorouter_session_rollup.py",
+        "litellm/proxy/spend_tracking/savings.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.4444,
+      "issue_echo_keyword_overlap": 0.8889,
+      "latency_seconds": 80.434,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-007",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 52962,
+      "target_commit_sha": "8ad03f09a1f97053f55e8eeba73700e1e0a3c16e",
+      "status": "insufficient_evidence",
+      "cited_evidence_total": 0,
+      "cited_evidence_valid": 0,
+      "citation_validity_rate": null,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/_types.py",
+        "litellm/llms/bedrock/common_utils.py",
+        "litellm/proxy/auth/auth_checks.py",
+        "litellm/proxy/auth/auth_utils.py",
+        "litellm/proxy/health_check.py",
+        "litellm/proxy/health_endpoints/_health_endpoints.py",
+        "litellm/proxy/pass_through_endpoints/llm_passthrough_endpoints.py",
+        "litellm/types/router.py",
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/litellm_core_utils/routing_common_utils.py",
+        "litellm/proxy/auth/model_checks.py",
+        "litellm/proxy/client/cli/commands/agents.py",
+        "README.md"
+      ],
+      "cited_files": [],
+      "expected_files": [
+        "litellm/proxy/auth/auth_utils.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 1,
+      "unsupported_claim_reasons": [
+        "Hypothesis #1 ('Compliance requests are improperly evalu') is not supported by verified repository evidence"
+      ],
+      "root_cause_alignment": "insufficient_evidence",
+      "keyword_overlap_score": 0.4444,
+      "issue_echo_keyword_overlap": 0.5556,
+      "latency_seconds": 191.811,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-008",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 46450,
+      "target_commit_sha": "5088b0cea6da34e28b421e5d0a45fb3d6cc049f5",
+      "status": "completed",
+      "cited_evidence_total": 3,
+      "cited_evidence_valid": 3,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/litellm_core_utils/llm_response_utils/response_metadata.py",
+        "litellm/caching/caching_handler.py",
+        "litellm/proxy/common_request_processing.py",
+        "litellm/cost_calculator.py",
+        "litellm/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm/litellm_core_utils/streaming_handler.py",
+        "litellm/proxy/pass_through_endpoints/llm_provider_handlers/anthropic_passthrough_logging_handler.py",
+        "litellm/rust_bridge/host/callbacks_legacy_python.py",
+        "litellm/proxy/pass_through_endpoints/pass_through_endpoints.py",
+        "litellm/responses/streaming_iterator.py",
+        "tests/unit/litellm_core_utils/test_litellm_logging.py",
+        "ARCHITECTURE.md"
+      ],
+      "cited_files": [
+        "litellm/litellm_core_utils/llm_response_utils/response_metadata.py",
+        "litellm/proxy/common_request_processing.py",
+        "litellm/proxy/pass_through_endpoints/llm_provider_handlers/anthropic_passthrough_logging_handler.py"
+      ],
+      "expected_files": [
+        "litellm/caching/caching_handler.py",
+        "litellm/litellm_core_utils/llm_response_utils/response_metadata.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.5,
+      "issue_echo_keyword_overlap": 0.75,
+      "latency_seconds": 70.894,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-009",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 32068,
+      "target_commit_sha": "a659e8be70bc95401ede0dc14c4c10545101950c",
+      "status": "completed",
+      "cited_evidence_total": 4,
+      "cited_evidence_valid": 4,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "search_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/litellm_core_utils/llm_response_utils/convert_dict_to_response.py",
+        "litellm/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm/llms/bedrock/chat/invoke_handler.py",
+        "litellm/llms/databricks/chat/transformation.py",
+        "litellm/llms/openai/chat/gpt_transformation.py",
+        "litellm/_lazy_imports_registry.py",
+        "litellm/caching/caching_handler.py",
+        "litellm/utils.py",
+        "tests/unit/litellm_core_utils/llm_response_utils/test_convert_dict_to_response.py",
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/litellm_core_utils/prompt_templates/common_utils.py",
+        "litellm/litellm_core_utils/prompt_templates/factory.py",
+        "README.md",
+        "ARCHITECTURE.md"
+      ],
+      "cited_files": [
+        "litellm/_lazy_imports_registry.py",
+        "litellm/caching/caching_handler.py",
+        "litellm/litellm_core_utils/llm_response_utils/convert_dict_to_response.py"
+      ],
+      "expected_files": [
+        "litellm/litellm_core_utils/llm_response_utils/convert_dict_to_response.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.2222,
+      "issue_echo_keyword_overlap": 0.5556,
+      "latency_seconds": 115.453,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-010",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 52271,
+      "target_commit_sha": "a435090b9d8b047b816ae15461095af60269889d",
+      "status": "completed",
+      "cited_evidence_total": 2,
+      "cited_evidence_valid": 2,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 1.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/_types.py",
+        "litellm/proxy/management_endpoints/ui_sso.py",
+        "litellm/proxy/auth/login_utils.py",
+        "litellm/types/proxy/management_endpoints/ui_sso.py",
+        "litellm/types/proxy/ui_sso.py",
+        "litellm/enterprise/litellm_enterprise/proxy/auth/custom_sso_handler.py",
+        "litellm/integrations/SlackAlerting/slack_alerting.py",
+        "litellm/integrations/prometheus.py",
+        "litellm/integrations/shadow_eval_logger.py",
+        "litellm/proxy/auth/auth_checks.py",
+        "litellm/proxy/guardrails/guardrail_endpoints.py",
+        "litellm/proxy/health_endpoints/_health_endpoints.py",
+        "README.md",
+        "litellm/proxy/auth/host/python.py",
+        "litellm/proxy/guardrails/guardrail_hooks/singulr/singulr.py",
+        "litellm/proxy/management_endpoints/key_management_endpoints.py"
+      ],
+      "cited_files": [
+        "litellm/proxy/auth/auth_checks.py"
+      ],
+      "expected_files": [
+        "litellm/proxy/auth/auth_checks.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.2222,
+      "issue_echo_keyword_overlap": 0.7778,
+      "latency_seconds": 133.284,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-011",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 12273,
+      "target_commit_sha": "89ab210fc936bcd36c2741719d64ee7412862082",
+      "status": "completed",
+      "cited_evidence_total": 2,
+      "cited_evidence_valid": 2,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/_types.py",
+        "litellm/proxy/common_utils/openai_error_payload.py",
+        "litellm/proxy/auth/auth_exception_handler.py",
+        "litellm/rust/crates/gateway-auth-core/src/public.rs",
+        "litellm/proxy/anthropic_endpoints/claude_code_endpoints/claude_code_marketplace.py",
+        "litellm/proxy/litellm_pre_call_utils.py",
+        "litellm/proxy/utils.py",
+        "litellm/proxy/proxy_cli.py",
+        "litellm/setup_wizard.py",
+        "litellm/enterprise/litellm_enterprise/proxy/hooks/managed_files.py",
+        "litellm/enterprise/litellm_enterprise/proxy/management_endpoints/project_endpoints.py",
+        "litellm/exceptions.py",
+        "README.md",
+        "litellm/_logging.py",
+        "litellm/a2a_protocol/exception_mapping_utils.py",
+        "litellm/decisions/call.py",
+        "litellm/proxy/google_endpoints/agents_endpoints.py",
+        "litellm/proxy/management_endpoints/tool_management_endpoints.py",
+        "litellm/proxy/spend_tracking/spend_tracking_utils.py"
+      ],
+      "cited_files": [
+        "litellm/proxy/_types.py",
+        "README.md"
+      ],
+      "expected_files": [
+        "litellm/proxy/auth/core.py",
+        "litellm/proxy/proxy_server.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "incorrect",
+      "keyword_overlap_score": 0.3333,
+      "issue_echo_keyword_overlap": 0.4444,
+      "latency_seconds": 386.741,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-012",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 52014,
+      "target_commit_sha": "21746eb287502c8ddde7d0f5c7b89c610a724144",
+      "status": "completed",
+      "cited_evidence_total": 2,
+      "cited_evidence_valid": 2,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.5,
+        "5": 0.5,
+        "10": 0.5
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/llms/github_copilot/per_user_auth.py",
+        "litellm/proxy/credential_endpoints/endpoints.py",
+        "litellm/a2a_protocol/utils.py",
+        "litellm/assistants/utils.py",
+        "litellm/containers/utils.py",
+        "litellm/enterprise/litellm_enterprise/proxy/utils.py",
+        "litellm/exceptions.py",
+        "litellm/files/utils.py",
+        "litellm/images/utils.py",
+        "litellm/integrations/SlackAlerting/utils.py",
+        "litellm/integrations/deepeval/utils.py",
+        "litellm/integrations/opik/utils.py",
+        "README.md",
+        "litellm/llms/github_copilot/app_auth.py",
+        "litellm/litellm_core_utils/clientside_credential_handler.py",
+        "litellm/litellm_core_utils/get_llm_provider_logic.py"
+      ],
+      "cited_files": [
+        "litellm/llms/github_copilot/app_auth.py"
+      ],
+      "expected_files": [
+        "litellm/llms/github_copilot/app_auth.py",
+        "litellm/proxy/credential_endpoints/endpoints.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.125,
+      "issue_echo_keyword_overlap": 0.5,
+      "latency_seconds": 104.407,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-013",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 27144,
+      "target_commit_sha": "71f9cb63aca0a9065b3f57710b5045a21d178370",
+      "status": "completed",
+      "cited_evidence_total": 4,
+      "cited_evidence_valid": 4,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "search_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/google_genai/adapters/transformation.py",
+        "litellm/proxy/guardrails/guardrail_hooks/tool_permission.py",
+        "litellm/llms/anthropic/chat/transformation.py",
+        "tests/unit/completion_extras/litellm_responses_transformation/test_completion_extras_litellm_responses_transformation_transformation.py",
+        "tests/unit/llms/anthropic/messages/adapters/test_anthropic_messages_adapters_transformation.py",
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/integrations/websearch_interception/transformation.py",
+        "litellm/llms/a2a/chat/transformation.py",
+        "litellm/llms/anthropic/completion/transformation.py",
+        "tests/unit/test_main.py",
+        "litellm/llms/openai/chat/guardrail_translation/handler.py",
+        "README.md",
+        "litellm/llms/openai/responses/guardrail_translation/handler.py"
+      ],
+      "cited_files": [
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/llms/openai/responses/guardrail_translation/handler.py",
+        "tests/unit/completion_extras/litellm_responses_transformation/test_completion_extras_litellm_responses_transformation_transformation.py"
+      ],
+      "expected_files": [
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.3,
+      "issue_echo_keyword_overlap": 0.9,
+      "latency_seconds": 146.763,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-014",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 36402,
+      "target_commit_sha": "d11917e89cd66ce43fb0bfa36d6c0b6909346998",
+      "status": "completed",
+      "cited_evidence_total": 1,
+      "cited_evidence_valid": 1,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "search_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "retrieved_files": [
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/enterprise/litellm_enterprise/litellm_core_utils/litellm_logging.py",
+        "litellm/integrations/rubrik.py",
+        "litellm/litellm_core_utils/prompt_templates/common_utils.py",
+        "litellm/litellm_core_utils/prompt_templates/factory.py",
+        "litellm/llms/azure_ai/responses/transformation.py",
+        "litellm/llms/claude_code/harness/transformation.py",
+        "litellm/llms/mistral/chat/transformation.py",
+        "litellm/proxy/management_endpoints/policy_endpoints/ai_policy_suggester.py",
+        "litellm/proxy/utils.py",
+        "litellm/router_strategy/complexity_router/complexity_router.py",
+        "litellm/router_utils/prompt_caching_cache.py",
+        "README.md"
+      ],
+      "cited_files": [
+        "litellm/litellm_core_utils/litellm_logging.py"
+      ],
+      "expected_files": [
+        "litellm/litellm_core_utils/litellm_logging.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "correct",
+      "keyword_overlap_score": 0.3333,
+      "issue_echo_keyword_overlap": 0.7778,
+      "latency_seconds": 110.183,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-015",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 48996,
+      "target_commit_sha": "61efbd071e81a1cc59a147aed29569a9ac74e420",
+      "status": "insufficient_evidence",
+      "cited_evidence_total": 0,
+      "cited_evidence_valid": 0,
+      "citation_validity_rate": null,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/responses/main.py",
+        "litellm/constants.py",
+        "litellm/types/llms/openai.py",
+        "tests/unit/completion_extras/litellm_responses_transformation/test_completion_extras_litellm_responses_transformation_transformation.py",
+        "tests/unit/test_main.py",
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/llms/openai/responses/transformation.py",
+        "litellm/llms/vertex_ai/gemini/transformation.py",
+        "litellm/llms/vertex_ai/gemini/vertex_and_google_ai_studio_gemini.py",
+        "litellm-rust/crates/llms/src/openai_like/chat/transformation.rs",
+        "litellm/integrations/websearch_interception/handler.py",
+        "litellm/llms/openai/chat/gpt_transformation.py",
+        "ARCHITECTURE.md",
+        "docs/adrs/adr_001_provider_usage_fields_ride_as_usage_extras.md",
+        "CONTRIBUTING.md",
+        "enterprise/litellm_enterprise/proxy/common_utils/check_responses_cost.py",
+        "enterprise/litellm_enterprise/proxy/hooks/managed_files.py"
+      ],
+      "cited_files": [],
+      "expected_files": [
+        "litellm/responses/litellm_completion_transformation/handler.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 1,
+      "unsupported_claim_reasons": [
+        "Hypothesis #1 ('The bridging mechanism does not include ') is not supported by verified repository evidence"
+      ],
+      "root_cause_alignment": "insufficient_evidence",
+      "keyword_overlap_score": 0.75,
+      "issue_echo_keyword_overlap": 0.625,
+      "latency_seconds": 223.413,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-016",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 45536,
+      "target_commit_sha": "969ded2b54199b6ec94b688de66a0cc7afd0b2ae",
+      "status": "completed",
+      "cited_evidence_total": 2,
+      "cited_evidence_valid": 2,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "backend/main.py",
+        "cookbook/anthropic_agent_sdk/main.py",
+        "cookbook/codellama-server/main.py",
+        "cookbook/livekit_agent_sdk/main.py",
+        "gateway/main.py",
+        "litellm/a2a_protocol/litellm_completion_bridge/transformation.py",
+        "litellm/a2a_protocol/main.py",
+        "litellm/a2a_protocol/providers/bedrock_agentcore/transformation.py",
+        "litellm/a2a_protocol/providers/pydantic_ai_agents/transformation.py",
+        "litellm/a2a_protocol/providers/watsonx_orchestrate/transformation.py",
+        "litellm/assistants/main.py",
+        "litellm/batch_completion/main.py",
+        "CONTRIBUTING.md",
+        "ARCHITECTURE.md",
+        "litellm/llms/apiserpent/search/transformation.py",
+        "litellm/llms/azure/search/transformation.py",
+        "litellm/llms/base_llm/search/transformation.py",
+        "litellm/llms/bedrock/search/transformation.py",
+        "litellm/llms/deepseek/search/transformation.py",
+        "scripts/lens_assets/fixtures/traces/google_adk_retry.json"
+      ],
+      "cited_files": [
+        "litellm/llms/apiserpent/search/transformation.py"
+      ],
+      "expected_files": [
+        "litellm/llms/perplexity/search/transformation.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "incorrect",
+      "keyword_overlap_score": 0.0,
+      "issue_echo_keyword_overlap": 1.0,
+      "latency_seconds": 99.477,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-017",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 50893,
+      "target_commit_sha": "c36e1cf73dd3f337c92af1243466864953f83148",
+      "status": "insufficient_evidence",
+      "cited_evidence_total": 1,
+      "cited_evidence_valid": 1,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm/litellm_core_utils/token_counter.py",
+        "litellm/types/litellm_core_utils/streaming_chunk_builder_utils.py",
+        "litellm-rust/crates/python-bridge/src/tokenizer.rs",
+        "litellm/_logging.py",
+        "litellm/_redis.py",
+        "litellm/batches/main.py",
+        "litellm/caching/caching.py",
+        "litellm/completion_extras/litellm_responses_transformation/handler.py",
+        "litellm/cost_calculator.py",
+        "litellm/files/streaming.py",
+        "litellm/integrations/arize/_utils.py",
+        "ARCHITECTURE.md"
+      ],
+      "cited_files": [],
+      "expected_files": [
+        "litellm/llms/sap/chat/handler.py",
+        "litellm/llms/sap/chat/transformation.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 1,
+      "unsupported_claim_reasons": [
+        "Hypothesis #1 ('Improper type handling in content joinin') is not supported by verified repository evidence"
+      ],
+      "root_cause_alignment": "insufficient_evidence",
+      "keyword_overlap_score": 0.25,
+      "issue_echo_keyword_overlap": 0.375,
+      "latency_seconds": 95.429,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-018",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 47822,
+      "target_commit_sha": "23ca45756a8185dccf198bd954e57c57115a410a",
+      "status": "completed",
+      "cited_evidence_total": 3,
+      "cited_evidence_valid": 3,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/anthropic_beta_headers_manager.py",
+        "litellm/integrations/otel/model/payloads.py",
+        "litellm/litellm_core_utils/exception_mapping_utils.py",
+        "litellm/litellm_core_utils/litellm_logging.py",
+        "litellm/litellm_core_utils/llm_response_utils/get_api_base.py",
+        "litellm/litellm_core_utils/llm_response_utils/response_metadata.py",
+        "litellm/litellm_core_utils/url_utils.py",
+        "litellm/llms/anthropic/common_utils.py",
+        "litellm/llms/azure/common_utils.py",
+        "litellm/llms/azure/containers/transformation.py",
+        "litellm/llms/azure_ai/common_utils.py",
+        "litellm/llms/base_llm/anthropic_messages/transformation.py",
+        "README.md",
+        "litellm/assistants/main.py",
+        "litellm/batches/main.py"
+      ],
+      "cited_files": [
+        "litellm/assistants/main.py",
+        "litellm/batches/main.py"
+      ],
+      "expected_files": [
+        "litellm/main.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "incorrect",
+      "keyword_overlap_score": 0.25,
+      "issue_echo_keyword_overlap": 0.5,
+      "latency_seconds": 241.976,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-019",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 24659,
+      "target_commit_sha": "a2773bdcad53aed8fee22e06056ab1e0732df589",
+      "status": "completed",
+      "cited_evidence_total": 2,
+      "cited_evidence_valid": 2,
+      "citation_validity_rate": 1.0,
+      "search_recall_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "search_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/proxy/_types.py",
+        "litellm/proxy/auth/auth_utils.py",
+        "litellm/proxy/realtime_endpoints/endpoints.py",
+        "litellm/utils.py",
+        "litellm/llms/azure/realtime/http_transformation.py",
+        "litellm/llms/base_llm/realtime/http_transformation.py",
+        "litellm/llms/openai/realtime/http_transformation.py",
+        "litellm/proxy/route_llm_request.py",
+        "litellm/realtime_api/main.py",
+        "litellm/types/realtime.py",
+        "cookbook/benchmark/benchmark.py",
+        "cookbook/codellama-server/main.py",
+        "README.md",
+        "CONTRIBUTING.md"
+      ],
+      "cited_files": [
+        "litellm/proxy/_types.py",
+        "litellm/proxy/realtime_endpoints/endpoints.py"
+      ],
+      "expected_files": [
+        "litellm/llms/azure/realtime/http_transformation.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 0,
+      "unsupported_claim_reasons": [],
+      "root_cause_alignment": "incorrect",
+      "keyword_overlap_score": 0.5,
+      "issue_echo_keyword_overlap": 0.625,
+      "latency_seconds": 103.527,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-020",
+      "repo_full_name": "BerriAI/litellm",
+      "issue_number": 50243,
+      "target_commit_sha": "63b7c3366830241b662bf42941c1283c993779fb",
+      "status": "insufficient_evidence",
+      "cited_evidence_total": 0,
+      "cited_evidence_valid": 0,
+      "citation_validity_rate": null,
+      "search_recall_at_k": {
+        "1": 0.5,
+        "3": 0.5,
+        "5": 0.5,
+        "10": 0.5
+      },
+      "search_hit_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0,
+        "10": 1.0
+      },
+      "diagnosis_hit_at_k": {
+        "1": 0.0,
+        "3": 0.0,
+        "5": 0.0,
+        "10": 0.0
+      },
+      "retrieved_files": [
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/llms/anthropic/chat/transformation.py",
+        "litellm/llms/bedrock/chat/converse_transformation.py",
+        "litellm/llms/fireworks_ai/chat/transformation.py",
+        "tests/unit/completion_extras/litellm_responses_transformation/test_completion_extras_litellm_responses_transformation_transformation.py",
+        "litellm/llms/azure/chat/o_series_transformation.py",
+        "litellm/llms/azure_ai/chat/transformation.py",
+        "litellm/llms/base_llm/chat/transformation.py",
+        "litellm/llms/bedrock/chat/invoke_transformations/anthropic_claude_transformation.py",
+        "litellm/llms/bedrock/common_utils.py",
+        "litellm/llms/bedrock/files/transformation.py",
+        "litellm/llms/cohere/chat/v2_transformation.py",
+        "README.md",
+        "litellm/endpoints/speech/speech_to_completion_bridge/transformation.py",
+        "litellm/integrations/websearch_interception/transformation.py",
+        "litellm/llms/a2a/chat/transformation.py",
+        "litellm/llms/anthropic/completion/transformation.py"
+      ],
+      "cited_files": [],
+      "expected_files": [
+        "litellm/completion_extras/litellm_responses_transformation/transformation.py",
+        "litellm/llms/anthropic/messages/responses_adapters/handler.py"
+      ],
+      "hypotheses_count": 1,
+      "unsupported_claims_count": 1,
+      "unsupported_claim_reasons": [
+        "Hypothesis #1 ('The bridge does not check the length of ') is not supported by verified repository evidence"
+      ],
+      "root_cause_alignment": "insufficient_evidence",
+      "keyword_overlap_score": 0.3,
+      "issue_echo_keyword_overlap": 0.9,
+      "latency_seconds": 128.44,
+      "error_reason": null
+    }
+  ],
+  "failure_notes": [
+    {
+      "case_id": "CASE-003",
+      "repo": "BerriAI/litellm",
+      "status": "insufficient_evidence",
+      "root_cause_alignment": "insufficient_evidence",
+      "citation_validity": 1.0,
+      "search_recall_at_5": 0.0,
+      "unsupported_claims": 1,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-005",
+      "repo": "BerriAI/litellm",
+      "status": "insufficient_evidence",
+      "root_cause_alignment": "insufficient_evidence",
+      "citation_validity": 1.0,
+      "search_recall_at_5": 1.0,
+      "unsupported_claims": 1,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-007",
+      "repo": "BerriAI/litellm",
+      "status": "insufficient_evidence",
+      "root_cause_alignment": "insufficient_evidence",
+      "citation_validity": null,
+      "search_recall_at_5": 1.0,
+      "unsupported_claims": 1,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-015",
+      "repo": "BerriAI/litellm",
+      "status": "insufficient_evidence",
+      "root_cause_alignment": "insufficient_evidence",
+      "citation_validity": null,
+      "search_recall_at_5": 0.0,
+      "unsupported_claims": 1,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-017",
+      "repo": "BerriAI/litellm",
+      "status": "insufficient_evidence",
+      "root_cause_alignment": "insufficient_evidence",
+      "citation_validity": 1.0,
+      "search_recall_at_5": 0.0,
+      "unsupported_claims": 1,
+      "error_reason": null
+    },
+    {
+      "case_id": "CASE-020",
+      "repo": "BerriAI/litellm",
+      "status": "insufficient_evidence",
+      "root_cause_alignment": "insufficient_evidence",
+      "citation_validity": null,
+      "search_recall_at_5": 0.5,
+      "unsupported_claims": 1,
+      "error_reason": null
+    }
+  ]
+}

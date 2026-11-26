@@ -2,7 +2,7 @@
 
 This directory contains the benchmark dataset, its documentation, and recorded results for **IssueLens**.
 
-> **Status (2026-11-25):** the harness and metrics were rebuilt after a post-build audit found that the previously published numbers could not have come out differently (see [Section 7](#7-results) and [ADR-013](../docs/decisions/ADR-013-evaluation-metric-redesign-and-leak-closure.md)). **No live run has been recorded with the current code yet.** The earlier run is kept as [`results.legacy-v1.json`](results.legacy-v1.json) for reference only.
+> **Status (2026-11-27):** the harness and metrics were rebuilt after a post-build audit found that the previously published numbers could not have come out differently ([ADR-013](../docs/decisions/ADR-013-evaluation-metric-redesign-and-leak-closure.md)). The first live run with the current code is recorded in [`results.json`](results.json) and summarised in [Section 7](#7-results). The earlier run is kept as [`results.legacy-v1.json`](results.legacy-v1.json) for reference only.
 
 ---
 
@@ -132,7 +132,29 @@ A result is reproducible only if `issuelens_tree_dirty` is `false`.
 
 ## 7. Results
 
-**Current code: no live run recorded yet.** Run `--live` on a clean, committed tree and commit the resulting `evals/results.json` together with this section.
+### Live run, metrics v2: `results.json`
+Recorded 2026-11-26 (UTC) with `gpt-4o-mini` (OpenAI), `MAX_RETRIEVAL_ROUNDS=3`, `LLM_TIMEOUT_SECONDS=120`, `max_report_tokens=2500`, on IssueLens commit `fea2660` with a clean tree (`issuelens_tree_dirty: false`). All numbers below are copied from that file.
+
+| Metric | Result | Target | Met |
+| :--- | :--- | :--- | :--- |
+| Completion (produced a report) | 20 / 20 | — | — |
+| Root-cause useful rate | **50%** (10 correct, 0 partial, 4 incorrect, 6 insufficient evidence) | ≥ 70% | No |
+| LLM citation validity | 100% over the 17 cases with citations | ≥ 95% | Yes |
+| Unsupported claims | 0.35 per report | < 0.5 | Yes |
+| Search Recall@5 | 50.8% | ≥ 80% | No |
+| Search Hit@5 | 60% | ≥ 90% | No |
+| Diagnosis Hit@1 / @5 | 45% / 50% | — | — |
+| Mean latency | 130.7 s per case | — | — |
+| *Keyword overlap (diagnostic)* | agent 0.33 vs issue-echo baseline 0.71 | — | — |
+
+How to read this:
+- **Root cause:** half the cases end with a supported top hypothesis that cites a file the fix changed. The issue-echo baseline cites no files, so it scores 0 on this metric (it would be `insufficient_evidence` everywhere); the keyword-overlap line shows why the old metric was not usable (the echo beats the agent).
+- **Retrieval is the main bottleneck.** In the 12 cases where search returned an expected file in its top 5, 8 diagnoses were correct, 3 ended with insufficient evidence and 1 was incorrect. In the 8 cases where it did not, 2 were still correct (found in follow-up rounds), 3 insufficient and 3 incorrect.
+- **Search found the file but the diagnosis did not use it** in 4 cases (CASE-005, -007, -019, -020): a prompting/reasoning gap, separate from retrieval.
+- **Citation validity 100%** means the LLM never cited an evidence ID that was not shown to it or failed validation. Because the model only selects IDs, this is a weak check (it detects invented IDs, not wrong reasoning); 3 cases cited nothing.
+- 6 insufficient-evidence reports are the guardrail working as designed: no hypothesis had repository support, and none was promoted.
+
+With 20 cases from one repository, a difference of 2–3 cases is within noise (Section 8).
 
 ### Legacy run (metrics v1, superseded): `results.legacy-v1.json`
 Recorded 2026-11-24 with `gpt-4o-mini` and the code before the audit. Its headline numbers (17/20 completed, "100% citation validity on completed cases", "0.00 unsupported claims", "70.6% correct root cause", Recall@5 36.7%) **should not be cited as evidence of quality**:
