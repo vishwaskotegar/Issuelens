@@ -6,7 +6,7 @@ This document details the internal agent workflow of IssueLens, documenting both
 
 ## 1. Historical Workflow: Synchronous Pipeline (Phases 3–4, superseded)
 
-> **Superseded by Section 2.** `InvestigationService.investigate()` now runs the LangGraph state machine. Helpers referenced below (`compile_search_query`, `extract_json_payload`, `InvestigationReport.from_payload`) remain in the code but are not called on the runtime path.
+> **Superseded by Section 2.** `InvestigationService.investigate()` now runs the LangGraph state machine. Helpers referenced below (`compile_search_query`, `extract_json_payload`, `InvestigationReport.from_payload`) were removed in the 2026-11-27 audit cleanup; the section is kept as a record of the Phase 3–4 design.
 
 In the current implementation, the agent logic is orchestrated by [`InvestigationService`](../../src/issuelens/agent/service.py) in [`src/issuelens/agent/service.py`](../../src/issuelens/agent/service.py). It coordinates deterministic context gathering, lexical/AST code search, prompt assembly, structured LLM generation, and physical citation validation.
 

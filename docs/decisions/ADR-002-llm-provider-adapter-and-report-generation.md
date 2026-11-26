@@ -6,6 +6,8 @@
 - **Phase**: Phase 3: First End-to-End Report
 - **Nature of Rationale**: Original
 
+> **Status note (2026-11-27):** the provenance-binding principle stands, but `InvestigationReport.from_payload` was removed as dead code; the LangGraph nodes (`agent/nodes.py`) now construct `InvestigationReport` with system-owned provenance fields directly.
+
 ---
 
 ## 1. Context and Problem
