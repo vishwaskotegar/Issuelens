@@ -1,11 +1,8 @@
 """Investigation service orchestrating issue ingestion, code search, and report generation."""
 
 import asyncio
-import json
-import re
 import uuid
 from pathlib import Path
-from typing import Any
 
 from issuelens.agent.graph import create_investigation_graph
 from issuelens.agent.llm import LLMClientProtocol, get_llm_client
@@ -13,10 +10,9 @@ from issuelens.agent.nodes import InvestigationNodes
 from issuelens.agent.report import InvestigationReport
 from issuelens.agent.state import InvestigationState
 from issuelens.config import Settings, get_settings
-from issuelens.core.errors import IssueLensError, LLMOutputValidationError
+from issuelens.core.errors import IssueLensError
 from issuelens.core.logging import get_logger
 from issuelens.github.client import GitHubClient, GitHubClientProtocol
-from issuelens.github.models import GitHubIssueContext
 from issuelens.github.url_parser import IssueTarget, parse_issue_target
 from issuelens.repository.snapshot import (
     RepoSnapshot,
@@ -25,44 +21,6 @@ from issuelens.repository.snapshot import (
 )
 
 logger = get_logger("issuelens.agent.service")
-
-
-def extract_json_payload(raw_text: str) -> dict[str, Any]:
-    """Extract and parse a JSON dictionary from an LLM response string."""
-    text = raw_text.strip()
-
-    # Strip markdown code blocks if present
-    if "```" in text:
-        pattern = r"```(?:json)?\s*([\s\S]*?)\s*```"
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            text = match.group(1).strip()
-
-    # Delineate outer JSON object boundaries
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        text = text[start : end + 1]
-
-    try:
-        data = json.loads(text)
-        if not isinstance(data, dict):
-            raise LLMOutputValidationError("LLM response did not produce a JSON object dictionary.")
-        return data
-    except json.JSONDecodeError as exc:
-        raise LLMOutputValidationError(
-            f"Failed to parse LLM response as valid JSON: {exc}"
-        ) from exc
-
-
-def compile_search_query(context: GitHubIssueContext) -> str:
-    """Extract lexical search tokens from issue title, body, and comments."""
-    query_parts: list[str] = [context.issue.title]
-    if context.issue.body:
-        query_parts.append(context.issue.body[:1500])
-    for comment in context.comments[:3]:
-        query_parts.append(comment.body[:500])
-    return " ".join(query_parts)
 
 
 class InvestigationService:

@@ -624,7 +624,7 @@ AI debugging assistants frequently hallucinate commit hashes, URLs, and file cit
 
 #### 2. What happens from input to output
 1. The LLM generates analytical fields only via [`InvestigationReportPayload`](../src/issuelens/agent/report.py) (`summary`, `observed_facts`, `hypotheses`, `missing_information`, `suggested_tests`, `limitations`).
-2. The service binds the analytical payload with authoritative git provenance coordinates via [`InvestigationReport.from_payload()`](../src/issuelens/agent/report.py).
+2. The analytical payload is bound to authoritative git provenance coordinates when the graph nodes in [`agent/nodes.py`](../src/issuelens/agent/nodes.py) construct `InvestigationReport` (a Phase 3 helper, `InvestigationReport.from_payload()`, did this before the LangGraph rewrite and was removed as dead code in the 2026-11-27 cleanup).
 3. Immutable fields (`commit_sha`, `run_id`, `issue_url`, `repository`, `evidence`) are populated authoritatively by the Python runtime.
 4. `verification_status` is locked to `"not_run"` by default.
 
@@ -645,7 +645,7 @@ AI debugging assistants frequently hallucinate commit hashes, URLs, and file cit
 
 #### 7. How the feature is tested
 - **Test file**: [`tests/unit/test_report_schema.py`](../tests/unit/test_report_schema.py)
-- **Verifications**: Payload instantiation, `from_payload()` binding, invalid line rejection, and enum enforcement.
+- **Verifications**: Payload instantiation, invalid line rejection, and enum enforcement.
 - **Run command**:
   ```powershell
   uv run pytest tests/unit/test_report_schema.py

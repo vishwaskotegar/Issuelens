@@ -8,8 +8,6 @@ import pytest
 from issuelens.agent.llm import MockLLMClient
 from issuelens.agent.service import (
     InvestigationService,
-    compile_search_query,
-    extract_json_payload,
 )
 from issuelens.config import Settings
 from issuelens.core.errors import (
@@ -97,64 +95,6 @@ class FakeGitHubClient(GitHubClientProtocol):
             comments=comments,
             fetched_at=datetime.now(tz=UTC),
         )
-
-
-def test_extract_json_payload_valid() -> None:
-    """Verify raw JSON and markdown-fenced JSON parse successfully."""
-    # Plain JSON
-    raw = '{"key": "value"}'
-    assert extract_json_payload(raw) == {"key": "value"}
-
-    # Markdown fenced
-    fenced = '```json\n{"key": "fenced"}\n```'
-    assert extract_json_payload(fenced) == {"key": "fenced"}
-
-    # Extra text around brackets
-    surrounded = 'Here is the report:\n{"key": "surrounded"}\nHope this helps!'
-    assert extract_json_payload(surrounded) == {"key": "surrounded"}
-
-
-def test_extract_json_payload_invalid() -> None:
-    """Verify non-JSON and non-dict payloads raise LLMOutputValidationError."""
-    with pytest.raises(LLMOutputValidationError, match="Failed to parse"):
-        extract_json_payload("not valid json at all")
-
-    with pytest.raises(LLMOutputValidationError, match="JSON object dictionary"):
-        extract_json_payload('["list", "not", "dict"]')
-
-
-def test_compile_search_query() -> None:
-    """Verify search query extraction from issue context."""
-    issue = GitHubIssue(
-        number=1,
-        title="Crash in auth",
-        body="Body details",
-        state="open",
-        created_at=datetime.now(tz=UTC),
-        html_url="https://github.com/o/r/issues/1",
-    )
-    comments = [
-        GitHubComment(
-            id=1,
-            author="u",
-            body="Comment note",
-            created_at=datetime.now(tz=UTC),
-        )
-    ]
-    ctx = GitHubIssueContext(
-        issue_url="https://github.com/o/r/issues/1",
-        repository="o/r",
-        issue_number=1,
-        default_branch="main",
-        commit_sha="sha",
-        issue=issue,
-        comments=comments,
-        fetched_at=datetime.now(tz=UTC),
-    )
-    query = compile_search_query(ctx)
-    assert "Crash in auth" in query
-    assert "Body details" in query
-    assert "Comment note" in query
 
 
 @pytest.mark.asyncio

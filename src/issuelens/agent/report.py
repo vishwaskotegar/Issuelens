@@ -195,30 +195,3 @@ class InvestigationReport(BaseModel):
         default_factory=list,
         description="Known constraints, assumptions, and scope boundaries of this investigation",
     )
-
-    @classmethod
-    def from_payload(
-        cls,
-        payload: InvestigationReportPayload,
-        run_id: str,
-        issue_url: str,
-        repository: str,
-        commit_sha: str,
-        evidence: list[EvidenceItem],
-    ) -> "InvestigationReport":
-        """Construct validated report by binding LLM analysis with verified snapshot provenance."""
-        return cls(
-            run_id=run_id,
-            issue_url=issue_url,
-            repository=repository,
-            commit_sha=commit_sha,
-            evidence=evidence,
-            summary=payload.summary,
-            observed_facts=payload.observed_facts,
-            hypotheses=payload.hypotheses,
-            missing_information=payload.missing_information,
-            suggested_tests=payload.suggested_tests,
-            recommended_next_steps=payload.recommended_next_steps,
-            verification_status="not_run",
-            limitations=payload.limitations,
-        )

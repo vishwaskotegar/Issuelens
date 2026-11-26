@@ -93,7 +93,7 @@ flowchart TD
 ### Boundary 1: User-Provided Input & SSRF Defense
 - **Threat**: Attackers supply URLs pointing to internal metadata services (e.g., AWS `http://169.254.169.254/latest/meta-data/`), localhost servers (`http://127.0.0.1:8000`), or non-GitHub hosts to perform Server-Side Request Forgery (SSRF) or probe private intranets.
 - **Implemented Defenses**:
-  - [`parse_issue_target()`](../../src/issuelens/github/url_parser.py) accepts only `http`/`https` URLs whose host is exactly `github.com` or `www.github.com` (the URL is parsed into owner/repo/number and never fetched; requests always go to `api.github.com`). Note: the error message says "Only HTTPS is permitted" but `http` is also accepted.
+  - [`parse_issue_target()`](../../src/issuelens/github/url_parser.py) accepts only `http`/`https` URLs whose host is exactly `github.com` or `www.github.com` (the URL is parsed into owner/repo/number and never fetched; requests always go to `api.github.com`).
   - Non-conforming hosts or IP addresses raise [`SafetyViolationError`](../../src/issuelens/core/errors.py) immediately, terminating the request before any network socket is opened.
   - Pull request URLs (`/pull/`) are detected and rejected upfront, ensuring the system only processes public bug issues.
 

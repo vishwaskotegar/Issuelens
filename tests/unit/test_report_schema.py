@@ -7,7 +7,6 @@ from issuelens.agent.report import (
     EvidenceItem,
     Hypothesis,
     InvestigationReport,
-    InvestigationReportPayload,
 )
 
 
@@ -129,50 +128,3 @@ def test_investigation_report_invalid_verification_status() -> None:
             summary="Summary",
             verification_status="passed",  # type: ignore[arg-type]
         )
-
-
-def test_investigation_report_from_payload() -> None:
-    """Verify factory from_payload merges LLM payload with verified provenance."""
-    payload = InvestigationReportPayload(
-        summary="Analysis complete.",
-        observed_facts=["Observed fact 1"],
-        hypotheses=[
-            Hypothesis(
-                title="Root cause hypothesis",
-                explanation="Detailed explanation",
-                confidence="high",
-                confidence_rationale="Grounded in ev_1",
-                supporting_evidence_ids=["ev_1"],
-            )
-        ],
-        missing_information=["None"],
-        suggested_tests=["test_something"],
-        recommended_next_steps=["Fix it"],
-        limitations=["Static only"],
-    )
-    evidence = [
-        EvidenceItem(
-            evidence_id="ev_1",
-            source_type="code",
-            path_or_url="pkg/mod.py",
-            start_line=1,
-            end_line=5,
-            excerpt="1: def f(): pass",
-            commit_sha="abcdef1234567890abcdef1234567890abcdef12",
-        )
-    ]
-    report = InvestigationReport.from_payload(
-        payload=payload,
-        run_id="inv_abc123",
-        issue_url="https://github.com/owner/repo/issues/1",
-        repository="owner/repo",
-        commit_sha="abcdef1234567890abcdef1234567890abcdef12",
-        evidence=evidence,
-    )
-    assert report.run_id == "inv_abc123"
-    assert report.verification_status == "not_run"
-    assert report.summary == "Analysis complete."
-    assert report.evidence[0].evidence_id == "ev_1"
-    assert report.hypotheses[0].confidence == "high"
-
-

@@ -6,6 +6,8 @@ This document provides a detailed end-to-end trace of an IssueLens investigation
 
 ## 1. Successful Request Sequence (Happy Path)
 
+> **Partly historical.** Steps 4–6 below show the Phase 3–4 single-pass pipeline. The runtime path now runs the LangGraph state machine described in [agent-workflow.md §2](agent-workflow.md) (initial retrieval, hypotheses, bounded follow-up rounds with LLM re-evaluation, validation). `compile_search_query` and `InvestigationReport.from_payload` no longer exist; nodes build `InvestigationReport` directly.
+
 The following sequence diagram details the synchronous execution path when a client requests an investigation via `POST /v1/investigations` with `execute=true`:
 
 ```mermaid

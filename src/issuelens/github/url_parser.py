@@ -100,7 +100,8 @@ def parse_issue_target(raw_input: str) -> IssueTarget:
 
         if parsed.scheme and parsed.scheme not in ("http", "https"):
             raise InvalidInputError(
-                f"Unsupported URL scheme '{parsed.scheme}'. Only HTTPS is permitted."
+                f"Unsupported URL scheme '{parsed.scheme}'. "
+                "Only http(s) github.com URLs are supported."
             )
 
         hostname = (parsed.hostname or "").lower()
