@@ -41,7 +41,9 @@ The IssueLens evaluation framework assesses investigation quality against histor
 
 The benchmark uses 20 real, closed bug reports from `BerriAI/litellm` generated via `scripts/build_eval_set.py`.
 
-**Current status: no live results are published for the current code.** A post-build audit (2026-11-25) found that the previously published figures ("100% citation validity", "0 unsupported claims", "70.6% correct root cause") could not have come out differently under the old metrics, and that issue comments leaked into the agent's context. The metrics and leak controls were rebuilt ([ADR-013](docs/decisions/ADR-013-evaluation-metric-redesign-and-leak-closure.md)); the old run is kept as [`evals/results.legacy-v1.json`](evals/results.legacy-v1.json) for reference only. Methodology and metric definitions: [`evals/README.md`](evals/README.md).
+**Latest live run (metrics v2, 2026-11-26, `gpt-4o-mini`, clean tree at `fea2660`, [`evals/results.json`](evals/results.json)):** 20/20 cases produced a report. Root cause useful in **50%** (10 correct, 4 incorrect, 6 insufficient evidence; target 70%, not met). LLM citation validity 100% over 17 cases with citations and 0.35 unsupported claims per report (targets met). Search Recall@5 50.8% and Hit@5 60% (targets 80% / 90%, not met): retrieval is the main bottleneck. This is a 20-case, single-repository pilot; see [`evals/README.md`](evals/README.md) §7–8 for interpretation and limits.
+
+A post-build audit (2026-11-25) found that the previously published figures ("100% citation validity", "0 unsupported claims", "70.6% correct root cause") could not have come out differently under the old metrics, and that issue comments leaked into the agent's context. The metrics and leak controls were rebuilt ([ADR-013](docs/decisions/ADR-013-evaluation-metric-redesign-and-leak-closure.md)); the old run is kept as [`evals/results.legacy-v1.json`](evals/results.legacy-v1.json) for reference only.
 
 ### Running the Benchmark
 
