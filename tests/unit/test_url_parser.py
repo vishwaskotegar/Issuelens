@@ -119,3 +119,10 @@ def test_reject_path_traversal_attempts() -> None:
 
     with pytest.raises(InvalidInputError):
         parse_issue_target("https://github.com/owner/../issues/1")
+
+
+def test_parse_rejects_non_http_scheme() -> None:
+    """Non-http(s) schemes are rejected with a message that matches the accepted set."""
+    with pytest.raises(InvalidInputError, match=r"Only http\(s\) github.com URLs"):
+        parse_issue_target("ftp://github.com/octocat/Hello-World/issues/1")
+
