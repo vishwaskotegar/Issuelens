@@ -64,20 +64,30 @@ def test_security_headers_retained_on_error_responses() -> None:
     assert response.headers["X-Frame-Options"] == "DENY"
 
 
-def test_cors_preflight_for_allowed_origin() -> None:
-    """Verify CORS preflight returns correct access control headers for allowed origin."""
-    custom_settings = Settings(
-        cors_allowed_origins=["http://localhost:3000"],
-    )
-    app = create_app()
-    app.dependency_overrides[get_settings] = lambda: custom_settings
+def _preflight(app_origins: list[str], origin: str) -> dict[str, str]:
+    # Settings must go into create_app(): CORSMiddleware reads the origin list once at
+    # construction, so a get_settings dependency override would not reach it.
+    app = create_app(Settings(_env_file=None, cors_allowed_origins=app_origins))  # type: ignore[call-arg]
     client = TestClient(app)
+    response = client.options(
+        "/v1/issues/ingest",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type,X-API-Key",
+        },
+    )
+    return dict(response.headers)
 
-    headers = {
-        "Origin": "http://localhost:3000",
-        "Access-Control-Request-Method": "POST",
-        "Access-Control-Request-Headers": "Content-Type,X-API-Key",
-    }
-    response = client.options("/v1/issues/ingest", headers=headers)
-    assert response.status_code == 200
-    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+def test_cors_preflight_for_allowed_origin() -> None:
+    """A configured origin (not one of the defaults) is allowed."""
+    headers = _preflight(["https://ui.example.test"], "https://ui.example.test")
+    assert headers.get("access-control-allow-origin") == "https://ui.example.test"
+
+
+def test_cors_preflight_rejects_unlisted_origin() -> None:
+    """An origin outside the allowlist, including a default one, gets no CORS grant."""
+    for origin in ("https://evil.example.test", "http://localhost:3000"):
+        headers = _preflight(["https://ui.example.test"], origin)
+        assert "access-control-allow-origin" not in headers

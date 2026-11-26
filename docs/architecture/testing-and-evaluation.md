@@ -35,7 +35,7 @@ flowchart TD
 
 ## 2. Implemented Test Organization & Boundaries
 
-The automated test suite resides in `tests/` and runs offline (no network, no paid LLM). Counts below were generated on 2026-11-25 with `uv run pytest --collect-only -q` (285 tests); re-run that command for current numbers rather than trusting this listing.
+The automated test suite resides in `tests/` and runs offline (no network, no paid LLM). Counts below were generated on 2026-11-27 with `uv run pytest --collect-only -q` (283 tests); re-run that command for current numbers rather than trusting this listing.
 
 ```text
 tests/
@@ -59,7 +59,7 @@ tests/
     ├── test_graph.py                            (16) LangGraph incl. re-evaluation loop
     ├── test_health.py                           (3)
     ├── test_investigation_api.py                (7)  incl. error redaction, 500 headers
-    ├── test_investigation_service.py            (6)
+    ├── test_investigation_service.py            (3)
     ├── test_issue_api.py                        (8)
     ├── test_leak_prevention.py                  (3)
     ├── test_llm_client.py                       (16)
@@ -67,17 +67,17 @@ tests/
     ├── test_persistence.py                      (12) incl. migration/model parity
     ├── test_prompts.py                          (8)
     ├── test_python_symbols.py                   (5)
-    ├── test_report_schema.py                    (7)
-    ├── test_security_headers.py                 (5)
+    ├── test_report_schema.py                    (6)
+    ├── test_security_headers.py                 (6)  incl. allowed/rejected CORS origins
     ├── test_snapshot.py                         (11)
     ├── test_snapshot_cache.py                   (8)
     ├── test_snippets.py                         (6)
     ├── test_trusted_proxies.py                  (6)
-    ├── test_url_parser.py                       (14)
+    ├── test_url_parser.py                       (15)
     └── test_validator.py                        (25)
 ```
 
-Known gaps (not covered by automated tests): the PostgreSQL branch of migration 002, PostgreSQL/JSONB behaviour in general (tests use SQLite), rejected-origin CORS behaviour, and the Docker image build.
+Known gaps (not covered by automated tests): the PostgreSQL branch of migration 002, PostgreSQL/JSONB behaviour in general (tests use SQLite), and the Docker image build.
 
 ### Key Test Boundaries & Test Doubles
 

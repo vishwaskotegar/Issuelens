@@ -1472,3 +1472,26 @@ An exception message is debugging data, not an API response: decide explicitly w
 - Rate limiter: Redis or a TTL cache would also bound memory; rejected to avoid a new dependency for a single-process limiter. Under a flood of more than 10,000 IPs in one window, evicted clients get a fresh allowance.
 - LLM HTTP clients (LangChain `ChatOpenAI`/`ChatAnthropic`) manage their own clients and are created per request; they were not changed.
 
+---
+
+### Entry 031: CORS Preflight Test That Tested the Defaults, Not Its Own Settings
+- **Date**: 2026-11-27
+- **Phase**: Post-build audit remediation (branch `fix/small-cleanups`)
+- **Status**: Resolved
+
+#### 1. Symptom & Objective
+While adding the missing rejected-origin CORS test, `test_cors_preflight_for_allowed_origin` turned out to prove nothing about configuration. It built `Settings(cors_allowed_origins=["http://localhost:3000"])`, called `create_app()` with no arguments, and then installed the settings as a `get_settings` dependency override.
+
+#### 2. Root Cause
+`CORSMiddleware` is constructed inside `create_app()` from `app_settings.cors_allowed_origins` (`src/issuelens/main.py`), once, before any request. Dependency overrides only affect route dependencies resolved per request, so the middleware kept the default origins. The test passed only because `http://localhost:3000` is one of the defaults (`uv run python -c "from issuelens.config import get_settings; print(get_settings().cors_allowed_origins)"` prints `['http://localhost:3000', 'http://localhost:8000']`).
+
+#### 3. Fix
+Tests now pass settings into `create_app(Settings(...))` through a `_preflight()` helper and use a non-default origin (`https://ui.example.test`). New `test_cors_preflight_rejects_unlisted_origin` checks that both an unknown origin and a *default* origin get no `access-control-allow-origin` when the allowlist is overridden, which only holds if the configured list really reaches the middleware.
+
+#### 4. Verification
+- `uv run pytest tests/unit/test_security_headers.py -q`: `6 passed`.
+- Full suite: `uv run pytest -q` → `283 passed`; `uv run ruff check .` → `All checks passed!`; `uv run mypy src tests` → `Success: no issues found in 77 source files`.
+
+#### 5. Engineering Lesson
+FastAPI dependency overrides change what route handlers receive, not how middleware was built. When a test configures something, pick a value that differs from the default, so the test fails if the configuration is ignored.
+
